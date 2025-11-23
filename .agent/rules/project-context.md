@@ -1,12 +1,7 @@
-# Project Context Rules
+---
+trigger: always_on
+---
 
-> [!IMPORTANT]
-> **ALWAYS READ THE HANDBOOK**
->
-> You are working on **EchoVault**.
-> Your primary source of truth is `docs/HANDBOOK.md`.
+# Project Context
 
-## Critical Constraints
-1.  **Language**: Python for Core Logic.
-2.  **Database**: PostgreSQL for Server/Index.
-3.  **Style**: Minimalist, Robust, CLI-first.
+Please refer to the **[DEVELOPER HANDBOOK](../../docs/HANDBOOK.md)** for all project context, architecture, and guidelines.
