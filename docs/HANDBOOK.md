@@ -441,7 +441,7 @@ Giải thích thêm về error handling...
 
 ### 7.1. Prerequisites
 
-- Rust 1.75+ (rustup recommended)
+- [mise](https://mise.jdx.dev/) (quản lý toolchain)
 - Git
 
 ### 7.2. Setup
@@ -450,6 +450,9 @@ Giải thích thêm về error handling...
 # Clone repository
 git clone https://github.com/n24q02m/EchoVault.git
 cd EchoVault
+
+# Cài đặt toolchain với mise
+mise install
 
 # Build
 cargo build
@@ -487,34 +490,17 @@ EchoVault/
   src/
     main.rs               # Entry point
     cli.rs                # clap CLI definitions
-    config.rs             # Configuration management
     extractors/
       mod.rs              # Extractor trait
-      vscode_copilot.rs
-      cursor.rs
-      cline.rs
-      aider.rs
-      claude_code.rs
+      vscode_copilot.rs   # VS Code Copilot extractor (MVP)
     formatters/
-      mod.rs
-      markdown.rs
-      json.rs
-    sync/
-      mod.rs
-      git.rs
-    crypto/
-      mod.rs
-      encryption.rs       # AES-256-GCM
-      key_derivation.rs   # Argon2id
-    tui/
-      mod.rs
-      app.rs              # TUI application state
-      ui.rs               # ratatui widgets
-      handlers.rs         # Keyboard event handlers
+      mod.rs              # Formatter trait
+      markdown.rs         # Markdown formatter
   tests/
   docs/
     HANDBOOK.md
   Cargo.toml
+  mise.toml               # Toolchain configuration
 ```
 
 ---
@@ -545,19 +531,23 @@ EchoVault/
 
 ## 9. LỊCH TRÌNH VÀ MILESTONES
 
-### Phase 1: The Extractor (MVP)
+### Phase 1: VS Code Copilot Extractor (MVP)
 
 - [ ] Core CLI với clap
 - [ ] VS Code Copilot Extractor
+- [ ] Markdown Formatter với frontmatter
+- [ ] Cross-platform path handling (Windows, macOS, Linux, WSL)
+
+### Phase 2: More Extractors
+
 - [ ] Cursor Extractor
 - [ ] Cline Extractor
 - [ ] Aider Extractor
-- [ ] Markdown Formatter với frontmatter
+- [ ] Claude Code Extractor
+
+### Phase 3: The Vault (Complete)
+
 - [ ] Basic configuration (`echovault.toml`)
-- [ ] Cross-platform path handling (Windows, macOS, Linux, WSL)
-
-### Phase 2: The Vault (Complete)
-
 - [ ] AES-256-GCM Encryption với Argon2id
 - [ ] Git Sync Engine (auto-commit, push)
 - [ ] GitHub authentication (HTTPS/SSH)
