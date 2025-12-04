@@ -40,7 +40,11 @@ Hiện tại, GitHub Copilot, Cursor, Cline và các công cụ AI khác đều 
 ### 1.3. Giải Pháp
 
 ```text
-IDE Databases (SQLite/JSON) -> EchoVault CLI -> Markdown Files -> Git Sync -> Context for AI
+IDE Databases (SQLite/JSON) -> EchoVault CLI -> Hybrid Storage -> Git Sync -> Context for AI
+                                              |
+                                              +-> Raw JSON (backup, future-proof)
+                                              +-> Markdown (human-readable, AI context)
+                                              +-> Index (fast search)
 ```
 
 ### 1.4. Người Dùng Mục Tiêu
@@ -58,17 +62,19 @@ IDE Databases (SQLite/JSON) -> EchoVault CLI -> Markdown Files -> Git Sync -> Co
 - **Universal Compatibility**: Hoạt động với mọi IDE và công cụ AI phổ biến.
 - **Privacy First**: Dữ liệu được trích xuất và xử lý hoàn toàn cục bộ. Không gửi lên cloud của bên thứ ba.
 - **Git-Native**: Git là cơ chế sync chính. Đơn giản, đáng tin cậy, miễn phí.
-- **Markdown-Centric**: Output là Markdown thuần - đọc được ở mọi nơi, import được vào mọi AI.
+- **Future-Proof**: Lưu trữ raw data gốc để không mất thông tin khi format thay đổi.
 
 ### 2.2. Key Features
 
 1. **Universal Extraction**:
-    - Tự động phát hiện và trích xuất từ SQLite databases (`state.vscdb`), JSON files, JSONL logs.
+    - Tự động phát hiện và trích xuất từ SQLite databases, JSON files, JSONL logs.
     - Plugin architecture cho từng IDE/Tool.
+    - Hỗ trợ nhiều schema versions (auto-detect).
 
-2. **Format Standardization**:
-    - Chuyển đổi mọi format proprietary thành Markdown với frontmatter metadata.
-    - Giữ nguyên code blocks, artifacts, và formatting.
+2. **Hybrid Storage** (Future-Proof):
+    - **Raw JSON**: Lưu trữ data gốc, không mất thông tin khi format thay đổi.
+    - **Markdown View**: Human-readable, có thể inject vào AI context.
+    - **Index**: Fast search với metadata.
 
 3. **Git Synchronization**:
     - Tự động commit vào local Git repository.
@@ -195,13 +201,20 @@ src/
 | **Terminal UI** | indicatif, colored | Progress bars, colors |
 | **Error Handling** | anyhow, thiserror | Ergonomic errors |
 
-### 4.2. Output Format
+### 4.2. Storage Format (Hybrid)
 
-| Format | Use Case |
-| :--- | :--- |
-| **Markdown** | Primary output, human-readable, AI-injectable |
-| **JSON** | Raw data export, programmatic access |
-| **Encrypted Markdown** | Secure sync to remote Git |
+| Layer | Format | Use Case |
+| :--- | :--- | :--- |
+| **Primary** | JSON gốc (.json.gz) | Backup, future-proof, không mất data |
+| **View** | Markdown | Human-readable, AI context injection |
+| **Index** | SQLite/JSON | Fast search, metadata, filtering |
+| **Sync** | Encrypted (.enc) | Secure sync to remote Git |
+
+**Tại sao Hybrid?**
+
+- IDE format thay đổi thường xuyên (VS Code Copilot đã có 3+ versions)
+- Model khác nhau có response structure khác nhau
+- Lưu raw JSON để có thể re-parse khi cần, không mất data
 
 ### 4.3. Build & Distribution
 
@@ -339,14 +352,14 @@ auth_method = "ssh"
 
 | Platform | Storage Path |
 | :--- | :--- |
-| Windows | `%APPDATA%\Code\User\workspaceStorage\<hash>\state.vscdb` |
-| macOS | `~/Library/Application Support/Code/User/workspaceStorage/<hash>/state.vscdb` |
-| Linux | `~/.config/Code/User/workspaceStorage/<hash>/state.vscdb` |
-| WSL | `~/.vscode-server/data/User/workspaceStorage/<hash>/state.vscdb` |
+| Windows | `%APPDATA%\Code\User\workspaceStorage\<hash>\chatSessions\*.json` |
+| macOS | `~/Library/Application Support/Code/User/workspaceStorage/<hash>/chatSessions/*.json` |
+| Linux | `~/.config/Code/User/workspaceStorage/<hash>/chatSessions/*.json` |
+| WSL | `~/.vscode-server/data/User/workspaceStorage/<hash>/chatSessions/*.json` |
 
-- **Format**: SQLite database
-- **Key**: `interactive.sessions` trong bảng `ItemTable`
-- **Data**: JSON string chứa chat history
+- **Format**: JSON files (từ VS Code 1.96+)
+- **Versions**: v1 (cũ), v2, v3 (hiện tại) - format thay đổi thường xuyên
+- **Data**: Structured JSON với messages, tool calls, thinking steps
 
 #### Cursor
 
@@ -531,29 +544,43 @@ EchoVault/
 
 ## 9. LỊCH TRÌNH VÀ MILESTONES
 
-### Phase 1: VS Code Copilot Extractor (MVP)
+### Phase 1: MVP (VS Code Copilot + Vault Core)
 
-- [ ] Core CLI với clap
-- [ ] VS Code Copilot Extractor
-- [ ] Markdown Formatter với frontmatter
-- [ ] Cross-platform path handling (Windows, macOS, Linux, WSL)
+**Extractor:**
 
-### Phase 2: More Extractors
+- [x] Core CLI với clap (scan, extract commands)
+- [x] VS Code Copilot Extractor (v1, v2, v3 formats)
+- [x] Cross-platform path handling (Windows, macOS, Linux, WSL)
 
-- [ ] Cursor Extractor
-- [ ] Cline Extractor
-- [ ] Aider Extractor
-- [ ] Claude Code Extractor
+**Storage (Hybrid):**
 
-### Phase 3: The Vault (Complete)
+- [ ] Raw JSON storage (.json.gz) - lưu data gốc
+- [ ] Markdown view generation
+- [ ] Session index (SQLite)
+
+**Vault Core:**
 
 - [ ] Basic configuration (`echovault.toml`)
 - [ ] AES-256-GCM Encryption với Argon2id
 - [ ] Git Sync Engine (auto-commit, push)
 - [ ] GitHub authentication (HTTPS/SSH)
+
+### Phase 2: More Extractors
+
+- [ ] Cursor Extractor
+- [ ] Cline (Claude Dev) Extractor
+- [ ] Google Antigravity Extractor
+- [ ] GitHub Copilot for JetBrains Extractor
+- [ ] Aider Extractor (Markdown native)
+- [ ] Claude Code Extractor
+
+### Phase 3: Advanced Features
+
 - [ ] TUI Viewer với ratatui
 - [ ] Full-text search trong TUI
 - [ ] Clipboard integration
+- [ ] Semantic search với embeddings
+- [ ] Context injection helpers
 
 ---
 
