@@ -8,8 +8,8 @@
 
 use anyhow::{bail, Context, Result};
 use git2::{
-    Commit, Cred, FetchOptions, ObjectType, RemoteCallbacks, Repository,
-    RepositoryInitOptions, Signature,
+    Commit, Cred, FetchOptions, ObjectType, RemoteCallbacks, Repository, RepositoryInitOptions,
+    Signature,
 };
 use std::path::Path;
 
@@ -30,6 +30,18 @@ fn ssh_to_https_url(url: &str) -> String {
 
     // Already HTTPS or other format, return as-is
     url.to_string()
+}
+
+/// Normalize GitHub URL - đảm bảo có .git suffix và là HTTPS
+fn normalize_github_url(url: &str) -> String {
+    let https_url = ssh_to_https_url(url);
+
+    // Thêm .git nếu chưa có
+    if https_url.ends_with(".git") {
+        https_url
+    } else {
+        format!("{}.git", https_url.trim_end_matches('/'))
+    }
 }
 
 /// Git sync engine cho EchoVault vault
@@ -336,23 +348,111 @@ impl GitSync {
     }
 
     /// Clone repository từ remote
+    /// Sử dụng git command thay vì libgit2 để đảm bảo HTTPS support
     pub fn clone(url: &str, path: &Path, access_token: &str) -> Result<Self> {
-        let mut callbacks = RemoteCallbacks::new();
-        let token = access_token.to_string();
+        // Normalize URL - thêm .git nếu cần và chuyển sang HTTPS
+        let normalized_url = normalize_github_url(url);
 
-        callbacks.credentials(move |_url, _username_from_url, _allowed_types| {
-            Cred::userpass_plaintext("x-access-token", &token)
-        });
+        // Tạo URL với embedded token để authenticate
+        let auth_url = normalized_url.replace(
+            "https://github.com/",
+            &format!("https://x-access-token:{}@github.com/", access_token),
+        );
 
-        let mut fetch_opts = FetchOptions::new();
-        fetch_opts.remote_callbacks(callbacks);
+        // Sử dụng git clone command
+        let output = std::process::Command::new("git")
+            .args(["clone", &auth_url, &path.to_string_lossy()])
+            .output()
+            .context("Cannot execute git clone command")?;
 
-        let repo = git2::build::RepoBuilder::new()
-            .fetch_options(fetch_opts)
-            .clone(url, path)
-            .with_context(|| format!("Cannot clone repository: {}", url))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("Git clone failed: {}", stderr);
+        }
+
+        // Mở repository đã clone
+        let repo = Repository::open(path)
+            .with_context(|| format!("Cannot open cloned repository: {}", path.display()))?;
+
+        // Cập nhật remote URL để không có token (bảo mật)
+        repo.remote_set_url("origin", &normalized_url)?;
 
         Ok(Self { repo })
+    }
+
+    /// Pull từ remote với access token (fetch + merge)
+    /// Sử dụng git command để đơn giản và đáng tin cậy hơn
+    /// Trả về Ok(true) nếu có changes được pull, Ok(false) nếu already up-to-date
+    pub fn pull(&self, remote_name: &str, branch: &str, access_token: &str) -> Result<bool> {
+        let remote = self.repo.find_remote(remote_name)?;
+
+        // Lấy URL và convert SSH -> HTTPS nếu cần
+        let original_url = remote.url().context("Remote has no URL")?;
+        let https_url = ssh_to_https_url(original_url);
+
+        // Tạo URL với embedded token để authenticate
+        let auth_url = https_url.replace(
+            "https://github.com/",
+            &format!("https://x-access-token:{}@github.com/", access_token),
+        );
+
+        let workdir = self.repo.workdir().context("No workdir")?;
+
+        // Sử dụng git pull --rebase=false để merge (không rebase)
+        let output = std::process::Command::new("git")
+            .current_dir(workdir)
+            .args(["pull", "--no-rebase", &auth_url, branch])
+            .output()
+            .context("Cannot execute git pull command")?;
+
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // Kiểm tra xem có pull được gì không
+            if stdout.contains("Already up to date") || stdout.contains("Already up-to-date") {
+                return Ok(false);
+            }
+            return Ok(true);
+        }
+
+        // Kiểm tra lỗi cụ thể
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        // Nếu remote không có branch này (repo mới, empty)
+        if stderr.contains("couldn't find remote ref")
+            || stderr.contains("fatal: Couldn't find remote ref")
+        {
+            return Ok(false);
+        }
+
+        // Nếu có unrelated histories (repo được tạo với README vs local init)
+        if stderr.contains("refusing to merge unrelated histories") {
+            bail!(
+                "Cannot merge: repositories have unrelated histories.\n\
+                 This usually happens when the remote repo was initialized with a README.\n\
+                 Solution: Delete the remote repo and let EchoVault create a fresh one,\n\
+                 or manually resolve with: git pull --allow-unrelated-histories"
+            );
+        }
+
+        // Nếu có merge conflict
+        if stderr.contains("CONFLICT") || stderr.contains("Automatic merge failed") {
+            bail!(
+                "Merge conflict detected. Please resolve manually:\n\
+                 1. cd {}\n\
+                 2. Resolve conflicts in affected files\n\
+                 3. git add . && git commit\n\
+                 4. Run ev sync again",
+                workdir.display()
+            );
+        }
+
+        bail!("Git pull failed: {}", stderr);
+    }
+
+    /// Kiểm tra xem remote branch có tồn tại không
+    pub fn remote_branch_exists(&self, remote_name: &str, branch: &str) -> bool {
+        let ref_name = format!("refs/remotes/{}/{}", remote_name, branch);
+        self.repo.find_reference(&ref_name).is_ok()
     }
 }
 

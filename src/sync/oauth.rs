@@ -287,6 +287,38 @@ pub fn load_credentials_from_file(path: &std::path::Path) -> Result<OAuthCredent
     Ok(credentials)
 }
 
+/// Kiểm tra GitHub repository có tồn tại không
+/// Trả về Ok(true) nếu repo tồn tại, Ok(false) nếu không tồn tại
+pub fn check_repo_exists(repo_url: &str, access_token: &str) -> Result<bool> {
+    // Parse repo URL để lấy owner/repo
+    // https://github.com/owner/repo.git -> owner/repo
+    let repo_path = repo_url
+        .trim_end_matches(".git")
+        .trim_start_matches("https://github.com/")
+        .trim_start_matches("git@github.com:");
+
+    let api_url = format!("https://api.github.com/repos/{}", repo_path);
+
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .get(&api_url)
+        .header("Accept", "application/vnd.github+json")
+        .header("Authorization", format!("Bearer {}", access_token))
+        .header("User-Agent", "EchoVault")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .send()
+        .context("Cannot connect to GitHub API")?;
+
+    match response.status().as_u16() {
+        200 => Ok(true),  // Repo exists
+        404 => Ok(false), // Repo not found
+        status => {
+            let body = response.text().unwrap_or_default();
+            bail!("GitHub API error {}: {}", status, body);
+        }
+    }
+}
+
 /// Tạo GitHub repository mới qua API
 /// Trả về URL của repository được tạo
 pub fn create_github_repo(repo_name: &str, access_token: &str, private: bool) -> Result<String> {

@@ -91,11 +91,21 @@ fn default_vault_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("./vault"))
 }
 
+/// Lấy đường dẫn config directory mặc định (~/.config/echovault/)
+pub fn default_config_dir() -> PathBuf {
+    dirs::config_dir()
+        .map(|d| d.join("echovault"))
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
 /// Lấy đường dẫn config file mặc định
 pub fn default_config_path() -> PathBuf {
-    dirs::config_dir()
-        .map(|d| d.join("echovault").join("echovault.toml"))
-        .unwrap_or_else(|| PathBuf::from("./echovault.toml"))
+    default_config_dir().join("echovault.toml")
+}
+
+/// Lấy đường dẫn credentials file mặc định (trong config dir, không phải vault)
+pub fn default_credentials_path() -> PathBuf {
+    default_config_dir().join(".credentials.json")
 }
 
 #[allow(dead_code)]

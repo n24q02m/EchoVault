@@ -4,14 +4,14 @@
 //! - scan: Quét và liệt kê tất cả chat sessions có sẵn
 //! - sync: Extract, encrypt và push lên GitHub (all-in-one)
 
-use crate::config::{default_config_path, Config};
+use crate::config::{default_config_path, default_credentials_path, Config};
 use crate::crypto::key_derivation::{derive_key, derive_key_new, SALT_LEN};
 use crate::crypto::Encryptor;
 use crate::extractors::{vscode_copilot::VSCodeCopilotExtractor, Extractor};
 use crate::storage::SessionIndex;
 use crate::sync::oauth::{
-    create_github_repo, load_credentials_from_file, save_credentials_to_file, OAuthCredentials,
-    OAuthDeviceFlow,
+    check_repo_exists, create_github_repo, load_credentials_from_file, save_credentials_to_file,
+    OAuthCredentials, OAuthDeviceFlow,
 };
 use crate::sync::GitSync;
 use crate::utils::open_browser;
@@ -126,55 +126,22 @@ pub fn sync_vault(remote: Option<String>) -> Result<()> {
     };
     let vault_dir = config.vault_dir().to_path_buf();
 
-    // Tạo vault directory nếu chưa có
-    std::fs::create_dir_all(&vault_dir)?;
+    // Xác định remote URL trước (cần để quyết định clone hay init)
+    let remote_url = if let Some(url) = remote {
+        Some(url)
+    } else {
+        config.sync.remote.clone()
+    };
 
-    // Init git repository nếu chưa có
-    let git = GitSync::open_or_init(&vault_dir)?;
+    // Setup OAuth credentials trước (cần để check/clone repo)
+    // Lưu credentials vào config directory (không phải vault) để không ảnh hưởng việc clone
+    let creds_path = default_credentials_path();
 
-    // Setup/update .gitignore để chỉ push encrypted files
-    let gitignore_path = vault_dir.join(".gitignore");
-    if should_update_gitignore(&gitignore_path)? {
-        create_vault_gitignore(&gitignore_path)?;
-        println!("  {} Updated .gitignore", "✓".green());
+    // Tạo config directory nếu chưa có
+    if let Some(parent) = creds_path.parent() {
+        std::fs::create_dir_all(parent)?;
     }
 
-    // Setup remote nếu cần (kiểm tra cả config và git remote)
-    let has_git_remote = git.has_remote("origin")?;
-    let need_remote_setup = config.sync.remote.is_none() || remote.is_some() || !has_git_remote;
-    if need_remote_setup {
-        let remote_url = if let Some(url) = remote {
-            url
-        } else if let Some(url) = config.sync.remote.clone() {
-            // Có trong config nhưng chưa add vào git
-            url
-        } else {
-            // Hỏi user nhập remote URL
-            println!("\n{}", "GitHub Repository Setup".cyan().bold());
-            print!("Remote URL (e.g., https://github.com/user/vault.git): ");
-            io::stdout().flush()?;
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-            let url = input.trim().to_string();
-            if url.is_empty() {
-                bail!("Remote URL is required");
-            }
-            url
-        };
-
-        config.set_remote(remote_url.clone());
-
-        // Add/update remote
-        if has_git_remote {
-            git.set_remote_url("origin", &remote_url)?;
-        } else {
-            git.add_remote("origin", &remote_url)?;
-        }
-        println!("  {} Remote: {}", "✓".green(), remote_url);
-    }
-
-    // Setup OAuth credentials nếu chưa có
-    let creds_path = vault_dir.join(".credentials.json");
     let credentials = if creds_path.exists() {
         load_credentials_from_file(&creds_path)?
     } else {
@@ -184,6 +151,24 @@ pub fn sync_vault(remote: Option<String>) -> Result<()> {
         println!("  {} Saved credentials", "✓".green());
         creds
     };
+
+    // Setup vault repository với logic mới:
+    // 1. Nếu local .git tồn tại -> mở
+    // 2. Nếu không, và remote có -> clone
+    // 3. Nếu không, và remote không có -> init local + tạo remote
+    let git = setup_vault_repo(&vault_dir, &remote_url, &credentials)?;
+
+    // Cập nhật remote URL vào config nếu cần
+    if let Ok(url) = git.get_remote_url("origin") {
+        config.set_remote(url);
+    }
+
+    // Setup/update .gitignore để chỉ push encrypted files
+    let gitignore_path = vault_dir.join(".gitignore");
+    if should_update_gitignore(&gitignore_path)? {
+        create_vault_gitignore(&gitignore_path)?;
+        println!("  {} Updated .gitignore", "✓".green());
+    }
 
     // Setup encryption nếu chưa có
     let salt_path = vault_dir.join(".salt");
@@ -239,6 +224,24 @@ pub fn sync_vault(remote: Option<String>) -> Result<()> {
 
     // Lưu config
     config.save(&config_path)?;
+
+    // === PULL: Đồng bộ từ remote trước để có dữ liệu mới nhất ===
+    if git.has_remote("origin")? {
+        println!("\n{}", "Pulling from remote...".cyan());
+        match git.pull("origin", "main", &credentials.access_token) {
+            Ok(true) => println!("  {} Pulled latest changes", "✓".green()),
+            Ok(false) => println!("  {} Already up to date", "✓".green()),
+            Err(e) => {
+                // Nếu lỗi do remote không có branch (repo mới/empty), tiếp tục
+                let err_str = e.to_string();
+                if err_str.contains("couldn't find remote ref") {
+                    println!("  {} Remote is empty, will push first commit", "→".cyan());
+                } else {
+                    return Err(e);
+                }
+            }
+        }
+    }
 
     // === EXTRACT: Copy raw JSON files từ các IDE ===
     println!("\n{}", "Extracting chat sessions...".cyan());
@@ -364,121 +367,241 @@ pub fn sync_vault(remote: Option<String>) -> Result<()> {
         &commit_id.to_string()[..8]
     );
 
-    // Push (với retry logic cho trường hợp remote có commits)
+    // Push (không force - an toàn cho dữ liệu)
     println!("\n{}", "Pushing to GitHub...".cyan());
-    let push_result = push_with_retry(&git, &credentials.access_token, &config)?;
-
-    if push_result {
-        println!("  {} Pushed successfully!", "✓".green());
-    }
+    push_safe(&git, &credentials.access_token)?;
+    println!("  {} Pushed successfully!", "✓".green());
 
     println!("\n{}", "Sync complete!".green().bold());
 
     Ok(())
 }
 
-/// Push với retry logic - handle các trường hợp:
-/// 1. Repo chưa tồn tại → tạo mới
-/// 2. Remote có commits khác → pull-merge trước, rồi push
-/// 3. Chỉ force push nếu merge fail
-fn push_with_retry(git: &GitSync, access_token: &str, config: &Config) -> Result<bool> {
-    let vault_dir = git.workdir()?;
-    let remote_url = git.get_remote_url("origin")?;
-    let auth_url = remote_url.replace(
-        "https://github.com/",
-        &format!("https://x-access-token:{}@github.com/", access_token),
-    );
+/// Setup vault repository với logic an toàn:
+/// 1. Nếu local .git tồn tại -> mở
+/// 2. Nếu không, và remote có dữ liệu -> clone (dọn dẹp vault_dir nếu cần)
+/// 3. Nếu không, và remote không có/empty -> init local + tạo remote nếu cần
+fn setup_vault_repo(
+    vault_dir: &std::path::Path,
+    remote_url: &Option<String>,
+    credentials: &OAuthCredentials,
+) -> Result<GitSync> {
+    let git_dir = vault_dir.join(".git");
 
-    // Thử push lần đầu
-    match git.push("origin", "main", access_token) {
-        Ok(true) => return Ok(true), // Push thành công
-        Ok(false) => {
-            // Repo chưa tồn tại, tự động tạo
-            let repo_name = config
-                .sync
-                .remote
-                .as_deref()
-                .unwrap_or("")
-                .trim_end_matches(".git")
-                .rsplit('/')
-                .next()
-                .unwrap_or("echovault-backup");
+    // Case 1: Local repo đã tồn tại
+    if git_dir.exists() {
+        println!("  {} Opened existing vault", "✓".green());
+        let git = GitSync::open(vault_dir)?;
 
-            println!(
-                "  {} Repository chưa tồn tại, đang tạo '{}'...",
-                "→".cyan(),
-                repo_name
-            );
-
-            match create_github_repo(repo_name, access_token, true) {
-                Ok(clone_url) => {
-                    println!("  {} Created: {}", "✓".green(), clone_url);
-                    println!("  {} Pushing...", "→".cyan());
-                    git.push("origin", "main", access_token)?;
-                    return Ok(true);
-                }
-                Err(e) if e.to_string().contains("already exists") => {
-                    // Race condition - repo đã được tạo, tiếp tục force push
-                    println!("  {} Repository đã tồn tại", "→".cyan());
-                }
-                Err(e) => bail!("Cannot create repository: {}", e),
+        // Cập nhật remote nếu được chỉ định
+        if let Some(url) = remote_url {
+            if git.has_remote("origin")? {
+                git.set_remote_url("origin", url)?;
+            } else {
+                git.add_remote("origin", url)?;
             }
+        }
+
+        return Ok(git);
+    }
+
+    // Case 2 & 3: Local chưa có .git, cần kiểm tra remote
+    let remote_url = match remote_url {
+        Some(url) => url.clone(),
+        None => {
+            // Hỏi user nhập remote URL
+            println!("\n{}", "GitHub Repository Setup".cyan().bold());
+            print!("Remote URL (e.g., https://github.com/user/vault.git): ");
+            io::stdout().flush()?;
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            let url = input.trim().to_string();
+            if url.is_empty() {
+                bail!("Remote URL is required");
+            }
+            url
+        }
+    };
+
+    // Kiểm tra remote repo có tồn tại không
+    println!("  {} Checking remote repository...", "→".cyan());
+    let repo_exists = check_repo_exists(&remote_url, &credentials.access_token)?;
+
+    if repo_exists {
+        // Case 2: Remote có dữ liệu -> clone
+        // Cần đảm bảo vault_dir trống trước khi clone
+        if vault_dir.exists() {
+            // Kiểm tra xem có files quan trọng không
+            let has_important_files = has_local_data(vault_dir)?;
+            if has_important_files {
+                bail!(
+                    "Vault directory '{}' contains local data but no .git folder.\n\
+                     This could happen if the vault was partially initialized.\n\
+                     Please backup and remove the directory, then run 'ev sync' again:\n\
+                     rm -rf {}",
+                    vault_dir.display(),
+                    vault_dir.display()
+                );
+            }
+            // Không có files quan trọng, xóa directory để clone
+            println!(
+                "  {} Cleaning up empty vault directory...",
+                "→".cyan()
+            );
+            std::fs::remove_dir_all(vault_dir)?;
+        }
+
+        println!("  {} Found existing remote, cloning...", "→".cyan());
+        let git = GitSync::clone(&remote_url, vault_dir, &credentials.access_token)?;
+        println!("  {} Cloned from remote", "✓".green());
+        Ok(git)
+    } else {
+        // Case 3: Remote không có -> init local + tạo remote
+        println!("  {} Remote not found, creating new vault...", "→".cyan());
+
+        // Tạo vault directory
+        std::fs::create_dir_all(vault_dir)?;
+
+        // Init local repo
+        let git = GitSync::init(vault_dir)?;
+
+        // Tạo remote repo trên GitHub
+        let repo_name = remote_url
+            .trim_end_matches(".git")
+            .rsplit('/')
+            .next()
+            .unwrap_or("echovault-backup");
+
+        match create_github_repo(repo_name, &credentials.access_token, true) {
+            Ok(clone_url) => {
+                println!("  {} Created GitHub repo: {}", "✓".green(), clone_url);
+                git.add_remote("origin", &clone_url)?;
+            }
+            Err(e) if e.to_string().contains("already exists") => {
+                // Repo đã tồn tại (race condition hoặc tên trùng)
+                println!(
+                    "  {} Repository already exists, using provided URL",
+                    "→".yellow()
+                );
+                git.add_remote("origin", &remote_url)?;
+            }
+            Err(e) => bail!("Cannot create GitHub repository: {}", e),
+        }
+
+        println!("  {} Initialized new vault", "✓".green());
+        Ok(git)
+    }
+}
+
+/// Push an toàn - KHÔNG force push
+/// Nếu có conflict, yêu cầu user xử lý manual thay vì force push gây mất dữ liệu
+fn push_safe(git: &GitSync, access_token: &str) -> Result<()> {
+    match git.push("origin", "main", access_token) {
+        Ok(true) => Ok(()), // Push thành công
+        Ok(false) => {
+            // Repo not found - điều này không nên xảy ra vì đã setup ở trên
+            bail!(
+                "Remote repository not found. This is unexpected.\n\
+                 Please run 'ev sync' again to reinitialize."
+            );
         }
         Err(e) => {
             let err_msg = e.to_string();
-            if !err_msg.contains("rejected")
-                && !err_msg.contains("fetch first")
-                && !err_msg.contains("failed to push")
+
+            // Kiểm tra các lỗi có thể retry
+            if err_msg.contains("rejected")
+                || err_msg.contains("fetch first")
+                || err_msg.contains("failed to push")
+                || err_msg.contains("non-fast-forward")
             {
-                // Lỗi khác, không phải conflict
-                bail!("{}", e);
+                // Remote có commits mà local không có
+                // Thử pull và push lại
+                println!(
+                    "  {} Remote has new commits, pulling...",
+                    "→".yellow()
+                );
+
+                match git.pull("origin", "main", access_token) {
+                    Ok(_) => {
+                        // Pull thành công, thử push lại
+                        println!("  {} Merged, retrying push...", "→".cyan());
+                        match git.push("origin", "main", access_token) {
+                            Ok(true) => return Ok(()),
+                            Ok(false) => bail!("Repository not found after merge"),
+                            Err(e2) => {
+                                bail!(
+                                    "Push failed after merge: {}\n\
+                                     Please resolve manually:\n\
+                                     1. cd {}\n\
+                                     2. git pull origin main\n\
+                                     3. Resolve any conflicts\n\
+                                     4. git push origin main\n\
+                                     5. Run 'ev sync' again",
+                                    e2,
+                                    git.workdir()?.display()
+                                );
+                            }
+                        }
+                    }
+                    Err(pull_err) => {
+                        bail!(
+                            "Cannot sync with remote: {}\n\
+                             Please resolve manually:\n\
+                             1. cd {}\n\
+                             2. git pull origin main --no-rebase\n\
+                             3. Resolve any conflicts\n\
+                             4. git push origin main\n\
+                             5. Run 'ev sync' again",
+                            pull_err,
+                            git.workdir()?.display()
+                        );
+                    }
+                }
             }
-            // Conflict - tiếp tục force push
-            println!("  {} Remote có thay đổi, đang pull-merge...", "→".yellow());
+
+            // Lỗi khác
+            Err(e)
         }
     }
+}
 
-    // Pull và merge từ remote trước (encrypted files có unique names nên không conflict)
-    println!("  {} Pulling from remote...", "→".cyan());
-    let pull_output = std::process::Command::new("git")
-        .current_dir(&vault_dir)
-        .args(["pull", "--no-rebase", &auth_url, "main"])
-        .output()
-        .context("Cannot execute git pull")?;
+/// Kiểm tra xem vault directory có chứa local data quan trọng không
+/// Trả về true nếu có files cần được giữ lại (encrypted, sessions, salt, etc.)
+fn has_local_data(vault_dir: &std::path::Path) -> Result<bool> {
+    if !vault_dir.exists() {
+        return Ok(false);
+    }
 
-    if pull_output.status.success() {
-        // Pull thành công, thử push lại
-        println!("  {} Merged successfully, pushing...", "✓".green());
-        let push_output = std::process::Command::new("git")
-            .current_dir(&vault_dir)
-            .args(["push", &auth_url, "main"])
-            .output()
-            .context("Cannot execute git push")?;
+    // Các files/folders quan trọng cần kiểm tra
+    let important_items = [
+        "encrypted",      // Encrypted sessions
+        "vscode-copilot", // Raw sessions
+        "cursor",
+        "cline",
+        "antigravity",
+        ".salt",    // Encryption salt
+        "index.db", // SQLite index
+    ];
 
-        if push_output.status.success() {
+    for item in &important_items {
+        let path = vault_dir.join(item);
+        if path.exists() {
             return Ok(true);
         }
     }
 
-    // Pull/merge failed - có conflict thực sự
-    // Trong trường hợp này, vẫn cần force push
-    println!(
-        "  {} Merge failed, force pushing (có thể mất data từ máy khác)...",
-        "!".red()
-    );
+    // Kiểm tra xem directory có files không (ngoại trừ hidden files tạm)
+    let entries: Vec<_> = std::fs::read_dir(vault_dir)?
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            let name = e.file_name();
+            let name_str = name.to_string_lossy();
+            // Bỏ qua các files tạm/hidden không quan trọng
+            !name_str.starts_with('.') || name_str == ".salt"
+        })
+        .collect();
 
-    let output = std::process::Command::new("git")
-        .current_dir(&vault_dir)
-        .args(["push", "--force", &auth_url, "main"])
-        .output()
-        .context("Cannot execute git push --force")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("Force push failed: {}", stderr);
-    }
-
-    Ok(true)
+    Ok(!entries.is_empty())
 }
 
 /// Extract sessions từ các IDE sources vào vault (parallel)

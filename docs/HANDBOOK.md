@@ -427,74 +427,50 @@ remote = "https://github.com/username/my-vault.git"
 ### 7.2. Setup
 
 ```bash
-# Clone repository
+# Clone
 git clone https://github.com/n24q02m/EchoVault.git
 cd EchoVault
 
-# Cài đặt toolchain với mise
-mise install
+# Tải dependencies
+sudo apt update && sudo apt upgrade -y
+mise trust && mise install
 
 # Build
-cargo build
+mise run release
 
-# Run
-cargo run -- --help
+# Cài đặt
+mise run install
 ```
 
 ### 7.3. Development Commands
 
-Sử dụng [mise](https://mise.jdx.dev/) tasks (khuyến nghị):
+Sử dụng [mise](https://mise.jdx.dev/) tasks cho development:
 
 ```bash
-# Run CLI (development mode)
+# Setup
+mise install
+
+# Build & Test
+mise run install      # Install ev to ~/.cargo/bin
+mise run build        # Debug build
+mise run release      # Release build
+mise run test         # Run tests
+mise run lint         # Run clippy
+mise run fmt          # Format code
+mise run ci           # Run all checks
+
+# Development
 mise run dev scan
 mise run dev sync
-
-# Build
-mise run build        # Debug build
-mise run release      # Release build (optimized)
-
-# Test & Lint
-mise run test         # Run all tests
-mise run lint         # Run clippy linter
-mise run fmt          # Format code
-mise run ci           # Run all CI checks
-
-# Install binary
-mise run install      # Install ev to ~/.cargo/bin
 ```
 
-Hoặc sử dụng cargo trực tiếp:
+Sau khi install, sử dụng `ev` command trực tiếp:
 
 ```bash
-# Run CLI (development mode)
-cargo run -- scan
-cargo run -- --help
-
-# Build
-cargo build           # Debug build
-cargo build --release # Release build (optimized, stripped)
-
-# Test
-cargo test            # Run all tests
-cargo test -- --nocapture  # Run tests with output
-
-# Format (rustfmt)
-cargo fmt             # Format code
-cargo fmt --check     # Check formatting without changes
-
-# Lint (clippy)
-cargo clippy          # Run linter
-cargo clippy -- -D warnings  # Treat warnings as errors
-
-# Type check (faster than build)
-cargo check           # Type check without building
-
-# Security audit
-cargo audit           # Check for security vulnerabilities
-
-# All checks (CI pipeline)
-cargo fmt --check && cargo clippy -- -D warnings && cargo test
+# Production usage
+ev scan               # Quét tất cả chat sessions
+ev sync               # Sync vault lên GitHub
+ev --help             # Xem help
 ```
 
 ### 7.4. Project Structure
@@ -664,7 +640,10 @@ EchoVault/
 **Giải pháp**:
 
 1. Kiểm tra kết nối internet
-2. Xóa `.credentials.json` trong vault và chạy lại `ev sync`
+2. Xóa file credentials và chạy lại:
+   - Linux: `rm ~/.config/echovault/.credentials.json && ev sync`
+   - macOS: `rm ~/Library/Application\ Support/echovault/.credentials.json && ev sync`
+   - Windows: `del %APPDATA%\echovault\.credentials.json && ev sync`
 3. Kiểm tra GitHub status page
 4. Revoke token cũ trong GitHub Settings > Applications > Authorized OAuth Apps
 
