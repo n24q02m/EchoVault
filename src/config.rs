@@ -179,7 +179,7 @@ impl Config {
 
     /// Lấy đường dẫn đến thư mục chứa encrypted files
     pub fn encrypted_dir(&self) -> PathBuf {
-        self.vault_path.join(".encrypted")
+        self.vault_path.join("encrypted")
     }
 }
 

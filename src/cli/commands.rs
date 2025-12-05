@@ -127,10 +127,14 @@ pub fn sync_vault(remote: Option<String>) -> Result<()> {
         println!("  {} Updated .gitignore", "✓".green());
     }
 
-    // Setup remote nếu cần
-    let need_remote_setup = config.sync.remote.is_none() || remote.is_some();
+    // Setup remote nếu cần (kiểm tra cả config và git remote)
+    let has_git_remote = git.has_remote("origin")?;
+    let need_remote_setup = config.sync.remote.is_none() || remote.is_some() || !has_git_remote;
     if need_remote_setup {
         let remote_url = if let Some(url) = remote {
+            url
+        } else if let Some(url) = config.sync.remote.clone() {
+            // Có trong config nhưng chưa add vào git
             url
         } else {
             // Hỏi user nhập remote URL
@@ -149,7 +153,7 @@ pub fn sync_vault(remote: Option<String>) -> Result<()> {
         config.set_remote(remote_url.clone());
 
         // Add/update remote
-        if git.has_remote("origin")? {
+        if has_git_remote {
             git.set_remote_url("origin", &remote_url)?;
         } else {
             git.add_remote("origin", &remote_url)?;
@@ -293,63 +297,50 @@ pub fn sync_vault(remote: Option<String>) -> Result<()> {
 
     // Push
     println!("\n{}", "Pushing to GitHub...".cyan());
-    match git.push("origin", "main", &credentials.access_token) {
-        Ok(()) => {
-            println!("  {} Pushed successfully!", "✓".green());
-        }
-        Err(e) => {
-            let err_msg = e.to_string();
-            if err_msg.contains("not found") || err_msg.contains("Repository not found") {
-                println!(
-                    "  {} Repository không tồn tại trên GitHub",
-                    "Warning:".yellow()
-                );
+    let push_success = git.push("origin", "main", &credentials.access_token)?;
 
-                // Hỏi user có muốn tạo repo không
-                print!("Tạo repository tự động? [Y/n]: ");
-                io::stdout().flush()?;
-                let mut input = String::new();
-                io::stdin().read_line(&mut input)?;
-                let should_create = input.trim().is_empty() || input.trim().to_lowercase() == "y";
+    if !push_success {
+        // Repo chưa tồn tại, tự động tạo
+        let remote_url = config.sync.remote.as_deref().unwrap_or("");
+        let repo_name = remote_url
+            .trim_end_matches(".git")
+            .rsplit('/')
+            .next()
+            .unwrap_or("echovault-backup");
 
-                if should_create {
-                    // Parse repo name từ remote URL
-                    let remote_url = config.sync.remote.as_deref().unwrap_or("");
-                    let repo_name = remote_url
-                        .trim_end_matches(".git")
-                        .rsplit('/')
-                        .next()
-                        .unwrap_or("echovault-backup");
+        println!(
+            "  {} Repository chưa tồn tại, đang tạo '{}'...",
+            "→".cyan(),
+            repo_name
+        );
 
-                    println!("  {} Creating repository '{}'...", "→".cyan(), repo_name);
+        match create_github_repo(repo_name, &credentials.access_token, true) {
+            Ok(clone_url) => {
+                println!("  {} Created: {}", "✓".green(), clone_url);
 
-                    match create_github_repo(repo_name, &credentials.access_token, true) {
-                        Ok(clone_url) => {
-                            println!("  {} Created: {}", "✓".green(), clone_url);
-
-                            // Thử push lại
-                            println!("  {} Retrying push...", "→".cyan());
-                            git.push("origin", "main", &credentials.access_token)?;
-                            println!("  {} Pushed successfully!", "✓".green());
-                        }
-                        Err(create_err) => {
-                            println!("  {} {}", "Error:".red(), create_err);
-                            bail!("Cannot create repository on GitHub");
-                        }
+                // Thử push lại
+                println!("  {} Pushing...", "→".cyan());
+                let retry_success = git.push("origin", "main", &credentials.access_token)?;
+                if !retry_success {
+                    bail!("Push failed after creating repository");
+                }
+            }
+            Err(create_err) => {
+                // Nếu repo đã tồn tại (race condition), thử push lại
+                if create_err.to_string().contains("already exists") {
+                    println!("  {} Repository đã tồn tại, pushing...", "→".cyan());
+                    let retry_success = git.push("origin", "main", &credentials.access_token)?;
+                    if !retry_success {
+                        bail!("Push failed");
                     }
                 } else {
-                    println!("\nVui lòng tạo repository thủ công:");
-                    println!("  1. Truy cập: {}", "https://github.com/new".cyan());
-                    println!("  2. Tạo repository với tên khớp với remote URL");
-                    println!("  3. Chạy lại 'echovault sync'");
-                    bail!("Repository not found on GitHub");
+                    bail!("Cannot create repository: {}", create_err);
                 }
-            } else {
-                return Err(e);
             }
         }
     }
 
+    println!("  {} Pushed successfully!", "✓".green());
     println!("\n{}", "Sync complete!".green().bold());
 
     Ok(())
@@ -392,14 +383,17 @@ fn extract_sessions(vault_dir: &std::path::Path) -> Result<usize> {
 
 /// Tạo .gitignore cho vault để chỉ push encrypted files
 fn create_vault_gitignore(path: &std::path::Path) -> Result<()> {
+    // Sử dụng /folder/ để chỉ ignore folders ở root level
+    // Không dùng folder/ vì nó sẽ match ở mọi depth (kể cả trong encrypted/)
     let content = r#"# EchoVault .gitignore
 # Chỉ push encrypted files, không push raw files
 
 # Raw session files (local only, not synced)
-vscode-copilot/
-cursor/
-cline/
-antigravity/
+# Prefix / để chỉ match folders ở root level
+/vscode-copilot/
+/cursor/
+/cline/
+/antigravity/
 
 # Index database (local only)
 index.db

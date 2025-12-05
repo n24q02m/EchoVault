@@ -8,7 +8,7 @@
 
 use anyhow::{bail, Context, Result};
 use git2::{
-    Commit, Cred, FetchOptions, IndexAddOption, ObjectType, RemoteCallbacks, Repository,
+    Commit, Cred, FetchOptions, ObjectType, RemoteCallbacks, Repository,
     RepositoryInitOptions, Signature,
 };
 use std::path::Path;
@@ -97,11 +97,23 @@ impl GitSync {
         Ok(())
     }
 
-    /// Stage tất cả changes
+    /// Stage tất cả changes (bao gồm cả subdirectories)
+    /// Sử dụng git command thay vì libgit2 vì add_all() không recursive đúng cách
     pub fn stage_all(&self) -> Result<()> {
-        let mut index = self.repo.index()?;
-        index.add_all(["."].iter(), IndexAddOption::DEFAULT, None)?;
-        index.write()?;
+        let workdir = self.repo.workdir().context("No workdir")?;
+
+        // Sử dụng git add -A để add tất cả files (bao gồm subdirectories)
+        let output = std::process::Command::new("git")
+            .current_dir(workdir)
+            .args(["add", "-A"])
+            .output()
+            .context("Cannot execute git add command")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("git add failed: {}", stderr);
+        }
+
         Ok(())
     }
 
@@ -146,7 +158,8 @@ impl GitSync {
 
     /// Push lên remote với access token
     /// Note: Sử dụng git command thay vì libgit2 để đảm bảo tương thích HTTPS
-    pub fn push(&self, remote_name: &str, branch: &str, access_token: &str) -> Result<()> {
+    /// Trả về Ok(true) nếu push thành công, Ok(false) nếu repo not found
+    pub fn push(&self, remote_name: &str, branch: &str, access_token: &str) -> Result<bool> {
         let remote = self.repo.find_remote(remote_name)?;
 
         // Lấy URL và convert SSH -> HTTPS nếu cần
@@ -160,19 +173,31 @@ impl GitSync {
             &format!("https://x-access-token:{}@github.com/", access_token),
         );
 
-        // Sử dụng git command để push (đảm bảo tương thích)
+        // Sử dụng git command để push với progress
+        // --progress hiển thị tiến trình, -u set upstream
         let output = std::process::Command::new("git")
             .current_dir(self.repo.workdir().context("No workdir")?)
-            .args(["push", &auth_url, branch])
+            .args(["push", "-u", "--progress", &auth_url, branch])
             .output()
             .context("Cannot execute git command")?;
 
-        if !output.status.success() {
+        if output.status.success() {
+            // In progress output
             let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("Git push failed: {}", stderr);
+            if !stderr.is_empty() {
+                eprint!("{}", stderr);
+            }
+            return Ok(true);
         }
 
-        Ok(())
+        // Kiểm tra lỗi "not found"
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("not found") || stderr.contains("Repository not found") {
+            return Ok(false); // Repo chưa tồn tại
+        }
+
+        // Lỗi khác
+        bail!("Git push failed: {}", stderr);
     }
 
     /// Fetch từ remote với access token
