@@ -51,6 +51,14 @@ pub struct AccessTokenResponse {
     pub error: Option<String>,
     /// Error description
     pub error_description: Option<String>,
+    /// Error URI (link to docs)
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub error_uri: Option<String>,
+    /// New interval khi nhận slow_down error
+    /// GitHub trả về interval mới mà client phải sử dụng
+    #[serde(default)]
+    pub interval: Option<u64>,
 }
 
 /// Lưu trữ OAuth credentials
@@ -123,8 +131,10 @@ impl OAuthDeviceFlow {
     pub fn poll_for_token(&self, device_code: &DeviceCodeResponse) -> Result<OAuthCredentials> {
         let start = Instant::now();
         let timeout = Duration::from_secs(device_code.expires_in);
-        // GitHub yêu cầu interval tối thiểu, thường là 5 giây
-        let interval = Duration::from_secs(device_code.interval.max(5));
+        // GitHub yêu cầu interval tối thiểu
+        // Sử dụng interval từ GitHub response, nhưng tối thiểu 8 giây để tránh slow_down
+        let base_interval = device_code.interval.max(8);
+        let mut current_interval = Duration::from_secs(base_interval);
 
         // Tạo spinner để hiển thị progress
         let spinner = ProgressBar::new_spinner();
@@ -135,8 +145,9 @@ impl OAuthDeviceFlow {
         );
         spinner.enable_steady_tick(Duration::from_millis(100));
 
-        // Đợi 1 giây đầu để user có thời gian mở browser
-        std::thread::sleep(Duration::from_secs(1));
+        // Đợi một khoảng thời gian ban đầu để user có thời gian authorize
+        spinner.set_message("Đang chờ xác thực từ browser...");
+        std::thread::sleep(current_interval);
 
         loop {
             // Check timeout
@@ -152,7 +163,7 @@ impl OAuthDeviceFlow {
                 remaining
             ));
 
-            // Poll for token TRƯỚC, rồi mới sleep
+            // Poll for token
             let response = self
                 .client
                 .post(ACCESS_TOKEN_URL)
@@ -170,26 +181,43 @@ impl OAuthDeviceFlow {
 
             // Parse response
             let response_text = response.text().context("Cannot read response")?;
-            
-            // DEBUG: In ra response để xem GitHub trả về gì
-            // spinner.suspend(|| {
-            //     eprintln!("[DEBUG] GitHub response: {}", response_text);
-            // });
-            
+
             let token_response: AccessTokenResponse = serde_json::from_str(&response_text)
-                .context(format!("Cannot parse access token response: {}", response_text))?;
+                .context(format!(
+                    "Cannot parse access token response: {}",
+                    response_text
+                ))?;
+
+            // Success! Check for access_token TRƯỚC khi check error
+            if let Some(access_token) = token_response.access_token {
+                spinner.finish_and_clear();
+                return Ok(OAuthCredentials {
+                    access_token,
+                    token_type: token_response
+                        .token_type
+                        .unwrap_or_else(|| "bearer".to_string()),
+                    scope: token_response.scope.unwrap_or_default(),
+                });
+            }
 
             // Check for errors
             if let Some(error) = &token_response.error {
                 match error.as_str() {
                     "authorization_pending" => {
-                        // User chưa authorize, sleep rồi tiếp tục poll
-                        std::thread::sleep(interval);
+                        // User chưa authorize, đợi rồi tiếp tục poll
+                        std::thread::sleep(current_interval);
                         continue;
                     }
                     "slow_down" => {
-                        // Cần poll chậm hơn
-                        std::thread::sleep(interval + Duration::from_secs(5));
+                        // GitHub yêu cầu poll chậm hơn
+                        // Sử dụng interval mới từ response, hoặc tăng thêm 5 giây
+                        if let Some(new_interval) = token_response.interval {
+                            // Cộng thêm 3 giây vào interval mới để an toàn
+                            current_interval = Duration::from_secs(new_interval + 3);
+                        } else {
+                            current_interval += Duration::from_secs(5);
+                        }
+                        std::thread::sleep(current_interval);
                         continue;
                     }
                     "expired_token" => {
@@ -211,21 +239,9 @@ impl OAuthDeviceFlow {
                 }
             }
 
-            // Success!
-            if let Some(access_token) = token_response.access_token {
-                spinner.finish_and_clear();
-                return Ok(OAuthCredentials {
-                    access_token,
-                    token_type: token_response
-                        .token_type
-                        .unwrap_or_else(|| "bearer".to_string()),
-                    scope: token_response.scope.unwrap_or_default(),
-                });
-            }
-
             // Unexpected response - không có error nhưng cũng không có token
-            // Tiếp tục poll thay vì bail
-            std::thread::sleep(interval);
+            // Đợi rồi tiếp tục poll
+            std::thread::sleep(current_interval);
         }
     }
 

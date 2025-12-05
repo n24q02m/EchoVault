@@ -197,15 +197,15 @@ mod tests {
         // Encrypt
         let (key, _salt) = derive_key_new("test_password")?;
         let encryptor = Encryptor::new(&key);
-        let result = compress_encrypt_chunk(&source_path, &dest_dir, &encryptor)?;
+        compress_encrypt_chunk(&source_path, &dest_dir, &encryptor)?;
 
-        // Verify
-        assert!(!result.is_chunked);
-        assert_eq!(result.files.len(), 1);
-        assert!(result.files[0].exists());
+        // Verify file được tạo
+        let file_stem = source_path.file_stem().unwrap().to_str().unwrap();
+        let expected_file = dest_dir.join(format!("{}{}", file_stem, COMPRESSED_EXT));
+        assert!(expected_file.exists());
 
         // Decrypt và verify
-        let decrypted = read_single_file(&result.files[0], &encryptor)?;
+        let decrypted = read_single_file(&expected_file, &encryptor)?;
         assert_eq!(data.as_bytes(), decrypted.as_slice());
 
         Ok(())

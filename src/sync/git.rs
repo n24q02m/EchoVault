@@ -301,9 +301,25 @@ impl GitSync {
     }
 
     /// Kiểm tra có uncommitted changes không
+    /// Note: Sử dụng git status command để đảm bảo sync với git operations khác
     pub fn has_changes(&self) -> Result<bool> {
-        let statuses = self.repo.statuses(None)?;
-        Ok(!statuses.is_empty())
+        let workdir = self.repo.workdir().context("No workdir")?;
+
+        // Sử dụng git status --porcelain để check changes
+        // Cách này đảm bảo đồng bộ với git add command
+        let output = std::process::Command::new("git")
+            .current_dir(workdir)
+            .args(["status", "--porcelain"])
+            .output()
+            .context("Cannot execute git status command")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("git status failed: {}", stderr);
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(!stdout.trim().is_empty())
     }
 
     /// Lấy số lượng commits ahead/behind so với remote

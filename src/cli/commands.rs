@@ -444,10 +444,7 @@ fn setup_vault_repo(
                 );
             }
             // Không có files quan trọng, xóa directory để clone
-            println!(
-                "  {} Cleaning up empty vault directory...",
-                "→".cyan()
-            );
+            println!("  {} Cleaning up empty vault directory...", "→".cyan());
             std::fs::remove_dir_all(vault_dir)?;
         }
 
@@ -516,10 +513,7 @@ fn push_safe(git: &GitSync, access_token: &str) -> Result<()> {
             {
                 // Remote có commits mà local không có
                 // Thử pull và push lại
-                println!(
-                    "  {} Remote has new commits, pulling...",
-                    "→".yellow()
-                );
+                println!("  {} Remote has new commits, pulling...", "→".yellow());
 
                 match git.pull("origin", "main", access_token) {
                     Ok(_) => {
