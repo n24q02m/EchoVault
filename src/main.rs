@@ -21,14 +21,8 @@ fn main() -> Result<()> {
         Commands::Scan { source } => {
             cli::commands::scan(source)?;
         }
-        Commands::Extract { source, output } => {
-            cli::commands::extract(source, output)?;
-        }
-        Commands::Init { remote } => {
-            cli::commands::init(remote)?;
-        }
-        Commands::Sync => {
-            cli::commands::sync_vault()?;
+        Commands::Sync { remote } => {
+            cli::commands::sync_vault(remote)?;
         }
     }
 

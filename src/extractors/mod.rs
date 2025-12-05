@@ -37,8 +37,6 @@ pub struct SessionMetadata {
 pub struct SessionFile {
     /// Path tới file gốc
     pub source_path: PathBuf,
-    /// ID của session (thường là filename)
-    pub session_id: String,
     /// Metadata cơ bản
     pub metadata: SessionMetadata,
 }

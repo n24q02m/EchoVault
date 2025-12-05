@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 /// GitHub OAuth App Client ID cho EchoVault
 /// Note: Đây là public client, client_secret không cần thiết cho Device Flow
-const GITHUB_CLIENT_ID: &str = "Ov23liN93iMdHDYfCvZY"; // Placeholder - cần đăng ký OAuth App
+const GITHUB_CLIENT_ID: &str = "Ov23li17qiwKE2rOq5fx";
 
 /// GitHub OAuth endpoints
 const DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
@@ -253,6 +253,59 @@ pub fn load_credentials_from_file(path: &std::path::Path) -> Result<OAuthCredent
     let json = std::fs::read_to_string(path)?;
     let credentials: OAuthCredentials = serde_json::from_str(&json)?;
     Ok(credentials)
+}
+
+/// Tạo GitHub repository mới qua API
+/// Trả về URL của repository được tạo
+pub fn create_github_repo(repo_name: &str, access_token: &str, private: bool) -> Result<String> {
+    let client = reqwest::blocking::Client::new();
+
+    #[derive(Serialize)]
+    struct CreateRepoRequest<'a> {
+        name: &'a str,
+        description: &'a str,
+        private: bool,
+        auto_init: bool,
+    }
+
+    let request = CreateRepoRequest {
+        name: repo_name,
+        description: "EchoVault - AI Chat History Backup",
+        private,
+        auto_init: false, // Không tạo README để tránh conflict
+    };
+
+    let response = client
+        .post("https://api.github.com/user/repos")
+        .header("Accept", "application/vnd.github+json")
+        .header("Authorization", format!("Bearer {}", access_token))
+        .header("User-Agent", "EchoVault")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .json(&request)
+        .send()
+        .context("Cannot connect to GitHub API")?;
+
+    if response.status().is_success() {
+        #[derive(Deserialize)]
+        struct CreateRepoResponse {
+            clone_url: String,
+        }
+
+        let repo: CreateRepoResponse = response.json()?;
+        Ok(repo.clone_url)
+    } else {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+
+        if status.as_u16() == 422 && body.contains("name already exists") {
+            bail!(
+                "Repository '{}' already exists on your GitHub account",
+                repo_name
+            );
+        }
+
+        bail!("GitHub API error {}: {}", status, body);
+    }
 }
 
 #[cfg(test)]

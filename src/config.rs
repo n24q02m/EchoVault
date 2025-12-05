@@ -10,27 +10,10 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Cấu hình sync với GitHub
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SyncConfig {
     /// URL của remote repository (GitHub)
     pub remote: Option<String>,
-
-    /// Phương thức authentication: "oauth" (default), "pat", hoặc "ssh"
-    #[serde(default = "default_auth_method")]
-    pub auth_method: String,
-}
-
-fn default_auth_method() -> String {
-    "oauth".to_string()
-}
-
-impl Default for SyncConfig {
-    fn default() -> Self {
-        Self {
-            remote: None,
-            auth_method: default_auth_method(),
-        }
-    }
 }
 
 /// Cấu hình encryption
@@ -184,11 +167,6 @@ impl Config {
         self.sync.remote = Some(remote);
     }
 
-    /// Set authentication method
-    pub fn set_auth_method(&mut self, method: &str) {
-        self.sync.auth_method = method.to_string();
-    }
-
     /// Lấy đường dẫn đến vault directory
     pub fn vault_dir(&self) -> &Path {
         &self.vault_path
@@ -215,7 +193,6 @@ mod tests {
         let config = Config::default();
         assert_eq!(config.version, 1);
         assert!(!config.is_initialized());
-        assert_eq!(config.sync.auth_method, "oauth");
         assert!(config.encryption.enabled);
     }
 
@@ -245,7 +222,6 @@ mod tests {
             vault_path: PathBuf::from("/home/user/.echovault/vault"),
             sync: SyncConfig {
                 remote: Some("https://github.com/user/vault.git".to_string()),
-                auth_method: "oauth".to_string(),
             },
             encryption: EncryptionConfig { enabled: true },
             extractors: ExtractorsConfig {

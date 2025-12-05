@@ -211,15 +211,8 @@ impl Extractor for VSCodeCopilotExtractor {
             if path.extension().is_some_and(|ext| ext == "json") {
                 // Extract metadata nhanh
                 if let Some(metadata) = self.extract_quick_metadata(&path, &workspace_name) {
-                    let session_id = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .map(|s| s.to_string())
-                        .unwrap_or_default();
-
                     sessions.push(SessionFile {
                         source_path: path,
-                        session_id,
                         metadata,
                     });
                 }

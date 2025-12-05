@@ -28,8 +28,8 @@ aes-gcm = "0.10"
 argon2 = "0.5"
 rand = "0.8"
 
-# Git operations (sử dụng vendored libgit2 và https)
-git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2", "https"] }
+# Git operations (sử dụng vendored libgit2 và openssl cho HTTPS)
+git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2", "vendored-openssl", "https"] }
 
 # HTTP client cho OAuth (sử dụng rustls thay vì native-tls)
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
@@ -57,6 +57,7 @@ colored = "2.1"
 rpassword = "7"
 
 [dev-dependencies]
+git2 = "0.20"
 tempfile = "3.14"
 
 [profile.release]

@@ -1,7 +1,7 @@
 # ECHOVAULT - DEVELOPER HANDBOOK
 
-**Phiên bản:** 2.2.0
-**Ngày cập nhật:** 06/12/2025
+**Phiên bản:** 2.3.0
+**Ngày cập nhật:** 17/07/2025
 **Dành cho:** Solo Developer
 
 ---
@@ -120,10 +120,8 @@ IDE Files (JSON/SQLite) -> EchoVault CLI -> Raw JSON Storage -> Encryption -> Gi
 - **Language**: Rust (single binary, cross-platform)
 - **Framework**: clap (derive macro)
 - **Commands**:
-  - `echovault init` - Khởi tạo vault mới với GitHub OAuth và encryption key.
   - `echovault scan` - Quét và liệt kê tất cả chat sessions có sẵn.
-  - `echovault extract` - Copy raw JSON files vào vault (không format).
-  - `echovault sync` - Encrypt và push lên GitHub.
+  - `echovault sync` - Extract, encrypt và push lên GitHub (all-in-one, tự động setup nếu lần đầu).
 
 #### 3.2.2. Desktop App (Tauri)
 
@@ -168,8 +166,9 @@ src/
 #### 3.2.5. Encryption Layer
 
 - **AES-256-GCM**: Military-grade encryption cho tất cả files.
-- **Passphrase-based**: User cung cấp passphrase khi init.
+- **Passphrase-based**: User cung cấp passphrase khi sync lần đầu.
 - **Key Derivation**: Argon2id để derive encryption key từ passphrase.
+- **Only encrypted files synced**: Chỉ push files đã mã hóa (.enc) lên GitHub.
 
 ---
 
@@ -294,16 +293,7 @@ EchoVault sử dụng **OAuth Device Flow** để authentication với GitHub - 
 - Hoạt động tốt cho CLI applications
 - Token có thể revoke từ GitHub settings
 - Scope hạn chế (chỉ cần repo access)
-
-#### Fallback Methods
-
-Nếu OAuth không hoạt động, hỗ trợ fallback:
-
-| Method | Use Case |
-| :--- | :--- |
-| **OAuth Device Flow** | Primary (recommended) |
-| **Personal Access Token** | Fallback nếu không có browser |
-| **SSH Key** | Fallback cho advanced users |
+- **Auto-create repository**: Tự động tạo repo nếu chưa tồn tại
 
 ### 5.4. Encryption Workflow
 
@@ -341,9 +331,8 @@ Nếu OAuth không hoạt động, hỗ trợ fallback:
 [sync]
 # Remote repository (GitHub)
 remote = "https://github.com/username/my-vault.git"
-
-# Authentication method: "oauth" (default), "pat", or "ssh"
-auth_method = "oauth"
+# OAuth Device Flow is the only authentication method
+# Token is stored in credentials.json file
 
 [encryption]
 # Encryption is always enabled, cannot be disabled
@@ -533,10 +522,11 @@ EchoVault/
 
 **Vault Core:**
 
-- [ ] Basic configuration (`echovault.toml`)
-- [ ] AES-256-GCM Encryption với Argon2id
-- [ ] Git Sync Engine (auto-commit, push)
-- [ ] GitHub OAuth Device Flow
+- [x] Basic configuration (`echovault.toml`)
+- [x] AES-256-GCM Encryption với Argon2id
+- [x] Git Sync Engine (auto-commit, push)
+- [x] GitHub OAuth Device Flow
+- [x] Auto-create GitHub repository
 
 **Desktop App (Tauri):**
 
@@ -619,8 +609,9 @@ EchoVault/
 **Giải pháp**:
 
 1. Kiểm tra kết nối internet
-2. Thử lại với `echovault init --auth pat` (Personal Access Token)
+2. Xóa `.credentials.json` trong vault và chạy lại `echovault sync`
 3. Kiểm tra GitHub status page
+4. Revoke token cũ trong GitHub Settings > Applications > Authorized OAuth Apps
 
 ### 11.4. WSL Path Issues
 

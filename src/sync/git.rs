@@ -8,10 +8,29 @@
 
 use anyhow::{bail, Context, Result};
 use git2::{
-    Commit, Cred, FetchOptions, IndexAddOption, ObjectType, PushOptions, RemoteCallbacks,
-    Repository, RepositoryInitOptions, Signature,
+    Commit, Cred, FetchOptions, IndexAddOption, ObjectType, RemoteCallbacks, Repository,
+    RepositoryInitOptions, Signature,
 };
 use std::path::Path;
+
+/// Chuyển đổi SSH URL sang HTTPS URL cho GitHub
+/// Ví dụ: git@github.com:user/repo.git -> https://github.com/user/repo.git
+fn ssh_to_https_url(url: &str) -> String {
+    // SSH format: git@github.com:user/repo.git
+    if url.starts_with("git@github.com:") {
+        let path = url.trim_start_matches("git@github.com:");
+        return format!("https://github.com/{}", path);
+    }
+
+    // SSH format: ssh://git@github.com/user/repo.git
+    if url.starts_with("ssh://git@github.com/") {
+        let path = url.trim_start_matches("ssh://git@github.com/");
+        return format!("https://github.com/{}", path);
+    }
+
+    // Already HTTPS or other format, return as-is
+    url.to_string()
+}
 
 /// Git sync engine cho EchoVault vault
 pub struct GitSync {
@@ -67,6 +86,17 @@ impl GitSync {
         Ok(())
     }
 
+    /// Kiểm tra remote có tồn tại không
+    pub fn has_remote(&self, name: &str) -> Result<bool> {
+        Ok(self.repo.find_remote(name).is_ok())
+    }
+
+    /// Cập nhật URL của remote
+    pub fn set_remote_url(&self, name: &str, url: &str) -> Result<()> {
+        self.repo.remote_set_url(name, url)?;
+        Ok(())
+    }
+
     /// Stage tất cả changes
     pub fn stage_all(&self) -> Result<()> {
         let mut index = self.repo.index()?;
@@ -115,33 +145,50 @@ impl GitSync {
     }
 
     /// Push lên remote với access token
+    /// Note: Sử dụng git command thay vì libgit2 để đảm bảo tương thích HTTPS
     pub fn push(&self, remote_name: &str, branch: &str, access_token: &str) -> Result<()> {
-        let mut remote = self.repo.find_remote(remote_name)?;
+        let remote = self.repo.find_remote(remote_name)?;
 
-        // Setup callbacks cho authentication
-        let mut callbacks = RemoteCallbacks::new();
-        let token = access_token.to_string();
+        // Lấy URL và convert SSH -> HTTPS nếu cần
+        let original_url = remote.url().context("Remote has no URL")?;
+        let https_url = ssh_to_https_url(original_url);
 
-        callbacks.credentials(move |_url, _username_from_url, _allowed_types| {
-            // Sử dụng token như password với username "x-access-token"
-            Cred::userpass_plaintext("x-access-token", &token)
-        });
+        // Tạo URL với embedded token để authenticate
+        // https://github.com/user/repo.git -> https://x-access-token:TOKEN@github.com/user/repo.git
+        let auth_url = https_url.replace(
+            "https://github.com/",
+            &format!("https://x-access-token:{}@github.com/", access_token),
+        );
 
-        let mut push_opts = PushOptions::new();
-        push_opts.remote_callbacks(callbacks);
+        // Sử dụng git command để push (đảm bảo tương thích)
+        let output = std::process::Command::new("git")
+            .current_dir(self.repo.workdir().context("No workdir")?)
+            .args(["push", &auth_url, branch])
+            .output()
+            .context("Cannot execute git command")?;
 
-        // Push
-        let refspec = format!("refs/heads/{}:refs/heads/{}", branch, branch);
-        remote
-            .push(&[&refspec], Some(&mut push_opts))
-            .with_context(|| format!("Cannot push to remote '{}'", remote_name))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("Git push failed: {}", stderr);
+        }
 
         Ok(())
     }
 
     /// Fetch từ remote với access token
+    /// Note: Sử dụng HTTPS URL trực tiếp để tránh bị git config rewrite
     pub fn fetch(&self, remote_name: &str, access_token: &str) -> Result<()> {
-        let mut remote = self.repo.find_remote(remote_name)?;
+        let remote = self.repo.find_remote(remote_name)?;
+
+        // Lấy URL và convert SSH -> HTTPS nếu cần
+        let original_url = remote.url().context("Remote has no URL")?;
+        let https_url = ssh_to_https_url(original_url);
+
+        // Tạo anonymous remote với HTTPS URL
+        let mut remote = self
+            .repo
+            .remote_anonymous(&https_url)
+            .with_context(|| format!("Cannot create anonymous remote for URL: {}", https_url))?;
 
         // Setup callbacks cho authentication
         let mut callbacks = RemoteCallbacks::new();
@@ -366,5 +413,22 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn test_ssh_to_https_url() {
+        use super::ssh_to_https_url;
+
+        // SSH format: git@github.com:user/repo.git
+        assert_eq!(
+            ssh_to_https_url("git@github.com:user/repo.git"),
+            "https://github.com/user/repo.git"
+        );
+
+        // Already HTTPS
+        assert_eq!(
+            ssh_to_https_url("https://github.com/user/repo.git"),
+            "https://github.com/user/repo.git"
+        );
     }
 }

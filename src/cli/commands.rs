@@ -1,132 +1,43 @@
 //! Command implementations cho EchoVault CLI.
 //!
 //! Các commands chính:
-//! - init: Khởi tạo vault với GitHub OAuth và encryption key
 //! - scan: Quét và liệt kê tất cả chat sessions có sẵn
-//! - extract: Copy raw JSON files vào vault (KHÔNG format)
-//! - sync: Encrypt và push lên GitHub
+//! - sync: Extract, encrypt và push lên GitHub (all-in-one)
 
 use crate::config::{default_config_path, Config};
-use crate::crypto::key_derivation::{derive_key_new, SALT_LEN};
+use crate::crypto::key_derivation::{derive_key, derive_key_new, SALT_LEN};
 use crate::crypto::Encryptor;
 use crate::extractors::{vscode_copilot::VSCodeCopilotExtractor, Extractor};
 use crate::storage::SessionIndex;
 use crate::sync::oauth::{
-    load_credentials_from_file, save_credentials_to_file, OAuthCredentials, OAuthDeviceFlow,
+    create_github_repo, load_credentials_from_file, save_credentials_to_file, OAuthCredentials,
+    OAuthDeviceFlow,
 };
 use crate::sync::GitSync;
 use anyhow::{bail, Context, Result};
 use colored::Colorize;
 use std::io::{self, Write};
-use std::path::PathBuf;
-
-/// Khởi tạo vault mới
-pub fn init(remote: Option<String>) -> Result<()> {
-    println!("{}", "Initializing EchoVault...".cyan().bold());
-
-    // Load hoặc tạo config mới
-    let config_path = default_config_path();
-    let mut config = if config_path.exists() {
-        Config::load(&config_path)?
-    } else {
-        Config::new()
-    };
-
-    // Tạo vault directory
-    let vault_dir = config.vault_dir().to_path_buf();
-    std::fs::create_dir_all(&vault_dir)?;
-    println!("  {} {}", "Vault directory:".green(), vault_dir.display());
-
-    // Init git repository
-    let _git = GitSync::open_or_init(&vault_dir)?;
-    println!("  {} Initialized git repository", "✓".green());
-
-    // Setup remote nếu được cung cấp
-    if let Some(remote_url) = remote {
-        config.set_remote(remote_url.clone());
-        let git = GitSync::open(&vault_dir)?;
-        git.add_remote("origin", &remote_url)?;
-        println!("  {} Remote: {}", "✓".green(), remote_url);
-
-        // Hỏi user có muốn authenticate với GitHub không
-        println!("\n{}", "GitHub Authentication".cyan().bold());
-        print!("Authenticate with GitHub now? [Y/n]: ");
-        io::stdout().flush()?;
-
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        let should_auth = input.trim().is_empty() || input.trim().to_lowercase() == "y";
-
-        if should_auth {
-            let credentials = authenticate_github()?;
-            let creds_path = vault_dir.join(".credentials.json");
-            save_credentials_to_file(&credentials, &creds_path)?;
-            println!("  {} Saved GitHub credentials", "✓".green());
-        }
-    }
-
-    // Setup encryption
-    println!("\n{}", "Encryption Setup".cyan().bold());
-    println!("Enter a passphrase to encrypt your vault.");
-    println!(
-        "{}",
-        "WARNING: If you lose this passphrase, you cannot recover your data!".yellow()
-    );
-
-    let passphrase = prompt_passphrase("Passphrase: ")?;
-    let confirm = prompt_passphrase("Confirm passphrase: ")?;
-
-    if passphrase != confirm {
-        bail!("Passphrases do not match");
-    }
-
-    // Derive key và lưu salt
-    let (key, salt) = derive_key_new(&passphrase)?;
-    let salt_path = vault_dir.join(".salt");
-    std::fs::write(&salt_path, salt)?;
-
-    // Test encryption
-    let test_data = b"EchoVault encryption test";
-    let encryptor = Encryptor::new(&key);
-    let encrypted = encryptor.encrypt(test_data)?;
-    let decrypted = encryptor.decrypt(&encrypted)?;
-    if decrypted != test_data {
-        bail!("Encryption test failed");
-    }
-    println!("  {} Encryption configured", "✓".green());
-
-    // Lưu config
-    config.save(&config_path)?;
-    println!(
-        "  {} Config saved to {}",
-        "✓".green(),
-        config_path.display()
-    );
-
-    println!("\n{}", "Initialization complete!".green().bold());
-    println!("Next steps:");
-    println!("  1. Run 'echovault scan' to see available chat sessions");
-    println!("  2. Run 'echovault extract' to copy sessions to vault");
-    println!("  3. Run 'echovault sync' to encrypt and push to GitHub");
-
-    Ok(())
-}
 
 /// Authenticate với GitHub qua OAuth Device Flow
 fn authenticate_github() -> Result<OAuthCredentials> {
+    println!("\n{}", "GitHub OAuth Device Flow".cyan().bold());
+
     let oauth = OAuthDeviceFlow::new();
 
     let credentials = oauth.authenticate(|device_code| {
-        println!("\nTo authenticate with GitHub:");
-        println!("  1. Open: {}", device_code.verification_uri.cyan().bold());
-        println!("  2. Enter code: {}", device_code.user_code.yellow().bold());
+        println!("\nĐể xác thực với GitHub:");
         println!(
-            "\nWaiting for authorization (expires in {} seconds)...",
+            "  1. Mở trình duyệt: {}",
+            device_code.verification_uri.cyan().bold()
+        );
+        println!("  2. Nhập mã: {}", device_code.user_code.yellow().bold());
+        println!(
+            "\nĐang chờ xác thực (hết hạn sau {} giây)...",
             device_code.expires_in
         );
     })?;
 
-    println!("  {} Authenticated successfully!", "✓".green());
+    println!("  {} Xác thực thành công!", "✓".green());
     Ok(credentials)
 }
 
@@ -189,127 +100,143 @@ pub fn scan(source: Option<String>) -> Result<()> {
     Ok(())
 }
 
-/// Trích xuất chat history - CHỈ COPY raw JSON files, KHÔNG format
-pub fn extract(source: Option<String>, output: Option<PathBuf>) -> Result<()> {
-    // Load config để lấy vault path
-    let config = Config::load_default()?;
-    let output_dir = output.unwrap_or_else(|| config.vault_path.clone());
-
-    println!(
-        "{} to {}",
-        "Extracting raw JSON files".cyan(),
-        output_dir.display().to_string().yellow()
-    );
-
-    // Hiện tại chỉ hỗ trợ VS Code Copilot
-    let _source_filter = source.as_deref();
-
-    let extractor = VSCodeCopilotExtractor::new();
-    let locations = extractor.find_storage_locations()?;
-
-    if locations.is_empty() {
-        println!("{}", "No VS Code Copilot chat sessions found.".yellow());
-        return Ok(());
-    }
-
-    // Tạo output directory
-    std::fs::create_dir_all(&output_dir)?;
-
-    // Mở SQLite index
-    let mut index = SessionIndex::open(&output_dir)?;
-
-    let mut total_sessions = 0;
-    let mut total_files = 0;
-    let mut metadata_list: Vec<crate::extractors::SessionMetadata> = Vec::new();
-
-    for location in &locations {
-        let workspace_name = extractor.get_workspace_name(location);
-
-        println!(
-            "\n{} {} ({})",
-            "Processing:".cyan(),
-            workspace_name.white().bold(),
-            location.display().to_string().dimmed()
-        );
-
-        // List session files
-        match extractor.list_session_files(location) {
-            Ok(sessions) => {
-                for session in &sessions {
-                    // Copy raw file vào vault
-                    match extractor.copy_to_vault(session, &output_dir) {
-                        Ok(vault_path) => {
-                            // Cập nhật metadata với vault_path
-                            let mut metadata = session.metadata.clone();
-                            metadata.vault_path = vault_path.clone();
-                            metadata_list.push(metadata);
-
-                            let filename =
-                                vault_path.file_name().unwrap_or_default().to_string_lossy();
-                            println!("  {} {}", "Copied:".green(), filename);
-                            total_files += 1;
-                        }
-                        Err(e) => {
-                            println!("  {} {} - {}", "Error:".red(), session.session_id, e);
-                        }
-                    }
-                }
-                total_sessions += sessions.len();
-            }
-            Err(e) => {
-                println!("  {} {}", "Error:".red(), e);
-            }
-        }
-    }
-
-    // Batch upsert vào SQLite index
-    let indexed_count = index.upsert_batch(&metadata_list)?;
-
-    println!(
-        "\n{} Copied {} sessions ({} files), indexed {} entries",
-        "Done!".green().bold(),
-        total_sessions.to_string().cyan(),
-        total_files.to_string().cyan(),
-        indexed_count.to_string().cyan()
-    );
-    println!(
-        "Index database: {}",
-        output_dir.join("index.db").display().to_string().dimmed()
-    );
-
-    Ok(())
-}
-
-/// Encrypt và sync vault lên GitHub
-pub fn sync_vault() -> Result<()> {
+/// Extract, encrypt và sync vault lên GitHub
+/// Tự động setup (remote, OAuth, encryption) nếu lần đầu chạy
+pub fn sync_vault(remote: Option<String>) -> Result<()> {
     println!("{}", "Syncing vault to GitHub...".cyan().bold());
 
-    // Load config
-    let config = Config::load_default()?;
-    let vault_dir = config.vault_dir();
+    // Load hoặc tạo config mới
+    let config_path = default_config_path();
+    let mut config = if config_path.exists() {
+        Config::load(&config_path)?
+    } else {
+        Config::new()
+    };
+    let vault_dir = config.vault_dir().to_path_buf();
 
-    if !config.is_initialized() {
-        bail!("Vault not initialized. Run 'echovault init' first.");
+    // Tạo vault directory nếu chưa có
+    std::fs::create_dir_all(&vault_dir)?;
+
+    // Init git repository nếu chưa có
+    let git = GitSync::open_or_init(&vault_dir)?;
+
+    // Setup/update .gitignore để chỉ push encrypted files
+    let gitignore_path = vault_dir.join(".gitignore");
+    if should_update_gitignore(&gitignore_path)? {
+        create_vault_gitignore(&gitignore_path)?;
+        println!("  {} Updated .gitignore", "✓".green());
     }
 
-    // Load encryption key
+    // Setup remote nếu cần
+    let need_remote_setup = config.sync.remote.is_none() || remote.is_some();
+    if need_remote_setup {
+        let remote_url = if let Some(url) = remote {
+            url
+        } else {
+            // Hỏi user nhập remote URL
+            println!("\n{}", "GitHub Repository Setup".cyan().bold());
+            print!("Remote URL (e.g., https://github.com/user/vault.git): ");
+            io::stdout().flush()?;
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            let url = input.trim().to_string();
+            if url.is_empty() {
+                bail!("Remote URL is required");
+            }
+            url
+        };
+
+        config.set_remote(remote_url.clone());
+
+        // Add/update remote
+        if git.has_remote("origin")? {
+            git.set_remote_url("origin", &remote_url)?;
+        } else {
+            git.add_remote("origin", &remote_url)?;
+        }
+        println!("  {} Remote: {}", "✓".green(), remote_url);
+    }
+
+    // Setup OAuth credentials nếu chưa có
+    let creds_path = vault_dir.join(".credentials.json");
+    let credentials = if creds_path.exists() {
+        load_credentials_from_file(&creds_path)?
+    } else {
+        println!("\n{}", "GitHub Authentication".cyan().bold());
+        let creds = authenticate_github()?;
+        save_credentials_to_file(&creds, &creds_path)?;
+        println!("  {} Saved credentials", "✓".green());
+        creds
+    };
+
+    // Setup encryption nếu chưa có
     let salt_path = vault_dir.join(".salt");
-    if !salt_path.exists() {
-        bail!("Encryption not configured. Run 'echovault init' first.");
+    let (encryptor, is_new_encryption) = if salt_path.exists() {
+        // Load existing salt
+        let salt_bytes = std::fs::read(&salt_path)?;
+        if salt_bytes.len() != SALT_LEN {
+            bail!("Invalid salt file");
+        }
+        let mut salt = [0u8; SALT_LEN];
+        salt.copy_from_slice(&salt_bytes);
+
+        let passphrase = prompt_passphrase("Enter passphrase: ")?;
+        let key = derive_key(&passphrase, &salt)?;
+        (Encryptor::new(&key), false)
+    } else {
+        // Setup new encryption
+        println!("\n{}", "Encryption Setup".cyan().bold());
+        println!("Enter a passphrase to encrypt your vault.");
+        println!(
+            "{}",
+            "WARNING: If you lose this passphrase, you cannot recover your data!".yellow()
+        );
+
+        let passphrase = prompt_passphrase("Passphrase: ")?;
+        let confirm = prompt_passphrase("Confirm passphrase: ")?;
+
+        if passphrase != confirm {
+            bail!("Passphrases do not match");
+        }
+
+        let (key, salt) = derive_key_new(&passphrase)?;
+        std::fs::write(&salt_path, salt)?;
+
+        // Test encryption
+        let test_data = b"EchoVault encryption test";
+        let encryptor = Encryptor::new(&key);
+        let encrypted = encryptor.encrypt(test_data)?;
+        let decrypted = encryptor.decrypt(&encrypted)?;
+        if decrypted != test_data {
+            bail!("Encryption test failed");
+        }
+        println!("  {} Encryption configured", "✓".green());
+        (encryptor, true)
+    };
+
+    // Tạo README trong vault nếu chưa có
+    let readme_path = vault_dir.join("README.md");
+    if !readme_path.exists() {
+        create_vault_readme(&readme_path)?;
+        println!("  {} Created README.md", "✓".green());
     }
 
-    let salt_bytes = std::fs::read(&salt_path)?;
-    if salt_bytes.len() != SALT_LEN {
-        bail!("Invalid salt file");
+    // Lưu config
+    config.save(&config_path)?;
+
+    // === EXTRACT: Copy raw JSON files từ các IDE ===
+    println!("\n{}", "Extracting chat sessions...".cyan());
+    let extracted_count = extract_sessions(&vault_dir)?;
+    if extracted_count > 0 {
+        println!(
+            "  {} Extracted {} sessions",
+            "✓".green(),
+            extracted_count.to_string().cyan()
+        );
     }
-    let mut salt = [0u8; SALT_LEN];
-    salt.copy_from_slice(&salt_bytes);
 
-    let passphrase = prompt_passphrase("Enter passphrase: ")?;
-    let key = crate::crypto::key_derivation::derive_key(&passphrase, &salt)?;
-    let encryptor = Encryptor::new(&key);
-
-    // Tìm tất cả raw JSON files cần encrypt
+    // === ENCRYPT: Mã hóa tất cả raw JSON files ===
+    println!("\n{}", "Encrypting files...".cyan());
     let source_dirs = ["vscode-copilot", "cursor", "cline", "antigravity"];
     let encrypted_dir = config.encrypted_dir();
     std::fs::create_dir_all(&encrypted_dir)?;
@@ -329,7 +256,6 @@ pub fn sync_vault() -> Result<()> {
             let path = entry.path();
 
             if path.extension().is_some_and(|e| e == "json") {
-                // Encrypt file
                 let filename = path.file_name().unwrap().to_string_lossy();
                 let enc_path = enc_source_dir.join(format!("{}.enc", filename));
 
@@ -340,31 +266,19 @@ pub fn sync_vault() -> Result<()> {
         }
     }
 
-    println!(
-        "\n{} {} files",
-        "Encrypted".green(),
-        encrypted_count.to_string().cyan()
-    );
-
-    // Load GitHub credentials
-    let creds_path = vault_dir.join(".credentials.json");
-    let credentials = if creds_path.exists() {
-        load_credentials_from_file(&creds_path)?
-    } else {
-        println!("\n{}", "GitHub authentication required".yellow());
-        let creds = authenticate_github()?;
-        save_credentials_to_file(&creds, &creds_path)?;
-        creds
-    };
+    if encrypted_count > 0 {
+        println!(
+            "\n{} {} files",
+            "Encrypted".green(),
+            encrypted_count.to_string().cyan()
+        );
+    }
 
     // Git operations
-    let git = GitSync::open(vault_dir)?;
-
-    // Stage encrypted files
     git.stage_all()?;
 
     // Check for changes
-    if !git.has_changes()? {
+    if !git.has_changes()? && !is_new_encryption {
         println!("{}", "No changes to sync.".yellow());
         return Ok(());
     }
@@ -379,10 +293,170 @@ pub fn sync_vault() -> Result<()> {
 
     // Push
     println!("\n{}", "Pushing to GitHub...".cyan());
-    git.push("origin", "main", &credentials.access_token)?;
-    println!("  {} Pushed successfully!", "✓".green());
+    match git.push("origin", "main", &credentials.access_token) {
+        Ok(()) => {
+            println!("  {} Pushed successfully!", "✓".green());
+        }
+        Err(e) => {
+            let err_msg = e.to_string();
+            if err_msg.contains("not found") || err_msg.contains("Repository not found") {
+                println!(
+                    "  {} Repository không tồn tại trên GitHub",
+                    "Warning:".yellow()
+                );
+
+                // Hỏi user có muốn tạo repo không
+                print!("Tạo repository tự động? [Y/n]: ");
+                io::stdout().flush()?;
+                let mut input = String::new();
+                io::stdin().read_line(&mut input)?;
+                let should_create = input.trim().is_empty() || input.trim().to_lowercase() == "y";
+
+                if should_create {
+                    // Parse repo name từ remote URL
+                    let remote_url = config.sync.remote.as_deref().unwrap_or("");
+                    let repo_name = remote_url
+                        .trim_end_matches(".git")
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or("echovault-backup");
+
+                    println!("  {} Creating repository '{}'...", "→".cyan(), repo_name);
+
+                    match create_github_repo(repo_name, &credentials.access_token, true) {
+                        Ok(clone_url) => {
+                            println!("  {} Created: {}", "✓".green(), clone_url);
+
+                            // Thử push lại
+                            println!("  {} Retrying push...", "→".cyan());
+                            git.push("origin", "main", &credentials.access_token)?;
+                            println!("  {} Pushed successfully!", "✓".green());
+                        }
+                        Err(create_err) => {
+                            println!("  {} {}", "Error:".red(), create_err);
+                            bail!("Cannot create repository on GitHub");
+                        }
+                    }
+                } else {
+                    println!("\nVui lòng tạo repository thủ công:");
+                    println!("  1. Truy cập: {}", "https://github.com/new".cyan());
+                    println!("  2. Tạo repository với tên khớp với remote URL");
+                    println!("  3. Chạy lại 'echovault sync'");
+                    bail!("Repository not found on GitHub");
+                }
+            } else {
+                return Err(e);
+            }
+        }
+    }
 
     println!("\n{}", "Sync complete!".green().bold());
 
+    Ok(())
+}
+
+/// Extract sessions từ các IDE sources vào vault
+fn extract_sessions(vault_dir: &std::path::Path) -> Result<usize> {
+    let extractor = VSCodeCopilotExtractor::new();
+    let locations = extractor.find_storage_locations()?;
+
+    if locations.is_empty() {
+        return Ok(0);
+    }
+
+    // Mở SQLite index
+    let mut index = SessionIndex::open(vault_dir)?;
+    let mut total_files = 0;
+    let mut metadata_list: Vec<crate::extractors::SessionMetadata> = Vec::new();
+
+    for location in &locations {
+        // List session files
+        if let Ok(sessions) = extractor.list_session_files(location) {
+            for session in &sessions {
+                // Copy raw file vào vault
+                if let Ok(vault_path) = extractor.copy_to_vault(session, vault_dir) {
+                    let mut metadata = session.metadata.clone();
+                    metadata.vault_path = vault_path;
+                    metadata_list.push(metadata);
+                    total_files += 1;
+                }
+            }
+        }
+    }
+
+    // Batch upsert vào SQLite index
+    index.upsert_batch(&metadata_list)?;
+
+    Ok(total_files)
+}
+
+/// Tạo .gitignore cho vault để chỉ push encrypted files
+fn create_vault_gitignore(path: &std::path::Path) -> Result<()> {
+    let content = r#"# EchoVault .gitignore
+# Chỉ push encrypted files, không push raw files
+
+# Raw session files (local only, not synced)
+vscode-copilot/
+cursor/
+cline/
+antigravity/
+
+# Index database (local only)
+index.db
+
+# Credentials (NEVER commit)
+.credentials.json
+"#;
+    std::fs::write(path, content)?;
+    Ok(())
+}
+
+/// Kiểm tra xem cần update .gitignore hay không
+fn should_update_gitignore(path: &std::path::Path) -> Result<bool> {
+    if !path.exists() {
+        return Ok(true);
+    }
+    // Kiểm tra xem gitignore đã có rule ignore raw files chưa
+    let content = std::fs::read_to_string(path)?;
+    // Nếu chưa có rule ignore vscode-copilot/ thì cần update
+    Ok(!content.contains("vscode-copilot/"))
+}
+
+/// Tạo README hướng dẫn trong vault repository
+fn create_vault_readme(path: &std::path::Path) -> Result<()> {
+    let content = r#"# EchoVault Backup
+
+Kho lưu trữ được mã hóa của EchoVault - "Black Box" cho lịch sử chat AI.
+
+## Nội dung
+
+- `encrypted/` - Dữ liệu chat đã mã hóa AES-256-GCM
+- `.salt` - Salt file cần thiết cho quá trình giải mã
+
+## Khôi phục dữ liệu
+
+1. Clone repository này về máy mới
+2. Cài đặt EchoVault:
+   ```bash
+   cargo install echovault
+   ```
+3. Chạy sync để pull và decrypt:
+   ```bash
+   echovault sync --remote <URL_REPO_NÀY>
+   ```
+4. Nhập passphrase đã sử dụng khi tạo vault
+
+## Lưu ý bảo mật
+
+- Files `.enc` được mã hóa bằng AES-256-GCM
+- **Passphrase là chìa khóa duy nhất** - mất passphrase = mất dữ liệu
+- File `.salt` cần thiết cho việc giải mã, không xóa!
+- Repository có thể public vì dữ liệu đã được mã hóa
+
+## Thông tin thêm
+
+Xem https://github.com/n24q02m/EchoVault để biết thêm chi tiết.
+"#;
+    std::fs::write(path, content)?;
     Ok(())
 }
