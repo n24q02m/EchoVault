@@ -28,13 +28,13 @@ cargo install --path .
 
 ```bash
 # Quét chat sessions có sẵn
-echovault scan
+ev scan
 
 # Extract, mã hóa và đồng bộ lên GitHub (tự động setup nếu lần đầu)
-echovault sync
+ev sync
 
 # Hoặc chỉ định remote URL trực tiếp
-echovault sync --remote https://github.com/username/my-vault.git
+ev sync --remote https://github.com/username/my-vault.git
 ```
 
 ### Workflow đầy đủ
@@ -53,7 +53,7 @@ echovault sync --remote https://github.com/username/my-vault.git
 
 EchoVault sử dụng OAuth Device Flow - không cần copy/paste token:
 
-1. Chạy `echovault sync`
+1. Chạy `ev sync`
 2. Mở browser theo hướng dẫn: <https://github.com/login/device>
 3. Nhập code hiển thị trên terminal
 4. Authorize ứng dụng EchoVault
@@ -64,25 +64,39 @@ Token được lưu trong vault và tự động sử dụng cho các lần sync
 
 - Rust 1.80+
 - Git
-- OpenSSL development libraries (`libssl-dev` trên Ubuntu/Debian)
 
 ## Phát triển
 
+Sử dụng [mise](https://mise.jdx.dev/) (khuyến nghị):
+
 ```bash
-# Format code
-cargo fmt
+# Setup
+mise install
 
-# Lint
-cargo clippy
+# Development
+mise run dev scan
+mise run dev sync
 
-# Type check
-cargo check
+# Build & Test
+mise run build        # Debug build
+mise run release      # Release build
+mise run test         # Run tests
+mise run lint         # Run clippy
+mise run fmt          # Format code
+mise run ci           # Run all checks
 
-# Run tests
-cargo test
+# Install
+mise run install      # Install ev to ~/.cargo/bin
+```
 
-# Build release
-cargo build --release
+Hoặc sử dụng cargo trực tiếp:
+
+```bash
+cargo fmt             # Format code
+cargo clippy          # Lint
+cargo check           # Type check
+cargo test            # Run tests
+cargo build --release # Build release
 ```
 
 ## Tài liệu

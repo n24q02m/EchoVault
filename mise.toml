@@ -1,2 +1,46 @@
 [tools]
 rust = "1.91"
+
+[tasks.build]
+description = "Build project (debug)"
+run = "cargo build"
+
+[tasks.release]
+description = "Build project (release, optimized)"
+run = "cargo build --release"
+
+[tasks.dev]
+description = "Run in development mode"
+run = "cargo run --"
+
+[tasks.check]
+description = "Type check without building"
+run = "cargo check"
+
+[tasks.test]
+description = "Run tests"
+run = "cargo test"
+
+[tasks.lint]
+description = "Run clippy linter"
+run = "cargo clippy -- -D warnings"
+
+[tasks.fmt]
+description = "Format code"
+run = "cargo fmt"
+
+[tasks.fmt-check]
+description = "Check code formatting"
+run = "cargo fmt --check"
+
+[tasks.ci]
+description = "Run all CI checks"
+run = "cargo fmt --check && cargo clippy -- -D warnings && cargo test"
+
+[tasks.install]
+description = "Install ev binary to ~/.cargo/bin"
+run = "cargo install --path ."
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = "cargo clean"

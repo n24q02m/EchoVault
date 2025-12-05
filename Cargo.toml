@@ -9,6 +9,10 @@ repository = "https://github.com/n24q02m/EchoVault"
 keywords = ["ai", "chat", "copilot", "sync", "cli"]
 categories = ["command-line-utilities", "development-tools"]
 
+[[bin]]
+name = "ev"
+path = "src/main.rs"
+
 [dependencies]
 # CLI framework
 clap = { version = "4.5", features = ["derive"] }
@@ -35,10 +39,18 @@ flate2 = "1.0"
 sha2 = "0.10"
 
 # Git operations (sử dụng vendored libgit2 và openssl cho HTTPS)
-git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2", "vendored-openssl", "https"] }
+git2 = { version = "0.20", default-features = false, features = [
+  "vendored-libgit2",
+  "vendored-openssl",
+  "https",
+] }
 
 # HTTP client cho OAuth (sử dụng rustls thay vì native-tls)
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = [
+  "blocking",
+  "json",
+  "rustls-tls",
+] }
 
 # Keyring cho lưu credentials (optional)
 keyring = "3"
