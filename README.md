@@ -15,12 +15,17 @@ EchoVault trích xuất, mã hóa và đồng bộ lịch sử chat từ GitHub 
 ## Cài đặt
 
 ```bash
-# Clone và build
+# Clone
 git clone https://github.com/n24q02m/EchoVault.git
 cd EchoVault
+
+# Tải dependencies
+mise install
+
+# Build
 cargo build --release
 
-# Cài đặt vào ~/.cargo/bin (khuyến nghị)
+# Cài đặt vào ~/.cargo/bin
 cargo install --path .
 ```
 

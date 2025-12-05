@@ -87,9 +87,10 @@ IDE Files (JSON/SQLite) -> EchoVault CLI -> Raw JSON Storage -> Encryption -> Gi
     - Push lên GitHub với OAuth Device Flow.
     - Encryption trước khi push.
 
-4. **Desktop App** (Phase 1):
-    - Tauri-based cross-platform app.
-    - GUI với React/TypeScript.
+4. **Desktop App** (Phase 2):
+    - Tauri 2.x cross-platform app.
+    - Mini window style (như Google Drive Desktop).
+    - System tray với background sync.
     - Full-text search và filtering.
 
 ---
@@ -115,26 +116,55 @@ IDE Files (JSON/SQLite) -> EchoVault CLI -> Raw JSON Storage -> Encryption -> Gi
 
 ### 3.2. Components
 
-#### 3.2.1. CLI Tool (Core)
+#### 3.2.1. CLI Tool (Temporary - Phase 1)
+
+> **Lưu ý**: CLI `ev` là giải pháp tạm thời trong Phase 1. Sẽ được thay thế hoàn toàn bởi Tauri Desktop App trong Phase 2.
 
 - **Language**: Rust (single binary, cross-platform)
 - **Framework**: clap (derive macro)
-- **Binary**: `ev` (viết tắt của EchoVault)
+- **Binary**: `ev` (viết tắt của EchoVault - có thể trùng với tools khác)
 - **Commands**:
   - `ev scan` - Quét và liệt kê tất cả chat sessions có sẵn.
   - `ev sync` - Extract, encrypt và push lên GitHub (all-in-one, tự động setup nếu lần đầu).
 
-#### 3.2.2. Desktop App (Tauri)
+#### 3.2.2. Desktop App (Tauri - Phase 2)
 
-Giao diện Desktop GUI để xem lại lịch sử chat:
+Ứng dụng Desktop chính thức thay thế CLI:
 
-**Features:**
+**UI Style:**
+
+- Mini window (như Google Drive Desktop, không full-screen)
+- Có thể resize nhưng mặc định nhỏ gọn
+- System tray icon để chạy nền
+
+**Core Features:**
 
 - Browse sessions theo ngày, project, source
 - Tìm kiếm full-text trong tất cả sessions
 - Parse và render JSON on-demand
 - Xem nội dung đã decrypt (tự động pull từ GitHub)
 - Copy code blocks vào clipboard
+
+**Background Sync:**
+
+- Chạy trong system tray khi đóng window (minimize to tray)
+- Auto-sync định kỳ (configurable: 30 phút, 1 giờ, etc.)
+- Notifications khi sync thành công/thất bại
+- Auto-start khi login (optional)
+
+**Tauri Plugins:**
+
+- `tauri-plugin-autostart` - Tự động khởi động khi login
+- `tauri-plugin-notification` - Hiển thị notifications
+- System tray - Built-in trong Tauri 2.x
+
+**Packaging Formats:**
+
+| Platform | Formats | Mô tả |
+| :--- | :--- | :--- |
+| **Windows** | `.exe`, `.msi` | Portable executable hoặc MSI installer |
+| **macOS** | `.dmg`, `.app` | DMG disk image hoặc App bundle |
+| **Linux** | `.AppImage`, `.deb`, `.rpm` | Universal AppImage hoặc distro-specific packages |
 
 #### 3.2.3. Extractors (Plugin Architecture)
 

@@ -481,7 +481,7 @@ fn push_with_retry(git: &GitSync, access_token: &str, config: &Config) -> Result
     Ok(true)
 }
 
-/// Extract sessions từ các IDE sources vào vault
+/// Extract sessions từ các IDE sources vào vault (parallel)
 fn extract_sessions(vault_dir: &std::path::Path) -> Result<usize> {
     let extractor = VSCodeCopilotExtractor::new();
     let locations = extractor.find_storage_locations()?;
@@ -490,30 +490,77 @@ fn extract_sessions(vault_dir: &std::path::Path) -> Result<usize> {
         return Ok(0);
     }
 
-    // Mở SQLite index
-    let mut index = SessionIndex::open(vault_dir)?;
-    let mut total_files = 0;
-    let mut metadata_list: Vec<crate::extractors::SessionMetadata> = Vec::new();
+    // Thu thập tất cả session files từ tất cả locations (parallel)
+    let all_sessions: Vec<_> = locations
+        .par_iter()
+        .flat_map(|location| {
+            extractor
+                .list_session_files(location)
+                .unwrap_or_default()
+                .into_par_iter()
+        })
+        .collect();
 
-    for location in &locations {
-        // List session files
-        if let Ok(sessions) = extractor.list_session_files(location) {
-            for session in &sessions {
-                // Copy raw file vào vault
-                if let Ok(vault_path) = extractor.copy_to_vault(session, vault_dir) {
-                    let mut metadata = session.metadata.clone();
-                    metadata.vault_path = vault_path;
-                    metadata_list.push(metadata);
-                    total_files += 1;
-                }
-            }
-        }
+    if all_sessions.is_empty() {
+        return Ok(0);
     }
 
-    // Batch upsert vào SQLite index
-    index.upsert_batch(&metadata_list)?;
+    // Progress bar
+    let total = all_sessions.len();
+    let pb = ProgressBar::new(total as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+            .unwrap()
+            .progress_chars("=>-"),
+    );
 
-    Ok(total_files)
+    // Copy files vào vault (parallel)
+    let copied_count = AtomicUsize::new(0);
+    let skipped_count = AtomicUsize::new(0);
+    let metadata_results: Vec<_> = all_sessions
+        .par_iter()
+        .progress_with(pb.clone())
+        .filter_map(|session| {
+            match extractor.copy_to_vault(session, vault_dir) {
+                Ok(Some(vault_path)) => {
+                    // File đã được copy (mới hoặc thay đổi)
+                    copied_count.fetch_add(1, Ordering::Relaxed);
+                    let mut metadata = session.metadata.clone();
+                    metadata.vault_path = vault_path;
+                    Some(metadata)
+                }
+                Ok(None) => {
+                    // File không thay đổi, skip
+                    skipped_count.fetch_add(1, Ordering::Relaxed);
+                    None
+                }
+                Err(_) => None,
+            }
+        })
+        .collect();
+
+    pb.finish_and_clear();
+
+    // Batch upsert vào SQLite index (chỉ files đã copy)
+    if !metadata_results.is_empty() {
+        let mut index = SessionIndex::open(vault_dir)?;
+        index.upsert_batch(&metadata_results)?;
+    }
+
+    let copied = copied_count.load(Ordering::Relaxed);
+    let skipped = skipped_count.load(Ordering::Relaxed);
+
+    if skipped > 0 {
+        println!(
+            "  {} {} copied, {} unchanged",
+            "→".cyan(),
+            copied.to_string().cyan(),
+            skipped.to_string().dimmed()
+        );
+    }
+
+    Ok(copied)
 }
 
 /// Tạo .gitignore cho vault để chỉ push encrypted files

@@ -6,6 +6,7 @@
 use super::{Extractor, SessionFile, SessionMetadata};
 use anyhow::Result;
 use chrono::{TimeZone, Utc};
+use rayon::prelude::*;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -204,24 +205,44 @@ impl Extractor for VSCodeCopilotExtractor {
         }
 
         let workspace_name = self.get_workspace_name(location);
-        let mut sessions = Vec::new();
 
-        for entry in std::fs::read_dir(&chat_sessions_dir)?.flatten() {
-            let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "json") {
-                // Extract metadata nhanh
-                if let Some(metadata) = self.extract_quick_metadata(&path, &workspace_name) {
-                    sessions.push(SessionFile {
-                        source_path: path,
+        // Thu thập tất cả JSON paths trước
+        let json_paths: Vec<PathBuf> = std::fs::read_dir(&chat_sessions_dir)?
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|ext| ext == "json"))
+            .collect();
+
+        // Extract metadata song song với rayon
+        let mut sessions: Vec<SessionFile> = json_paths
+            .par_iter()
+            .filter_map(|path| {
+                self.extract_quick_metadata(path, &workspace_name)
+                    .map(|metadata| SessionFile {
+                        source_path: path.clone(),
                         metadata,
-                    });
-                }
-            }
-        }
+                    })
+            })
+            .collect();
 
         // Sắp xếp theo thời gian tạo (mới nhất trước)
         sessions.sort_by(|a, b| b.metadata.created_at.cmp(&a.metadata.created_at));
 
         Ok(sessions)
+    }
+
+    fn count_sessions(&self, location: &Path) -> Result<usize> {
+        let chat_sessions_dir = location.join("chatSessions");
+        if !chat_sessions_dir.exists() {
+            return Ok(0);
+        }
+
+        // Chỉ đếm số file JSON, không parse metadata
+        let count = std::fs::read_dir(&chat_sessions_dir)?
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
+            .count();
+
+        Ok(count)
     }
 }

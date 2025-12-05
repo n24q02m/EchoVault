@@ -43,7 +43,7 @@ pub struct SessionFile {
 
 /// Trait cho tất cả extractors
 /// Extractors chỉ tìm và copy files, KHÔNG parse chi tiết nội dung
-pub trait Extractor {
+pub trait Extractor: Sync {
     /// Tên nguồn (vscode-copilot, cursor, etc.)
     fn source_name(&self) -> &'static str;
 
@@ -56,14 +56,12 @@ pub trait Extractor {
     /// Liệt kê tất cả session files trong một location
     fn list_session_files(&self, location: &Path) -> Result<Vec<SessionFile>>;
 
-    /// Đếm số sessions trong một location
-    fn count_sessions(&self, location: &Path) -> Result<usize> {
-        Ok(self.list_session_files(location)?.len())
-    }
+    /// Đếm số sessions trong một location (nhanh, không parse metadata)
+    fn count_sessions(&self, location: &Path) -> Result<usize>;
 
     /// Copy một session file vào vault (incremental - chỉ copy nếu mới/thay đổi)
-    /// Trả về path đến file trong vault
-    fn copy_to_vault(&self, session: &SessionFile, vault_dir: &Path) -> Result<PathBuf> {
+    /// Trả về Some(path) nếu file được copy, None nếu file không thay đổi (skipped)
+    fn copy_to_vault(&self, session: &SessionFile, vault_dir: &Path) -> Result<Option<PathBuf>> {
         // Tạo thư mục con theo source
         let source_dir = vault_dir.join(self.source_name());
         std::fs::create_dir_all(&source_dir)?;
@@ -95,8 +93,9 @@ pub trait Extractor {
 
         if should_copy {
             std::fs::copy(&session.source_path, &dest_path)?;
+            Ok(Some(dest_path))
+        } else {
+            Ok(None) // File không thay đổi
         }
-
-        Ok(dest_path)
     }
 }
