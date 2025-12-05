@@ -20,13 +20,14 @@ git clone https://github.com/n24q02m/EchoVault.git
 cd EchoVault
 
 # Tải dependencies
-mise install
+sudo apt update && sudo apt upgrade -y
+mise trust && mise install
 
 # Build
-cargo build --release
+mise run release
 
-# Cài đặt vào ~/.cargo/bin
-cargo install --path .
+# Cài đặt
+mise run install
 ```
 
 ## Sử dụng
@@ -78,11 +79,8 @@ Sử dụng [mise](https://mise.jdx.dev/) (khuyến nghị):
 # Setup
 mise install
 
-# Development
-mise run dev scan
-mise run dev sync
-
 # Build & Test
+mise run install      # Install ev to ~/.cargo/bin
 mise run build        # Debug build
 mise run release      # Release build
 mise run test         # Run tests
@@ -90,18 +88,9 @@ mise run lint         # Run clippy
 mise run fmt          # Format code
 mise run ci           # Run all checks
 
-# Install
-mise run install      # Install ev to ~/.cargo/bin
-```
-
-Hoặc sử dụng cargo trực tiếp:
-
-```bash
-cargo fmt             # Format code
-cargo clippy          # Lint
-cargo check           # Type check
-cargo test            # Run tests
-cargo build --release # Build release
+# Development
+mise run dev scan
+mise run dev sync
 ```
 
 ## Tài liệu
