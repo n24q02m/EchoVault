@@ -1,7 +1,10 @@
 //! Command implementations cho EchoVault CLI.
+//!
+//! Các commands chính:
+//! - scan: Quét và liệt kê tất cả chat sessions có sẵn
+//! - extract: Copy raw JSON files vào vault (KHÔNG format)
 
 use crate::extractors::{vscode_copilot::VSCodeCopilotExtractor, Extractor};
-use crate::formatters::{markdown::MarkdownFormatter, Formatter};
 use anyhow::Result;
 use colored::Colorize;
 use std::path::PathBuf;
@@ -14,9 +17,9 @@ pub fn scan(source: Option<String>) -> Result<()> {
     let _source_filter = source.as_deref();
 
     let extractor = VSCodeCopilotExtractor::new();
-    let workspaces = extractor.find_databases()?;
+    let locations = extractor.find_storage_locations()?;
 
-    if workspaces.is_empty() {
+    if locations.is_empty() {
         println!("{}", "No VS Code Copilot chat sessions found.".yellow());
         return Ok(());
     }
@@ -24,14 +27,14 @@ pub fn scan(source: Option<String>) -> Result<()> {
     println!(
         "\n{} {} workspace(s) with chat sessions:\n",
         "Found".green(),
-        workspaces.len().to_string().green().bold()
+        locations.len().to_string().green().bold()
     );
 
-    for (idx, workspace_path) in workspaces.iter().enumerate() {
-        let workspace_name = extractor.get_workspace_name(workspace_path);
+    for (idx, location) in locations.iter().enumerate() {
+        let workspace_name = extractor.get_workspace_name(location);
 
-        // Đếm số sessions trong workspace
-        let session_count = match extractor.count_sessions(workspace_path) {
+        // Đếm số sessions
+        let session_count = match extractor.count_sessions(location) {
             Ok(count) => count.to_string(),
             Err(_) => "?".to_string(),
         };
@@ -42,20 +45,20 @@ pub fn scan(source: Option<String>) -> Result<()> {
             workspace_name.white().bold(),
             format!("{} sessions", session_count).dimmed()
         );
-        println!("     {}", workspace_path.display().to_string().dimmed());
+        println!("     {}", location.display().to_string().dimmed());
     }
 
     println!();
     Ok(())
 }
 
-/// Trích xuất chat history thành Markdown
+/// Trích xuất chat history - CHỈ COPY raw JSON files, KHÔNG format
 pub fn extract(source: Option<String>, output: Option<PathBuf>) -> Result<()> {
     let output_dir = output.unwrap_or_else(|| PathBuf::from("./vault"));
 
     println!(
         "{} to {}",
-        "Extracting chat history".cyan(),
+        "Extracting raw JSON files".cyan(),
         output_dir.display().to_string().yellow()
     );
 
@@ -63,11 +66,9 @@ pub fn extract(source: Option<String>, output: Option<PathBuf>) -> Result<()> {
     let _source_filter = source.as_deref();
 
     let extractor = VSCodeCopilotExtractor::new();
-    let formatter = MarkdownFormatter::new();
+    let locations = extractor.find_storage_locations()?;
 
-    let workspaces = extractor.find_databases()?;
-
-    if workspaces.is_empty() {
+    if locations.is_empty() {
         println!("{}", "No VS Code Copilot chat sessions found.".yellow());
         return Ok(());
     }
@@ -77,33 +78,46 @@ pub fn extract(source: Option<String>, output: Option<PathBuf>) -> Result<()> {
 
     let mut total_sessions = 0;
     let mut total_files = 0;
+    let mut index: Vec<crate::extractors::SessionMetadata> = Vec::new();
 
-    for workspace_path in &workspaces {
-        let workspace_name = extractor.get_workspace_name(workspace_path);
+    for location in &locations {
+        let workspace_name = extractor.get_workspace_name(location);
 
         println!(
             "\n{} {} ({})",
             "Processing:".cyan(),
             workspace_name.white().bold(),
-            workspace_path.display().to_string().dimmed()
+            location.display().to_string().dimmed()
         );
 
-        // Extract sessions
-        match extractor.extract_sessions(workspace_path) {
+        // List session files
+        match extractor.list_session_files(location) {
             Ok(sessions) => {
                 for session in &sessions {
-                    // Format thành Markdown
-                    let markdown = formatter.format(session, &workspace_name)?;
+                    // Copy raw file vào vault
+                    match extractor.copy_to_vault(session, &output_dir) {
+                        Ok(vault_path) => {
+                            // Cập nhật metadata với vault_path
+                            let mut metadata = session.metadata.clone();
+                            metadata.vault_path = vault_path.clone();
+                            index.push(metadata);
 
-                    // Tạo filename từ session
-                    let filename = formatter.generate_filename(session);
-                    let filepath = output_dir.join(&filename);
-
-                    // Ghi file
-                    std::fs::write(&filepath, markdown)?;
-
-                    println!("  {} {}", "Created:".green(), filename);
-                    total_files += 1;
+                            let filename = vault_path
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy();
+                            println!("  {} {}", "Copied:".green(), filename);
+                            total_files += 1;
+                        }
+                        Err(e) => {
+                            println!(
+                                "  {} {} - {}",
+                                "Error:".red(),
+                                session.session_id,
+                                e
+                            );
+                        }
+                    }
                 }
                 total_sessions += sessions.len();
             }
@@ -113,11 +127,20 @@ pub fn extract(source: Option<String>, output: Option<PathBuf>) -> Result<()> {
         }
     }
 
+    // Lưu index file
+    let index_path = output_dir.join("index.json");
+    let index_json = serde_json::to_string_pretty(&index)?;
+    std::fs::write(&index_path, index_json)?;
+
     println!(
-        "\n{} Extracted {} sessions to {} files",
+        "\n{} Copied {} sessions to {} raw JSON files",
         "Done!".green().bold(),
         total_sessions.to_string().cyan(),
         total_files.to_string().cyan()
+    );
+    println!(
+        "Index saved to: {}",
+        index_path.display().to_string().dimmed()
     );
 
     Ok(())

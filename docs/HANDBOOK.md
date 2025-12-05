@@ -1,7 +1,7 @@
 # ECHOVAULT - DEVELOPER HANDBOOK
 
-**Phiên bản:** 2.0.0
-**Ngày cập nhật:** 04/12/2025
+**Phiên bản:** 2.1.0
+**Ngày cập nhật:** 05/12/2025
 **Dành cho:** Solo Developer
 
 ---
@@ -28,24 +28,30 @@
 
 **EchoVault** là "Hộp đen" (Black Box) cho mọi cuộc hội thoại AI của bạn. Dự án giải quyết vấn đề **không thể đồng bộ lịch sử chat AI** giữa nhiều máy tính, nhiều IDE, và nhiều workspace.
 
-Hiện tại, GitHub Copilot, Cursor, Cline và các công cụ AI khác đều lưu trữ lịch sử chat **cục bộ** (locally), gắn liền với từng workspace hoặc IDE cụ thể. EchoVault trích xuất, chuẩn hóa và lưu trữ tất cả thành **Markdown** - format có thể đọc được ở bất kỳ đâu, bất kỳ lúc nào.
+Hiện tại, GitHub Copilot, Cursor, Cline và các công cụ AI khác đều lưu trữ lịch sử chat **cục bộ** (locally), gắn liền với từng workspace hoặc IDE cụ thể. EchoVault trích xuất và lưu trữ **nguyên vẹn dữ liệu gốc** - đảm bảo không mất thông tin khi format thay đổi.
 
 ### 1.2. Vấn Đề Cần Giải Quyết
 
 - **Phân mảnh dữ liệu**: Chat history nằm rải rác ở nhiều máy (Windows, WSL, Mac), nhiều IDE (VS Code, Cursor, JetBrains).
 - **Không thể đồng bộ**: Các IDE không hỗ trợ sync chat history qua cloud.
 - **Mất tri thức**: Những insight, code snippets, debugging sessions quý giá bị quên lãng.
-- **Khó tái sử dụng**: Không thể inject context từ cuộc chat cũ vào cuộc chat mới.
+- **Format thay đổi liên tục**: VS Code Copilot đã có 3+ versions format khác nhau.
 
 ### 1.3. Giải Pháp
 
 ```text
-IDE Databases (SQLite/JSON) -> EchoVault CLI -> Hybrid Storage -> Git Sync -> Context for AI
-                                              |
-                                              +-> Raw JSON (backup, future-proof)
-                                              +-> Markdown (human-readable, AI context)
-                                              +-> Index (fast search)
+IDE Files (JSON/SQLite) -> EchoVault CLI -> Raw JSON Storage -> Encryption -> GitHub Sync
+                                |                                               |
+                                +-> Copy nguyên vẹn file gốc                    +-> OAuth Device Flow
+                                +-> Không format/transform                      +-> Auto push
+                                +-> Index metadata để search                    +-> Multi-device sync
 ```
+
+**Nguyên tắc quan trọng**: Không format lại dữ liệu! Lưu trữ nguyên vẹn JSON gốc để:
+
+- Không mất thông tin khi IDE/model thay đổi format
+- Có thể re-parse bất kỳ lúc nào với parser mới
+- Future-proof cho các tính năng chưa biết
 
 ### 1.4. Người Dùng Mục Tiêu
 
@@ -60,30 +66,36 @@ IDE Databases (SQLite/JSON) -> EchoVault CLI -> Hybrid Storage -> Git Sync -> Co
 ### 2.1. Core Philosophy
 
 - **Universal Compatibility**: Hoạt động với mọi IDE và công cụ AI phổ biến.
-- **Privacy First**: Dữ liệu được trích xuất và xử lý hoàn toàn cục bộ. Không gửi lên cloud của bên thứ ba.
-- **Git-Native**: Git là cơ chế sync chính. Đơn giản, đáng tin cậy, miễn phí.
-- **Future-Proof**: Lưu trữ raw data gốc để không mất thông tin khi format thay đổi.
+- **Privacy First**: Dữ liệu được mã hóa trước khi rời khỏi máy.
+- **Git-Native**: Git + GitHub là cơ chế sync chính.
+- **Future-Proof**: Lưu trữ raw data gốc, không transform/format.
 
 ### 2.2. Key Features
 
 1. **Universal Extraction**:
-    - Tự động phát hiện và trích xuất từ SQLite databases, JSON files, JSONL logs.
+    - Copy nguyên vẹn JSON/SQLite files từ các IDE.
     - Plugin architecture cho từng IDE/Tool.
-    - Hỗ trợ nhiều schema versions (auto-detect).
+    - Hỗ trợ nhiều schema versions (không cần parse chi tiết).
 
-2. **Hybrid Storage** (Future-Proof):
-    - **Raw JSON**: Lưu trữ data gốc, không mất thông tin khi format thay đổi.
-    - **Markdown View**: Human-readable, có thể inject vào AI context.
-    - **Index**: Fast search với metadata.
+2. **Raw Storage** (Future-Proof):
+    - **Chỉ lưu JSON gốc**: Copy nguyên vẹn, không transform.
+    - **Index metadata**: Extract metadata cơ bản (date, title) để search.
+    - **Không format Markdown**: Việc render để đọc sẽ làm on-demand trong TUI/Desktop app.
 
 3. **Git Synchronization**:
     - Tự động commit vào local Git repository.
-    - Push lên private remote (GitHub, GitLab, self-hosted).
-    - Conflict resolution thông minh.
+    - Push lên GitHub với OAuth Device Flow.
+    - Encryption trước khi push.
 
-4. **Context Injection** (Future):
-    - Sử dụng file Markdown như `@context` cho Cursor, Cline.
-    - Semantic search để tìm context liên quan.
+4. **TUI Viewer** (Phase 1):
+    - Xem lịch sử chat trong terminal.
+    - Parse và render JSON on-demand.
+    - Full-text search.
+
+5. **Desktop App** (Phase 2):
+    - Tauri-based cross-platform app.
+    - Better UX với GUI.
+    - Advanced search và filtering.
 
 ---
 
@@ -93,16 +105,16 @@ IDE Databases (SQLite/JSON) -> EchoVault CLI -> Hybrid Storage -> Git Sync -> Co
 
 ```text
 +------------------+     +------------------+     +------------------+     +------------------+
-|   IDE Databases  | --> |   EchoVault CLI  | --> |   AES-256-GCM    | --> |     GitHub       |
-|  (SQLite, JSON)  |     |     (Rust)       |     |   Encryption     |     |  (Remote Repo)   |
+|   IDE Files      | --> |   EchoVault CLI  | --> |   AES-256-GCM    | --> |     GitHub       |
+|  (JSON, SQLite)  |     |     (Rust)       |     |   Encryption     |     |  (Remote Repo)   |
 +------------------+     +------------------+     +------------------+     +------------------+
         |                        |                        |                        |
         v                        v                        v                        v
 +------------------+     +------------------+     +------------------+     +------------------+
-| - VS Code        |     | - Extractors     |     | - Passphrase     |     | - HTTPS/SSH      |
-| - Cursor         |     | - Formatters     |     | - Argon2id KDF   |     | - Auto Push      |
-| - Cline          |     | - Sync Engine    |     | - .md.enc files  |     | - Private/Public |
-| - Aider          |     | - TUI Viewer     |     | - Fast (<10ms)   |     | - Version Ctrl   |
+| - VS Code        |     | - Copy raw files |     | - Passphrase     |     | - OAuth Device   |
+| - Cursor         |     | - Index metadata |     | - Argon2id KDF   |     |   Flow           |
+| - Cline          |     | - TUI Viewer     |     | - .json.enc      |     | - Auto Push      |
+| - Antigravity    |     | - Sync Engine    |     | - Fast (<10ms)   |     | - Version Ctrl   |
 +------------------+     +------------------+     +------------------+     +------------------+
 ```
 
@@ -113,10 +125,10 @@ IDE Databases (SQLite/JSON) -> EchoVault CLI -> Hybrid Storage -> Git Sync -> Co
 - **Language**: Rust (single binary, cross-platform)
 - **Framework**: clap (derive macro)
 - **Commands**:
-  - `echovault init` - Khởi tạo vault mới với encryption key và GitHub remote.
+  - `echovault init` - Khởi tạo vault mới với GitHub OAuth và encryption key.
   - `echovault scan` - Quét và liệt kê tất cả chat sessions có sẵn.
-  - `echovault extract` - Trích xuất và chuyển đổi thành Markdown.
-  - `echovault sync` - Commit và push lên GitHub (với encryption).
+  - `echovault extract` - Copy raw JSON files vào vault (không format).
+  - `echovault sync` - Encrypt và push lên GitHub.
   - `echovault view` - Mở TUI để xem và tìm kiếm lịch sử chat.
 
 #### 3.2.2. TUI Viewer (ratatui)
@@ -124,32 +136,32 @@ IDE Databases (SQLite/JSON) -> EchoVault CLI -> Hybrid Storage -> Git Sync -> Co
 Giao diện Terminal UI để xem lại lịch sử chat:
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│ EchoVault - Chat History Viewer                    [q]uit  │
-├─────────────────────────────────────────────────────────────┤
-│ Sessions                    │ Content                       │
-│ ─────────────────────────── │ ───────────────────────────── │
-│ > 2025-12-04 FastAPI Mid... │ ## User                       │
-│   2025-12-03 Rust CLI ar... │ Tôi cần tối ưu middleware...  │
-│   2025-12-02 TypeScript...  │                               │
-│   2025-12-01 Database op... │ ## Assistant                  │
-│                             │ Dưới đây là code đã tối ưu... │
-│                             │                               │
-│ [/] Search  [↑↓] Navigate   │ [Enter] Open  [c] Copy        │
-└─────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------+
+| EchoVault - Chat History Viewer                    [q]uit   |
++-------------------------------------------------------------+
+| Sessions                    | Content                       |
+| --------------------------- | ----------------------------- |
+| > 2025-12-04 FastAPI Mid... | ## User                       |
+|   2025-12-03 Rust CLI ar... | Toi can toi uu middleware... |
+|   2025-12-02 TypeScript...  |                               |
+|   2025-12-01 Database op... | ## Assistant                  |
+|                             | Duoi day la code da toi uu...|
+|                             |                               |
+| [/] Search  [jk] Navigate   | [Enter] Open  [c] Copy        |
++-------------------------------------------------------------+
 ```
 
 **Features:**
 
 - Browse sessions theo ngày, project, source
 - Tìm kiếm full-text trong tất cả sessions
+- Parse và render JSON on-demand
 - Xem nội dung đã decrypt (tự động pull từ GitHub)
 - Copy code blocks vào clipboard
-- Keyboard-driven, không cần chuột
 
 #### 3.2.3. Extractors (Plugin Architecture)
 
-Mỗi IDE/Tool có một Extractor riêng:
+Mỗi IDE/Tool có một Extractor riêng, nhưng chỉ copy files, không parse chi tiết:
 
 ```text
 src/
@@ -158,24 +170,24 @@ src/
     vscode_copilot.rs
     cursor.rs
     cline.rs
-    aider.rs
-    claude_code.rs
+    antigravity.rs
 ```
 
-#### 3.2.4. Formatters
+**Extractor responsibilities:**
 
-- **MarkdownFormatter**: Chuyển đổi raw data thành Markdown với frontmatter.
-- **JSONFormatter**: Export raw JSON cho advanced use cases.
+- Tìm đường dẫn lưu trữ của IDE
+- Copy raw JSON files vào vault
+- Extract metadata cơ bản (filename, date, size) cho index
 
-#### 3.2.5. Sync Engine
+#### 3.2.4. Sync Engine
 
 - Git-based synchronization với `git2` crate.
 - **GitHub as primary storage**: Không lưu local lâu dài, chỉ cache tạm.
 - **Auto-push**: Tự động đẩy lên GitHub sau mỗi extract.
 - **Encryption by default**: AES-256-GCM trước khi push.
-- **Auth methods**: HTTPS (Personal Access Token) hoặc SSH key.
+- **OAuth Device Flow**: Authentication chính (không cần PAT/SSH key).
 
-#### 3.2.6. Encryption Layer
+#### 3.2.5. Encryption Layer
 
 - **AES-256-GCM**: Military-grade encryption cho tất cả files.
 - **Passphrase-based**: User cung cấp passphrase khi init.
@@ -189,34 +201,42 @@ src/
 
 | Layer | Crate | Purpose |
 | :--- | :--- | :--- |
-| **Language** | Rust 1.75+ | Core Logic, single binary |
+| **Language** | Rust 1.83+ | Core Logic, single binary |
 | **CLI Framework** | clap (derive) | Modern CLI with auto-completion |
 | **TUI Framework** | ratatui, crossterm | Terminal UI for viewing history |
-| **SQLite Reader** | rusqlite | Read IDE databases (40M+ downloads) |
+| **SQLite Reader** | rusqlite | Read IDE databases (Cursor, etc.) |
 | **JSON** | serde, serde_json | Serialization/Deserialization |
 | **Encryption** | aes-gcm | AES-256-GCM encryption |
 | **Key Derivation** | argon2 | Passphrase to key derivation |
 | **Git Operations** | git2 | libgit2 bindings |
-| **Async Runtime** | tokio | Async I/O (optional) |
+| **HTTP Client** | reqwest | OAuth Device Flow |
 | **Terminal UI** | indicatif, colored | Progress bars, colors |
 | **Error Handling** | anyhow, thiserror | Ergonomic errors |
 
-### 4.2. Storage Format (Hybrid)
+### 4.2. Phase 2 Stack (Desktop App)
+
+| Layer | Technology | Purpose |
+| :--- | :--- | :--- |
+| **Framework** | Tauri 2.x | Cross-platform desktop app |
+| **Frontend** | React/TypeScript | UI components |
+| **Styling** | Tailwind CSS | Responsive design |
+| **State** | Zustand | Simple state management |
+
+### 4.3. Storage Format
 
 | Layer | Format | Use Case |
 | :--- | :--- | :--- |
-| **Primary** | JSON gốc (.json.gz) | Backup, future-proof, không mất data |
-| **View** | Markdown | Human-readable, AI context injection |
-| **Index** | SQLite/JSON | Fast search, metadata, filtering |
-| **Sync** | Encrypted (.enc) | Secure sync to remote Git |
+| **Primary** | Raw JSON gốc | Copy nguyên vẹn từ IDE |
+| **Index** | SQLite | Fast search, metadata |
+| **Sync** | Encrypted (.enc) | Secure sync to GitHub |
 
-**Tại sao Hybrid?**
+**Tại sao không format lại?**
 
-- IDE format thay đổi thường xuyên (VS Code Copilot đã có 3+ versions)
-- Model khác nhau có response structure khác nhau
-- Lưu raw JSON để có thể re-parse khi cần, không mất data
+- VS Code Copilot đã thay đổi format 3+ lần (v1 → v2 → v3)
+- Model khác nhau (GPT-4, Claude, GPT-5-Codex) có response structure khác
+- Lưu raw JSON giúp không mất data, có thể re-parse bất kỳ lúc nào
 
-### 4.3. Build & Distribution
+### 4.4. Build & Distribution
 
 | Platform | Method |
 | :--- | :--- |
@@ -245,7 +265,8 @@ Chat history có thể chứa thông tin nhạy cảm:
 EchoVault sử dụng **một layer bảo mật duy nhất**: Mã hóa toàn bộ nội dung trước khi đẩy lên GitHub.
 
 ```text
-echovault init --passphrase "your-secure-passphrase"
+echovault init
+# Browser mở -> Đăng nhập GitHub -> Nhập passphrase
 echovault sync  # Tự động encrypt -> commit -> push
 ```
 
@@ -256,36 +277,56 @@ echovault sync  # Tự động encrypt -> commit -> push
 - **Performance**: Encrypt/decrypt file KB-MB trong **milliseconds**
 - **Passphrase-based**: Sử dụng Argon2id để derive key từ passphrase
 
-**Tại sao chỉ cần Encryption?**
+### 5.3. GitHub Synchronization với OAuth Device Flow
 
-- Nếu đã mã hóa toàn bộ file, secrets bên trong cũng đã được bảo vệ
-- Không cần secret detection/redaction vì plaintext không bao giờ rời khỏi máy
-- Đơn giản hóa kiến trúc, giảm dependencies
+EchoVault sử dụng **OAuth Device Flow** để authentication với GitHub - không cần copy/paste token!
 
-### 5.3. GitHub Synchronization
+#### OAuth Device Flow
 
-EchoVault **bắt buộc** sync lên GitHub (không hỗ trợ local-only storage):
+```text
++------------------+                              +------------------+
+|  EchoVault CLI   |                              |     GitHub       |
++------------------+                              +------------------+
+        |                                                 |
+        |  1. POST /login/device/code                     |
+        |  (client_id, scope)                             |
+        |------------------------------------------------>|
+        |                                                 |
+        |  2. device_code, user_code, verification_uri    |
+        |<------------------------------------------------|
+        |                                                 |
+        |  3. Display: "Go to github.com/login/device     |
+        |     and enter code: ABCD-1234"                  |
+        |                                                 |
+        |                    [User opens browser,         |
+        |                     enters code, authorizes]    |
+        |                                                 |
+        |  4. Poll POST /login/oauth/access_token         |
+        |     (device_code, client_id)                    |
+        |------------------------------------------------>|
+        |                                                 |
+        |  5. access_token (when authorized)              |
+        |<------------------------------------------------|
+        |                                                 |
+```
 
-| Feature | Description |
+**Ưu điểm của OAuth Device Flow:**
+
+- Không cần copy/paste Personal Access Token
+- Không cần SSH key setup
+- Hoạt động tốt cho CLI applications
+- Token có thể revoke từ GitHub settings
+- Scope hạn chế (chỉ cần repo access)
+
+#### Fallback Methods
+
+Nếu OAuth không hoạt động, hỗ trợ fallback:
+
+| Method | Use Case |
 | :--- | :--- |
-| **Primary Storage** | GitHub repository (không lưu local lâu dài) |
-| **Local Cache** | Chỉ lưu tạm để xử lý, tự động xóa sau khi push |
-| **Auto Push** | Tự động đẩy lên GitHub sau mỗi extract |
-| **Repo Visibility** | Do người dùng tự chọn (Private recommended, Public OK vì đã encrypt) |
-
-#### Authentication Methods
-
-**HTTPS (Personal Access Token):**
-
-```text
-echovault init --remote https://github.com/username/vault.git --token ghp_xxxx
-```
-
-**SSH (SSH Key):**
-
-```text
-echovault init --remote git@github.com:username/vault.git
-```
+| **OAuth Device Flow** | Primary (recommended) |
+| **Personal Access Token** | Fallback nếu không có browser |
+| **SSH Key** | Fallback cho advanced users |
 
 ### 5.4. Encryption Workflow
 
@@ -303,8 +344,8 @@ echovault init --remote git@github.com:username/vault.git
                            |
                            v
 +------------------+  +-----------------+  +------------------+
-|  Raw Markdown    |->|  AES-256-GCM    |->| Encrypted File   |
-|  (with secrets)  |  |   Encryption    |  |  (.md.enc)       |
+|  Raw JSON Files  |->|  AES-256-GCM    |->| Encrypted File   |
+|  (with secrets)  |  |   Encryption    |  |  (.json.enc)     |
 +------------------+  +-----------------+  +------------------+
                                                     |
                                                     v
@@ -318,17 +359,14 @@ echovault init --remote git@github.com:username/vault.git
 ### 5.5. Cấu Hình
 
 ```toml
-# echovault.toml
+# echovault.toml (auto-generated by init)
 
 [sync]
 # Remote repository (GitHub)
-remote = "git@github.com:username/my-vault.git"
+remote = "https://github.com/username/my-vault.git"
 
-# Authentication method: "ssh" or "https"
-auth_method = "ssh"
-
-# For HTTPS: Personal Access Token (stored securely in keychain)
-# token = "ghp_xxxx"  # Or use environment variable ECHOVAULT_GITHUB_TOKEN
+# Authentication method: "oauth" (default), "pat", or "ssh"
+auth_method = "oauth"
 
 [encryption]
 # Encryption is always enabled, cannot be disabled
@@ -346,107 +384,38 @@ auth_method = "ssh"
 
 ## 6. HỖ TRỢ IDE VÀ CÔNG CỤ
 
-### 6.1. Tier 1: Ưu Tiên Cao (Có Thông Tin Rõ Ràng)
+### 6.1. Phase 1: VS Code Copilot
 
-#### VS Code Copilot
+#### Storage Location
 
 | Platform | Storage Path |
 | :--- | :--- |
 | Windows | `%APPDATA%\Code\User\workspaceStorage\<hash>\chatSessions\*.json` |
 | macOS | `~/Library/Application Support/Code/User/workspaceStorage/<hash>/chatSessions/*.json` |
 | Linux | `~/.config/Code/User/workspaceStorage/<hash>/chatSessions/*.json` |
-| WSL | `~/.vscode-server/data/User/workspaceStorage/<hash>/chatSessions/*.json` |
+| WSL | `/mnt/c/Users/<user>/AppData/Roaming/Code/User/workspaceStorage/<hash>/chatSessions/*.json` |
 
 - **Format**: JSON files (từ VS Code 1.96+)
 - **Versions**: v1 (cũ), v2, v3 (hiện tại) - format thay đổi thường xuyên
 - **Data**: Structured JSON với messages, tool calls, thinking steps
 
-#### Cursor
+### 6.2. Phase 2: Antigravity + Others
 
-| Platform | Storage Path |
-| :--- | :--- |
-| Windows | `%APPDATA%\Cursor\User\workspaceStorage\<hash>\state.vscdb` |
-| macOS | `~/Library/Application Support/Cursor/User/workspaceStorage/<hash>/state.vscdb` |
-| Linux | `~/.config/Cursor/User/workspaceStorage/<hash>/state.vscdb` |
+#### Google Antigravity
 
-- **Format**: SQLite database (tương tự VS Code)
-- **Key**: Tìm keys chứa `cursor` hoặc `composer`
-- **Data**: JSON string, có thể bao gồm cả artifacts
+- VS Code fork với AI-first design
+- Storage location: Cần research (likely similar to VS Code)
+- Có "Knowledge Items" feature
 
-#### Cline (Claude Dev)
+#### Các IDE khác (Phase 3)
 
-| Platform | Storage Path |
-| :--- | :--- |
-| Windows | `%APPDATA%\Code\User\globalStorage\saoudrizwan.claude-dev\` |
-| macOS | `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/` |
-| Linux | `~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/` |
-
-- **Format**: JSON files trong task directories
-- **Data**: Structured JSON với messages và artifacts
-
-#### Aider
-
-| Platform | Storage Path |
-| :--- | :--- |
-| All | `~/.aider.chat.history.md` (global) |
-| Per-project | `.aider.chat.history.md` (trong project root) |
-
-- **Format**: Markdown (native!)
-- **Data**: Đã sẵn sàng sử dụng, chỉ cần copy/sync
-
-#### Claude Code
-
-| Platform | Storage Path |
-| :--- | :--- |
-| All | `~/.claude/projects/<project-hash>/` |
-
-- **Format**: JSONL (JSON Lines)
-- **Data**: Session logs với timestamps
-
-### 6.2. Tier 2: Cần Research Thêm
-
-| Tool | Status | Notes |
+| IDE | Storage | Format |
 | :--- | :--- | :--- |
-| **Google Antigravity** | Research | VS Code fork, có Knowledge Items |
-| **JetBrains AI** | Research | Có migration giữa phiên bản |
-| **Windsurf** | Research | Codeium's IDE |
-| **Codex CLI** | Known | `~/.codex/sessions` (JSONL) |
-| **OpenCode** | Known | `.opencode` directories (SQLite) |
-
-### 6.3. Markdown Output Format
-
-```markdown
----
-title: "Refactor FastAPI Middleware"
-date: 2025-12-04T16:30:00
-source: vscode-copilot
-project: my-logistics-app
-workspace_hash: a1b2c3d4
-tags: [fastapi, middleware, refactor]
----
-
-## User
-
-Tôi cần tối ưu lại middleware này để handle error tốt hơn...
-
-## Assistant (Claude Opus 4.5)
-
-Dưới đây là đoạn code đã tối ưu:
-
-\`\`\`python
-# Code here
-\`\`\`
-
----
-
-## User
-
-Giải thích thêm về error handling...
-
-## Assistant
-
-...
-```
+| **Cursor** | `workspaceStorage/<hash>/state.vscdb` | SQLite |
+| **Cline** | `globalStorage/saoudrizwan.claude-dev/` | JSON |
+| **Aider** | `~/.aider.chat.history.md` | Markdown |
+| **Claude Code** | `~/.claude/projects/` | JSONL |
+| **JetBrains AI** | Cần research | Unknown |
 
 ---
 
@@ -502,18 +471,33 @@ cargo audit
 EchoVault/
   src/
     main.rs               # Entry point
-    cli.rs                # clap CLI definitions
+    cli/
+      mod.rs              # CLI definitions
+      commands.rs         # Command implementations
     extractors/
       mod.rs              # Extractor trait
-      vscode_copilot.rs   # VS Code Copilot extractor (MVP)
-    formatters/
-      mod.rs              # Formatter trait
-      markdown.rs         # Markdown formatter
+      vscode_copilot.rs   # VS Code Copilot extractor
+    storage/
+      mod.rs              # Storage trait
+      raw_json.rs         # Raw JSON storage (copy files)
+      index.rs            # SQLite index for metadata
+    crypto/
+      mod.rs              # Encryption module
+      encryption.rs       # AES-256-GCM
+      key_derivation.rs   # Argon2id
+    sync/
+      mod.rs              # Sync engine
+      git.rs              # Git operations
+      oauth.rs            # GitHub OAuth Device Flow
+    tui/
+      mod.rs              # TUI viewer
+      app.rs              # App state
+      ui.rs               # UI rendering
   tests/
   docs/
     HANDBOOK.md
   Cargo.toml
-  mise.toml               # Toolchain configuration
+  mise.toml
 ```
 
 ---
@@ -536,51 +520,68 @@ EchoVault/
 ### 8.3. Architecture Principles
 
 - **Plugin Architecture**: Mỗi IDE là một module độc lập.
-- **Dependency Injection**: Extractors và Formatters có thể swap được.
-- **Single Responsibility**: Mỗi class làm một việc.
+- **No Data Transformation**: Extractors chỉ copy, không format.
+- **Single Responsibility**: Mỗi module làm một việc.
 - **Fail Gracefully**: Lỗi một IDE không ảnh hưởng IDE khác.
 
 ---
 
 ## 9. LỊCH TRÌNH VÀ MILESTONES
 
-### Phase 1: MVP (VS Code Copilot + Vault Core)
+### Phase 1: MVP (VS Code Copilot + Vault Core + TUI)
 
 **Extractor:**
 
 - [x] Core CLI với clap (scan, extract commands)
-- [x] VS Code Copilot Extractor (v1, v2, v3 formats)
+- [x] VS Code Copilot Extractor (tìm files)
 - [x] Cross-platform path handling (Windows, macOS, Linux, WSL)
-
-**Storage (Hybrid):**
-
-- [ ] Raw JSON storage (.json.gz) - lưu data gốc
-- [ ] Markdown view generation
-- [ ] Session index (SQLite)
+- [ ] Raw JSON storage (copy files, không format)
+- [ ] Metadata index (SQLite)
 
 **Vault Core:**
 
 - [ ] Basic configuration (`echovault.toml`)
 - [ ] AES-256-GCM Encryption với Argon2id
 - [ ] Git Sync Engine (auto-commit, push)
-- [ ] GitHub authentication (HTTPS/SSH)
+- [ ] GitHub OAuth Device Flow
 
-### Phase 2: More Extractors
+**TUI Viewer:**
 
-- [ ] Cursor Extractor
-- [ ] Cline (Claude Dev) Extractor
+- [ ] Basic TUI với ratatui
+- [ ] Session list và navigation
+- [ ] JSON parsing on-demand để render
+- [ ] Full-text search
+
+### Phase 2: Desktop App + Antigravity
+
+**Desktop App (Tauri):**
+
+- [ ] Tauri 2.x setup
+- [ ] React/TypeScript frontend
+- [ ] Better UX với GUI
+- [ ] Advanced search và filtering
+
+**More Features:**
+
 - [ ] Google Antigravity Extractor
-- [ ] GitHub Copilot for JetBrains Extractor
-- [ ] Aider Extractor (Markdown native)
+- [ ] Clipboard integration
+- [ ] Export to Markdown (on-demand)
+
+### Phase 3: More Extractors + Advanced
+
+**Extractors:**
+
+- [ ] Cursor Extractor (SQLite)
+- [ ] Cline (Claude Dev) Extractor
+- [ ] GitHub Copilot for JetBrains
+- [ ] Aider Extractor
 - [ ] Claude Code Extractor
 
-### Phase 3: Advanced Features
+**Advanced:**
 
-- [ ] TUI Viewer với ratatui
-- [ ] Full-text search trong TUI
-- [ ] Clipboard integration
 - [ ] Semantic search với embeddings
 - [ ] Context injection helpers
+- [ ] Team sharing features
 
 ---
 
@@ -592,6 +593,12 @@ EchoVault/
 - **Binary**: Single executable cho Windows/macOS/Linux
 - **Homebrew**: Formula cho macOS
 - **AUR**: Package cho Arch Linux
+
+### 10.2. Desktop App Distribution (Phase 2)
+
+- **Windows**: MSI installer
+- **macOS**: DMG
+- **Linux**: AppImage, deb, rpm
 
 ---
 
@@ -617,15 +624,15 @@ EchoVault/
 1. Đọc file `workspace.json` trong mỗi hash folder.
 2. Match với project path hiện tại.
 
-### 11.3. Schema Thay Đổi
+### 11.3. OAuth Device Flow Fails
 
-**Vấn đề**: IDE update làm thay đổi cấu trúc database.
+**Vấn đề**: Không thể authenticate với GitHub.
 
 **Giải pháp**:
 
-1. Version detection trong Extractor.
-2. Fallback logic cho nhiều schema versions.
-3. Community reporting để update nhanh.
+1. Kiểm tra kết nối internet
+2. Thử lại với `echovault init --auth pat` (Personal Access Token)
+3. Kiểm tra GitHub status page
 
 ### 11.4. WSL Path Issues
 
@@ -633,9 +640,8 @@ EchoVault/
 
 **Giải pháp**:
 
-1. Detect môi trường runtime.
-2. Sử dụng native paths (không convert `\\wsl$`).
-3. Mỗi môi trường chạy instance riêng của EchoVault.
+1. EchoVault auto-detect WSL và đọc từ `/mnt/c/Users/...`
+2. Mỗi môi trường có thể chạy instance riêng của EchoVault
 
 ### 11.5. Large Chat History
 
@@ -644,5 +650,5 @@ EchoVault/
 **Giải pháp**:
 
 1. Incremental extraction (chỉ extract sessions mới).
-2. Pagination cho output.
+2. Compression với gzip.
 3. Configurable time range filter.
