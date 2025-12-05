@@ -9,6 +9,7 @@ mod crypto;
 mod extractors;
 mod storage;
 mod sync;
+mod utils;
 
 use anyhow::Result;
 use clap::Parser;

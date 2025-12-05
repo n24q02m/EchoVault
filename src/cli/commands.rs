@@ -14,9 +14,13 @@ use crate::sync::oauth::{
     OAuthDeviceFlow,
 };
 use crate::sync::GitSync;
+use crate::utils::open_browser;
 use anyhow::{bail, Context, Result};
 use colored::Colorize;
+use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
+use rayon::prelude::*;
 use std::io::{self, Write};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Authenticate với GitHub qua OAuth Device Flow
 fn authenticate_github() -> Result<OAuthCredentials> {
@@ -26,15 +30,23 @@ fn authenticate_github() -> Result<OAuthCredentials> {
 
     let credentials = oauth.authenticate(|device_code| {
         println!("\nĐể xác thực với GitHub:");
+        println!("  1. Nhập mã: {}", device_code.user_code.yellow().bold());
         println!(
-            "  1. Mở trình duyệt: {}",
-            device_code.verification_uri.cyan().bold()
+            "  2. Truy cập: {}",
+            device_code.verification_uri.cyan().underline()
         );
-        println!("  2. Nhập mã: {}", device_code.user_code.yellow().bold());
-        println!(
-            "\nĐang chờ xác thực (hết hạn sau {} giây)...",
-            device_code.expires_in
-        );
+
+        // Tự động mở browser
+        println!("\nĐang thử mở trình duyệt...");
+        if open_browser(&device_code.verification_uri) {
+            println!("  {} Đã mở trình duyệt!", "✓".green());
+        } else {
+            println!(
+                "  {} Không thể mở tự động. Vui lòng mở link trên thủ công.",
+                "!".yellow()
+            );
+        }
+        println!(); // Blank line trước spinner
     })?;
 
     println!("  {} Xác thực thành công!", "✓".green());
@@ -239,13 +251,19 @@ pub fn sync_vault(remote: Option<String>) -> Result<()> {
         );
     }
 
-    // === ENCRYPT: Mã hóa tất cả raw JSON files ===
-    println!("\n{}", "Encrypting files...".cyan());
+    // === ENCRYPT: Compress + Encrypt (parallel + incremental) ===
+    println!(
+        "\n{}",
+        "Encrypting files (parallel + incremental)...".cyan()
+    );
     let source_dirs = ["vscode-copilot", "cursor", "cline", "antigravity"];
     let encrypted_dir = config.encrypted_dir();
     std::fs::create_dir_all(&encrypted_dir)?;
 
-    let mut encrypted_count = 0;
+    // Thu thập tất cả files cần encrypt
+    let mut files_to_encrypt: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
+    let mut skipped_count = 0;
+
     for source in &source_dirs {
         let source_dir = vault_dir.join(source);
         if !source_dir.exists() {
@@ -260,21 +278,72 @@ pub fn sync_vault(remote: Option<String>) -> Result<()> {
             let path = entry.path();
 
             if path.extension().is_some_and(|e| e == "json") {
-                let filename = path.file_name().unwrap().to_string_lossy();
-                let enc_path = enc_source_dir.join(format!("{}.enc", filename));
+                let file_stem = path.file_stem().unwrap().to_string_lossy();
+                let enc_path = enc_source_dir.join(format!("{}.json.gz.enc", file_stem));
 
-                encryptor.encrypt_file(&path, &enc_path)?;
-                println!("  {} {}", "Encrypted:".green(), filename);
-                encrypted_count += 1;
+                // Incremental: chỉ encrypt nếu file mới hoặc đã thay đổi
+                if enc_path.exists() {
+                    let src_modified = path.metadata()?.modified()?;
+                    let enc_modified = enc_path.metadata()?.modified()?;
+                    if src_modified <= enc_modified {
+                        skipped_count += 1;
+                        continue; // Skip - đã encrypt và không thay đổi
+                    }
+                }
+
+                files_to_encrypt.push((path, enc_source_dir.clone()));
             }
         }
     }
 
-    if encrypted_count > 0 {
+    let total_files = files_to_encrypt.len();
+    if total_files == 0 {
+        if skipped_count > 0 {
+            println!(
+                "  {} All {} files already encrypted (skipped)",
+                "✓".green(),
+                skipped_count.to_string().cyan()
+            );
+        }
+    } else {
+        // Progress bar
+        let pb = ProgressBar::new(total_files as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+                .unwrap()
+                .progress_chars("=>-"),
+        );
+
+        // Parallel encryption với rayon
+        let encrypted_count = AtomicUsize::new(0);
+        let error_count = AtomicUsize::new(0);
+
+        files_to_encrypt
+            .par_iter()
+            .progress_with(pb.clone())
+            .for_each(|(path, enc_dir)| {
+                match crate::storage::compress_encrypt_chunk(path, enc_dir, &encryptor) {
+                    Ok(()) => {
+                        encrypted_count.fetch_add(1, Ordering::Relaxed);
+                    }
+                    Err(_e) => {
+                        error_count.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            });
+
+        pb.finish_and_clear();
+
+        let encrypted = encrypted_count.load(Ordering::Relaxed);
+        let errors = error_count.load(Ordering::Relaxed);
+
         println!(
-            "\n{} {} files",
-            "Encrypted".green(),
-            encrypted_count.to_string().cyan()
+            "  {} Encrypted {} files ({} skipped, {} errors)",
+            "✓".green(),
+            encrypted.to_string().cyan(),
+            skipped_count.to_string().yellow(),
+            errors.to_string().red()
         );
     }
 
@@ -295,55 +364,121 @@ pub fn sync_vault(remote: Option<String>) -> Result<()> {
         &commit_id.to_string()[..8]
     );
 
-    // Push
+    // Push (với retry logic cho trường hợp remote có commits)
     println!("\n{}", "Pushing to GitHub...".cyan());
-    let push_success = git.push("origin", "main", &credentials.access_token)?;
+    let push_result = push_with_retry(&git, &credentials.access_token, &config)?;
 
-    if !push_success {
-        // Repo chưa tồn tại, tự động tạo
-        let remote_url = config.sync.remote.as_deref().unwrap_or("");
-        let repo_name = remote_url
-            .trim_end_matches(".git")
-            .rsplit('/')
-            .next()
-            .unwrap_or("echovault-backup");
-
-        println!(
-            "  {} Repository chưa tồn tại, đang tạo '{}'...",
-            "→".cyan(),
-            repo_name
-        );
-
-        match create_github_repo(repo_name, &credentials.access_token, true) {
-            Ok(clone_url) => {
-                println!("  {} Created: {}", "✓".green(), clone_url);
-
-                // Thử push lại
-                println!("  {} Pushing...", "→".cyan());
-                let retry_success = git.push("origin", "main", &credentials.access_token)?;
-                if !retry_success {
-                    bail!("Push failed after creating repository");
-                }
-            }
-            Err(create_err) => {
-                // Nếu repo đã tồn tại (race condition), thử push lại
-                if create_err.to_string().contains("already exists") {
-                    println!("  {} Repository đã tồn tại, pushing...", "→".cyan());
-                    let retry_success = git.push("origin", "main", &credentials.access_token)?;
-                    if !retry_success {
-                        bail!("Push failed");
-                    }
-                } else {
-                    bail!("Cannot create repository: {}", create_err);
-                }
-            }
-        }
+    if push_result {
+        println!("  {} Pushed successfully!", "✓".green());
     }
 
-    println!("  {} Pushed successfully!", "✓".green());
     println!("\n{}", "Sync complete!".green().bold());
 
     Ok(())
+}
+
+/// Push với retry logic - handle các trường hợp:
+/// 1. Repo chưa tồn tại → tạo mới
+/// 2. Remote có commits khác → pull-merge trước, rồi push
+/// 3. Chỉ force push nếu merge fail
+fn push_with_retry(git: &GitSync, access_token: &str, config: &Config) -> Result<bool> {
+    let vault_dir = git.workdir()?;
+    let remote_url = git.get_remote_url("origin")?;
+    let auth_url = remote_url.replace(
+        "https://github.com/",
+        &format!("https://x-access-token:{}@github.com/", access_token),
+    );
+
+    // Thử push lần đầu
+    match git.push("origin", "main", access_token) {
+        Ok(true) => return Ok(true), // Push thành công
+        Ok(false) => {
+            // Repo chưa tồn tại, tự động tạo
+            let repo_name = config
+                .sync
+                .remote
+                .as_deref()
+                .unwrap_or("")
+                .trim_end_matches(".git")
+                .rsplit('/')
+                .next()
+                .unwrap_or("echovault-backup");
+
+            println!(
+                "  {} Repository chưa tồn tại, đang tạo '{}'...",
+                "→".cyan(),
+                repo_name
+            );
+
+            match create_github_repo(repo_name, access_token, true) {
+                Ok(clone_url) => {
+                    println!("  {} Created: {}", "✓".green(), clone_url);
+                    println!("  {} Pushing...", "→".cyan());
+                    git.push("origin", "main", access_token)?;
+                    return Ok(true);
+                }
+                Err(e) if e.to_string().contains("already exists") => {
+                    // Race condition - repo đã được tạo, tiếp tục force push
+                    println!("  {} Repository đã tồn tại", "→".cyan());
+                }
+                Err(e) => bail!("Cannot create repository: {}", e),
+            }
+        }
+        Err(e) => {
+            let err_msg = e.to_string();
+            if !err_msg.contains("rejected")
+                && !err_msg.contains("fetch first")
+                && !err_msg.contains("failed to push")
+            {
+                // Lỗi khác, không phải conflict
+                bail!("{}", e);
+            }
+            // Conflict - tiếp tục force push
+            println!("  {} Remote có thay đổi, đang pull-merge...", "→".yellow());
+        }
+    }
+
+    // Pull và merge từ remote trước (encrypted files có unique names nên không conflict)
+    println!("  {} Pulling from remote...", "→".cyan());
+    let pull_output = std::process::Command::new("git")
+        .current_dir(&vault_dir)
+        .args(["pull", "--no-rebase", &auth_url, "main"])
+        .output()
+        .context("Cannot execute git pull")?;
+
+    if pull_output.status.success() {
+        // Pull thành công, thử push lại
+        println!("  {} Merged successfully, pushing...", "✓".green());
+        let push_output = std::process::Command::new("git")
+            .current_dir(&vault_dir)
+            .args(["push", &auth_url, "main"])
+            .output()
+            .context("Cannot execute git push")?;
+
+        if push_output.status.success() {
+            return Ok(true);
+        }
+    }
+
+    // Pull/merge failed - có conflict thực sự
+    // Trong trường hợp này, vẫn cần force push
+    println!(
+        "  {} Merge failed, force pushing (có thể mất data từ máy khác)...",
+        "!".red()
+    );
+
+    let output = std::process::Command::new("git")
+        .current_dir(&vault_dir)
+        .args(["push", "--force", &auth_url, "main"])
+        .output()
+        .context("Cannot execute git push --force")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("Force push failed: {}", stderr);
+    }
+
+    Ok(true)
 }
 
 /// Extract sessions từ các IDE sources vào vault

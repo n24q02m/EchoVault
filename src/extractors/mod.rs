@@ -61,7 +61,7 @@ pub trait Extractor {
         Ok(self.list_session_files(location)?.len())
     }
 
-    /// Copy một session file vào vault
+    /// Copy một session file vào vault (incremental - chỉ copy nếu mới/thay đổi)
     /// Trả về path đến file trong vault
     fn copy_to_vault(&self, session: &SessionFile, vault_dir: &Path) -> Result<PathBuf> {
         // Tạo thư mục con theo source
@@ -78,8 +78,24 @@ pub trait Extractor {
 
         let dest_path = source_dir.join(&filename);
 
-        // Copy file
-        std::fs::copy(&session.source_path, &dest_path)?;
+        // Incremental: chỉ copy nếu file mới hoặc đã thay đổi
+        let should_copy = if dest_path.exists() {
+            // So sánh kích thước và modified time
+            let src_meta = session.source_path.metadata()?;
+            let dest_meta = dest_path.metadata()?;
+
+            let src_modified = src_meta.modified()?;
+            let dest_modified = dest_meta.modified()?;
+
+            // Copy nếu source mới hơn hoặc kích thước khác
+            src_modified > dest_modified || src_meta.len() != dest_meta.len()
+        } else {
+            true // File chưa tồn tại, cần copy
+        };
+
+        if should_copy {
+            std::fs::copy(&session.source_path, &dest_path)?;
+        }
 
         Ok(dest_path)
     }

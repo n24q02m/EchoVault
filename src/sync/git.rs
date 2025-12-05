@@ -39,6 +39,21 @@ pub struct GitSync {
 
 #[allow(dead_code)]
 impl GitSync {
+    /// Lấy workdir path
+    pub fn workdir(&self) -> Result<std::path::PathBuf> {
+        self.repo
+            .workdir()
+            .map(|p| p.to_path_buf())
+            .context("Repository has no workdir")
+    }
+
+    /// Lấy remote URL
+    pub fn get_remote_url(&self, name: &str) -> Result<String> {
+        let remote = self.repo.find_remote(name)?;
+        let url = remote.url().context("Remote has no URL")?;
+        Ok(ssh_to_https_url(url))
+    }
+
     /// Mở repository đã tồn tại
     pub fn open(vault_dir: &Path) -> Result<Self> {
         let repo = Repository::open(vault_dir)
