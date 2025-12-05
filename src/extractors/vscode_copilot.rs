@@ -7,7 +7,7 @@ use super::{Extractor, SessionFile, SessionMetadata};
 use anyhow::Result;
 use chrono::{TimeZone, Utc};
 use serde_json::Value;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// VS Code Copilot Extractor
 pub struct VSCodeCopilotExtractor {
@@ -71,7 +71,11 @@ impl VSCodeCopilotExtractor {
     }
 
     /// Extract metadata nhanh từ JSON file (chỉ đọc fields cần thiết)
-    fn extract_quick_metadata(&self, path: &PathBuf, workspace_name: &str) -> Option<SessionMetadata> {
+    fn extract_quick_metadata(
+        &self,
+        path: &PathBuf,
+        workspace_name: &str,
+    ) -> Option<SessionMetadata> {
         let content = std::fs::read_to_string(path).ok()?;
         let json: Value = serde_json::from_str(&content).ok()?;
 
@@ -174,7 +178,7 @@ impl Extractor for VSCodeCopilotExtractor {
         Ok(workspaces)
     }
 
-    fn get_workspace_name(&self, location: &PathBuf) -> String {
+    fn get_workspace_name(&self, location: &Path) -> String {
         let workspace_json = location.join("workspace.json");
         if workspace_json.exists() {
             if let Ok(content) = std::fs::read_to_string(&workspace_json) {
@@ -193,7 +197,7 @@ impl Extractor for VSCodeCopilotExtractor {
         "Unknown".to_string()
     }
 
-    fn list_session_files(&self, location: &PathBuf) -> Result<Vec<SessionFile>> {
+    fn list_session_files(&self, location: &Path) -> Result<Vec<SessionFile>> {
         let chat_sessions_dir = location.join("chatSessions");
         if !chat_sessions_dir.exists() {
             return Ok(Vec::new());

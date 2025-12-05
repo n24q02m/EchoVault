@@ -1,7 +1,7 @@
 # ECHOVAULT - DEVELOPER HANDBOOK
 
-**Phiên bản:** 2.1.0
-**Ngày cập nhật:** 05/12/2025
+**Phiên bản:** 2.2.0
+**Ngày cập nhật:** 06/12/2025
 **Dành cho:** Solo Developer
 
 ---
@@ -80,22 +80,17 @@ IDE Files (JSON/SQLite) -> EchoVault CLI -> Raw JSON Storage -> Encryption -> Gi
 2. **Raw Storage** (Future-Proof):
     - **Chỉ lưu JSON gốc**: Copy nguyên vẹn, không transform.
     - **Index metadata**: Extract metadata cơ bản (date, title) để search.
-    - **Không format Markdown**: Việc render để đọc sẽ làm on-demand trong TUI/Desktop app.
+    - **Không format Markdown**: Việc render để đọc sẽ làm on-demand trong Desktop app.
 
 3. **Git Synchronization**:
     - Tự động commit vào local Git repository.
     - Push lên GitHub với OAuth Device Flow.
     - Encryption trước khi push.
 
-4. **TUI Viewer** (Phase 1):
-    - Xem lịch sử chat trong terminal.
-    - Parse và render JSON on-demand.
-    - Full-text search.
-
-5. **Desktop App** (Phase 2):
+4. **Desktop App** (Phase 1):
     - Tauri-based cross-platform app.
-    - Better UX với GUI.
-    - Advanced search và filtering.
+    - GUI với React/TypeScript.
+    - Full-text search và filtering.
 
 ---
 
@@ -113,7 +108,7 @@ IDE Files (JSON/SQLite) -> EchoVault CLI -> Raw JSON Storage -> Encryption -> Gi
 +------------------+     +------------------+     +------------------+     +------------------+
 | - VS Code        |     | - Copy raw files |     | - Passphrase     |     | - OAuth Device   |
 | - Cursor         |     | - Index metadata |     | - Argon2id KDF   |     |   Flow           |
-| - Cline          |     | - TUI Viewer     |     | - .json.enc      |     | - Auto Push      |
+| - Cline          |     | - Desktop App    |     | - .json.enc      |     | - Auto Push      |
 | - Antigravity    |     | - Sync Engine    |     | - Fast (<10ms)   |     | - Version Ctrl   |
 +------------------+     +------------------+     +------------------+     +------------------+
 ```
@@ -129,27 +124,10 @@ IDE Files (JSON/SQLite) -> EchoVault CLI -> Raw JSON Storage -> Encryption -> Gi
   - `echovault scan` - Quét và liệt kê tất cả chat sessions có sẵn.
   - `echovault extract` - Copy raw JSON files vào vault (không format).
   - `echovault sync` - Encrypt và push lên GitHub.
-  - `echovault view` - Mở TUI để xem và tìm kiếm lịch sử chat.
 
-#### 3.2.2. TUI Viewer (ratatui)
+#### 3.2.2. Desktop App (Tauri)
 
-Giao diện Terminal UI để xem lại lịch sử chat:
-
-```text
-+-------------------------------------------------------------+
-| EchoVault - Chat History Viewer                    [q]uit   |
-+-------------------------------------------------------------+
-| Sessions                    | Content                       |
-| --------------------------- | ----------------------------- |
-| > 2025-12-04 FastAPI Mid... | ## User                       |
-|   2025-12-03 Rust CLI ar... | Toi can toi uu middleware... |
-|   2025-12-02 TypeScript...  |                               |
-|   2025-12-01 Database op... | ## Assistant                  |
-|                             | Duoi day la code da toi uu...|
-|                             |                               |
-| [/] Search  [jk] Navigate   | [Enter] Open  [c] Copy        |
-+-------------------------------------------------------------+
-```
+Giao diện Desktop GUI để xem lại lịch sử chat:
 
 **Features:**
 
@@ -203,7 +181,6 @@ src/
 | :--- | :--- | :--- |
 | **Language** | Rust 1.83+ | Core Logic, single binary |
 | **CLI Framework** | clap (derive) | Modern CLI with auto-completion |
-| **TUI Framework** | ratatui, crossterm | Terminal UI for viewing history |
 | **SQLite Reader** | rusqlite | Read IDE databases (Cursor, etc.) |
 | **JSON** | serde, serde_json | Serialization/Deserialization |
 | **Encryption** | aes-gcm | AES-256-GCM encryption |
@@ -213,7 +190,7 @@ src/
 | **Terminal UI** | indicatif, colored | Progress bars, colors |
 | **Error Handling** | anyhow, thiserror | Ergonomic errors |
 
-### 4.2. Phase 2 Stack (Desktop App)
+### 4.2. Desktop App Stack (Tauri)
 
 | Layer | Technology | Purpose |
 | :--- | :--- | :--- |
@@ -446,23 +423,34 @@ cargo run -- --help
 ### 7.3. Development Commands
 
 ```bash
-# Run CLI
+# Run CLI (development mode)
 cargo run -- scan
+cargo run -- --help
 
-# Build release
-cargo build --release
+# Build
+cargo build           # Debug build
+cargo build --release # Release build (optimized, stripped)
 
-# Run tests
-cargo test
+# Test
+cargo test            # Run all tests
+cargo test -- --nocapture  # Run tests with output
 
-# Lint
-cargo clippy
+# Format (rustfmt)
+cargo fmt             # Format code
+cargo fmt --check     # Check formatting without changes
 
-# Format
-cargo fmt
+# Lint (clippy)
+cargo clippy          # Run linter
+cargo clippy -- -D warnings  # Treat warnings as errors
 
-# Check for security vulnerabilities
-cargo audit
+# Type check (faster than build)
+cargo check           # Type check without building
+
+# Security audit
+cargo audit           # Check for security vulnerabilities
+
+# All checks (CI pipeline)
+cargo fmt --check && cargo clippy -- -D warnings && cargo test
 ```
 
 ### 7.4. Project Structure
@@ -489,10 +477,15 @@ EchoVault/
       mod.rs              # Sync engine
       git.rs              # Git operations
       oauth.rs            # GitHub OAuth Device Flow
-    tui/
-      mod.rs              # TUI viewer
-      app.rs              # App state
-      ui.rs               # UI rendering
+  src-tauri/
+    src/
+      lib.rs              # Tauri commands
+    tauri.conf.json       # Tauri configuration
+  src-web/                # React frontend
+    src/
+      App.tsx
+      components/
+    package.json
   tests/
   docs/
     HANDBOOK.md
@@ -528,7 +521,7 @@ EchoVault/
 
 ## 9. LỊCH TRÌNH VÀ MILESTONES
 
-### Phase 1: MVP (VS Code Copilot + Vault Core + TUI)
+### Phase 1: MVP (VS Code Copilot + Vault Core + Desktop App)
 
 **Extractor:**
 
@@ -545,27 +538,22 @@ EchoVault/
 - [ ] Git Sync Engine (auto-commit, push)
 - [ ] GitHub OAuth Device Flow
 
-**TUI Viewer:**
-
-- [ ] Basic TUI với ratatui
-- [ ] Session list và navigation
-- [ ] JSON parsing on-demand để render
-- [ ] Full-text search
-
-### Phase 2: Desktop App + Antigravity
-
 **Desktop App (Tauri):**
 
 - [ ] Tauri 2.x setup
 - [ ] React/TypeScript frontend
-- [ ] Better UX với GUI
-- [ ] Advanced search và filtering
+- [ ] Session list và navigation
+- [ ] JSON parsing on-demand để render
+- [ ] Full-text search
+
+### Phase 2: Antigravity + More Features
 
 **More Features:**
 
 - [ ] Google Antigravity Extractor
 - [ ] Clipboard integration
 - [ ] Export to Markdown (on-demand)
+- [ ] Advanced search và filtering
 
 ### Phase 3: More Extractors + Advanced
 
@@ -594,7 +582,7 @@ EchoVault/
 - **Homebrew**: Formula cho macOS
 - **AUR**: Package cho Arch Linux
 
-### 10.2. Desktop App Distribution (Phase 2)
+### 10.2. Desktop App Distribution
 
 - **Windows**: MSI installer
 - **macOS**: DMG

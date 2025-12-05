@@ -4,7 +4,11 @@
 //! Nguyên tắc: Lưu trữ raw JSON gốc, không format/transform data.
 
 mod cli;
+mod config;
+mod crypto;
 mod extractors;
+mod storage;
+mod sync;
 
 use anyhow::Result;
 use clap::Parser;
@@ -19,6 +23,12 @@ fn main() -> Result<()> {
         }
         Commands::Extract { source, output } => {
             cli::commands::extract(source, output)?;
+        }
+        Commands::Init { remote } => {
+            cli::commands::init(remote)?;
+        }
+        Commands::Sync => {
+            cli::commands::sync_vault()?;
         }
     }
 

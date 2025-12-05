@@ -13,12 +13,29 @@ categories = ["command-line-utilities", "development-tools"]
 # CLI framework
 clap = { version = "4.5", features = ["derive"] }
 
-# SQLite để đọc IDE databases
+# SQLite để đọc IDE databases và index
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 # JSON serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+# TOML config files
+toml = "0.8"
+
+# Encryption
+aes-gcm = "0.10"
+argon2 = "0.5"
+rand = "0.8"
+
+# Git operations (sử dụng vendored libgit2 và https)
+git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2", "https"] }
+
+# HTTP client cho OAuth (sử dụng rustls thay vì native-tls)
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+
+# Keyring cho lưu credentials (optional)
+keyring = "3"
 
 # Error handling
 anyhow = "1.0"
@@ -35,6 +52,9 @@ uuid = { version = "1.11", features = ["v4"] }
 
 # Terminal output
 colored = "2.1"
+
+# Password input
+rpassword = "7"
 
 [dev-dependencies]
 tempfile = "3.14"

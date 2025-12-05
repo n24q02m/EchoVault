@@ -8,7 +8,7 @@ pub mod vscode_copilot;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Metadata của một session file (cho index)
 /// Chỉ chứa thông tin cơ bản, KHÔNG chứa nội dung
@@ -53,19 +53,19 @@ pub trait Extractor {
     fn find_storage_locations(&self) -> Result<Vec<PathBuf>>;
 
     /// Lấy tên workspace từ location path
-    fn get_workspace_name(&self, location: &PathBuf) -> String;
+    fn get_workspace_name(&self, location: &Path) -> String;
 
     /// Liệt kê tất cả session files trong một location
-    fn list_session_files(&self, location: &PathBuf) -> Result<Vec<SessionFile>>;
+    fn list_session_files(&self, location: &Path) -> Result<Vec<SessionFile>>;
 
     /// Đếm số sessions trong một location
-    fn count_sessions(&self, location: &PathBuf) -> Result<usize> {
+    fn count_sessions(&self, location: &Path) -> Result<usize> {
         Ok(self.list_session_files(location)?.len())
     }
 
     /// Copy một session file vào vault
     /// Trả về path đến file trong vault
-    fn copy_to_vault(&self, session: &SessionFile, vault_dir: &PathBuf) -> Result<PathBuf> {
+    fn copy_to_vault(&self, session: &SessionFile, vault_dir: &Path) -> Result<PathBuf> {
         // Tạo thư mục con theo source
         let source_dir = vault_dir.join(self.source_name());
         std::fs::create_dir_all(&source_dir)?;
