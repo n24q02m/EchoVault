@@ -1,0 +1,30 @@
+[package]
+name = "echovault-tauri"
+version = "0.1.0"
+edition = "2021"
+authors = ["n24q02m"]
+description = "EchoVault Desktop App - Black box for your AI conversations"
+license = "MIT"
+repository = "https://github.com/n24q02m/EchoVault"
+
+[lib]
+name = "echovault_tauri"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-autostart = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Link to core library
+echovault-core = { path = "../crates/echovault-core" }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

@@ -160,11 +160,11 @@ IDE Files (JSON/SQLite) -> EchoVault CLI -> Raw JSON Storage -> Encryption -> Gi
 
 **Packaging Formats:**
 
-| Platform | Formats | Mô tả |
-| :--- | :--- | :--- |
-| **Windows** | `.exe`, `.msi` | Portable executable hoặc MSI installer |
-| **macOS** | `.dmg`, `.app` | DMG disk image hoặc App bundle |
-| **Linux** | `.AppImage`, `.deb`, `.rpm` | Universal AppImage hoặc distro-specific packages |
+| Platform    | Formats                     | Mô tả                                            |
+| :---------- | :-------------------------- | :----------------------------------------------- |
+| **Windows** | `.exe`, `.msi`              | Portable executable hoặc MSI installer           |
+| **macOS**   | `.dmg`, `.app`              | DMG disk image hoặc App bundle                   |
+| **Linux**   | `.AppImage`, `.deb`, `.rpm` | Universal AppImage hoặc distro-specific packages |
 
 #### 3.2.3. Extractors (Plugin Architecture)
 
@@ -207,35 +207,35 @@ src/
 
 ### 4.1. Core Stack (Rust)
 
-| Layer | Crate | Purpose |
-| :--- | :--- | :--- |
-| **Language** | Rust 1.83+ | Core Logic, single binary |
-| **CLI Framework** | clap (derive) | Modern CLI with auto-completion |
-| **SQLite Reader** | rusqlite | Read IDE databases (Cursor, etc.) |
-| **JSON** | serde, serde_json | Serialization/Deserialization |
-| **Encryption** | aes-gcm | AES-256-GCM encryption |
-| **Key Derivation** | argon2 | Passphrase to key derivation |
-| **Git Operations** | git2 | libgit2 bindings |
-| **HTTP Client** | reqwest | OAuth Device Flow |
-| **Terminal UI** | indicatif, colored | Progress bars, colors |
-| **Error Handling** | anyhow, thiserror | Ergonomic errors |
+| Layer              | Crate              | Purpose                           |
+| :----------------- | :----------------- | :-------------------------------- |
+| **Language**       | Rust 1.83+         | Core Logic, single binary         |
+| **CLI Framework**  | clap (derive)      | Modern CLI with auto-completion   |
+| **SQLite Reader**  | rusqlite           | Read IDE databases (Cursor, etc.) |
+| **JSON**           | serde, serde_json  | Serialization/Deserialization     |
+| **Encryption**     | aes-gcm            | AES-256-GCM encryption            |
+| **Key Derivation** | argon2             | Passphrase to key derivation      |
+| **Git Operations** | git2               | libgit2 bindings                  |
+| **HTTP Client**    | reqwest            | OAuth Device Flow                 |
+| **Terminal UI**    | indicatif, colored | Progress bars, colors             |
+| **Error Handling** | anyhow, thiserror  | Ergonomic errors                  |
 
 ### 4.2. Desktop App Stack (Tauri)
 
-| Layer | Technology | Purpose |
-| :--- | :--- | :--- |
-| **Framework** | Tauri 2.x | Cross-platform desktop app |
-| **Frontend** | React/TypeScript | UI components |
-| **Styling** | Tailwind CSS | Responsive design |
-| **State** | Zustand | Simple state management |
+| Layer         | Technology       | Purpose                    |
+| :------------ | :--------------- | :------------------------- |
+| **Framework** | Tauri 2.x        | Cross-platform desktop app |
+| **Frontend**  | React/TypeScript | UI components              |
+| **Styling**   | Tailwind CSS     | Responsive design          |
+| **State**     | Zustand          | Simple state management    |
 
 ### 4.3. Storage Format
 
-| Layer | Format | Use Case |
-| :--- | :--- | :--- |
-| **Primary** | Raw JSON gốc | Copy nguyên vẹn từ IDE |
-| **Index** | SQLite | Fast search, metadata |
-| **Sync** | Encrypted (.enc) | Secure sync to GitHub |
+| Layer       | Format           | Use Case               |
+| :---------- | :--------------- | :--------------------- |
+| **Primary** | Raw JSON gốc     | Copy nguyên vẹn từ IDE |
+| **Index**   | SQLite           | Fast search, metadata  |
+| **Sync**    | Encrypted (.enc) | Secure sync to GitHub  |
 
 **Tại sao không format lại?**
 
@@ -245,12 +245,12 @@ src/
 
 ### 4.4. Build & Distribution
 
-| Platform | Method |
-| :--- | :--- |
-| **Linux** | cargo build --release, AppImage |
-| **macOS** | cargo build --release, Homebrew |
-| **Windows** | cargo build --release, MSI/exe |
-| **Cross-compile** | cross (Docker-based) |
+| Platform          | Method                          |
+| :---------------- | :------------------------------ |
+| **Linux**         | cargo build --release, AppImage |
+| **macOS**         | cargo build --release, Homebrew |
+| **Windows**       | cargo build --release, MSI/exe  |
+| **Cross-compile** | cross (Docker-based)            |
 
 ---
 
@@ -386,12 +386,12 @@ remote = "https://github.com/username/my-vault.git"
 
 #### Storage Location
 
-| Platform | Storage Path |
-| :--- | :--- |
-| Windows | `%APPDATA%\Code\User\workspaceStorage\<hash>\chatSessions\*.json` |
-| macOS | `~/Library/Application Support/Code/User/workspaceStorage/<hash>/chatSessions/*.json` |
-| Linux | `~/.config/Code/User/workspaceStorage/<hash>/chatSessions/*.json` |
-| WSL | `/mnt/c/Users/<user>/AppData/Roaming/Code/User/workspaceStorage/<hash>/chatSessions/*.json` |
+| Platform | Storage Path                                                                                |
+| :------- | :------------------------------------------------------------------------------------------ |
+| Windows  | `%APPDATA%\Code\User\workspaceStorage\<hash>\chatSessions\*.json`                           |
+| macOS    | `~/Library/Application Support/Code/User/workspaceStorage/<hash>/chatSessions/*.json`       |
+| Linux    | `~/.config/Code/User/workspaceStorage/<hash>/chatSessions/*.json`                           |
+| WSL      | `/mnt/c/Users/<user>/AppData/Roaming/Code/User/workspaceStorage/<hash>/chatSessions/*.json` |
 
 - **Format**: JSON files (từ VS Code 1.96+)
 - **Versions**: v1 (cũ), v2, v3 (hiện tại) - format thay đổi thường xuyên
@@ -407,13 +407,13 @@ remote = "https://github.com/username/my-vault.git"
 
 #### Các IDE khác (Phase 3)
 
-| IDE | Storage | Format |
-| :--- | :--- | :--- |
-| **Cursor** | `workspaceStorage/<hash>/state.vscdb` | SQLite |
-| **Cline** | `globalStorage/saoudrizwan.claude-dev/` | JSON |
-| **Aider** | `~/.aider.chat.history.md` | Markdown |
-| **Claude Code** | `~/.claude/projects/` | JSONL |
-| **JetBrains AI** | Cần research | Unknown |
+| IDE              | Storage                                 | Format   |
+| :--------------- | :-------------------------------------- | :------- |
+| **Cursor**       | `workspaceStorage/<hash>/state.vscdb`   | SQLite   |
+| **Cline**        | `globalStorage/saoudrizwan.claude-dev/` | JSON     |
+| **Aider**        | `~/.aider.chat.history.md`              | Markdown |
+| **Claude Code**  | `~/.claude/projects/`                   | JSONL    |
+| **JetBrains AI** | Cần research                            | Unknown  |
 
 ---
 
@@ -431,86 +431,78 @@ remote = "https://github.com/username/my-vault.git"
 git clone https://github.com/n24q02m/EchoVault.git
 cd EchoVault
 
-# Tải dependencies
-sudo apt update && sudo apt upgrade -y
+# Cài đặt Tauri dependencies (Linux)
+sudo apt update && sudo apt install -y pkg-config libgtk-3-dev \
+  libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+
+# Cài đặt toolchain qua mise
 mise trust && mise install
 
-# Build
-mise run release
+# Cài đặt frontend dependencies
+cd src-web && pnpm install && cd ..
 
-# Cài đặt
-mise run install
+# Build
+cargo build --release
 ```
 
 ### 7.3. Development Commands
 
-Sử dụng [mise](https://mise.jdx.dev/) tasks cho development:
+**Rust (Backend):**
 
 ```bash
-# Setup
-mise install
-
-# Build & Test
-mise run install      # Install ev to ~/.cargo/bin
-mise run build        # Debug build
-mise run release      # Release build
-mise run test         # Run tests
-mise run lint         # Run clippy
-mise run fmt          # Format code
-mise run ci           # Run all checks
-
-# Development
-mise run dev scan
-mise run dev sync
+cargo build                     # Debug build
+cargo build --release           # Release build
+cargo test --workspace          # Chạy tất cả tests
+cargo clippy -- -D warnings     # Lint
+cargo fmt                       # Format
+cargo fmt --check               # Check format
 ```
 
-Sau khi install, sử dụng `ev` command trực tiếp:
+**TypeScript (Frontend):**
 
 ```bash
-# Production usage
-ev scan               # Quét tất cả chat sessions
-ev sync               # Sync vault lên GitHub
-ev --help             # Xem help
+cd src-web
+pnpm dev              # Dev server
+pnpm build            # Production build
+pnpm lint             # ESLint
+pnpm format           # Prettier
+pnpm typecheck        # TypeScript check
+```
+
+**Tauri App:**
+
+```bash
+cargo tauri dev       # Development mode
+cargo tauri build     # Production build
 ```
 
 ### 7.4. Project Structure
 
 ```text
 EchoVault/
-  src/
-    main.rs               # Entry point
-    cli/
-      mod.rs              # CLI definitions
-      commands.rs         # Command implementations
-    extractors/
-      mod.rs              # Extractor trait
-      vscode_copilot.rs   # VS Code Copilot extractor
-    storage/
-      mod.rs              # Storage trait
-      raw_json.rs         # Raw JSON storage (copy files)
-      index.rs            # SQLite index for metadata
-    crypto/
-      mod.rs              # Encryption module
-      encryption.rs       # AES-256-GCM
-      key_derivation.rs   # Argon2id
-    sync/
-      mod.rs              # Sync engine
-      git.rs              # Git operations
-      oauth.rs            # GitHub OAuth Device Flow
-  src-tauri/
+  Cargo.toml                      # Workspace root
+  mise.toml                       # Toolchain (rust, node)
+  crates/
+    echovault-core/               # Core library
+      src/
+        lib.rs                    # Library entry
+        config.rs                 # Configuration
+        crypto/                   # AES-256-GCM, Argon2id
+        extractors/               # IDE extractors
+        storage/                  # SQLite index
+        sync/                     # Git sync, OAuth
+  src-tauri/                      # Tauri backend
     src/
-      lib.rs              # Tauri commands
-    tauri.conf.json       # Tauri configuration
-  src-web/                # React frontend
+      lib.rs                      # Tauri commands
+      commands.rs                 # API handlers
+    tauri.conf.json               # Tauri config
+  src-web/                        # React frontend
     src/
-      App.tsx
-      components/
+      App.tsx                     # Main component
+      index.css                   # Tailwind styles
     package.json
-  tests/
   docs/
     HANDBOOK.md
-  Cargo.toml
-  mise.toml
 ```
 
 ---

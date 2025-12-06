@@ -2,15 +2,15 @@
 
 **Black Box cho mọi cuộc hội thoại AI của bạn.**
 
-EchoVault trích xuất, mã hóa và đồng bộ lịch sử chat từ GitHub Copilot, Cursor, Cline và các công cụ AI khác lên GitHub - giúp bạn không bao giờ mất những insight quý giá.
+EchoVault trích xuất, mã hóa và đồng bộ lịch sử chat từ GitHub Copilot, Cursor, Antigravity và các công cụ AI khác - giúp bạn không bao giờ mất những insight quý giá.
 
 ## Tính năng
 
-- **Universal Extraction**: Hỗ trợ VS Code Copilot, Cursor, Cline (sắp ra mắt)
+- **Universal Extraction**: Hỗ trợ VS Code Copilot, Antigravity (sắp ra mắt), Cursor, Cline
 - **Privacy First**: Mã hóa AES-256-GCM trước khi rời khỏi máy
-- **Git-Native**: Đồng bộ qua GitHub với OAuth Device Flow
+- **Multi-Provider Sync**: GitHub, Google Drive, S3 (sắp ra mắt)
+- **Desktop App**: Mini window giống Google Drive Desktop
 - **Future-Proof**: Lưu trữ raw JSON gốc, không transform/format
-- **Auto-Setup**: Tự động thiết lập khi chạy lần đầu
 
 ## Cài đặt
 
@@ -19,78 +19,38 @@ EchoVault trích xuất, mã hóa và đồng bộ lịch sử chat từ GitHub 
 git clone https://github.com/n24q02m/EchoVault.git
 cd EchoVault
 
-# Tải dependencies
-sudo apt update && sudo apt upgrade -y
+# Cài đặt Tauri dependencies (Linux)
+sudo apt update && sudo apt install -y pkg-config libgtk-3-dev \
+  libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+
+# Cài đặt toolchain
 mise trust && mise install
 
+# Cài đặt frontend
+cd src-web && pnpm install && cd ..
+
 # Build
-mise run release
-
-# Cài đặt
-mise run install
+cargo build --release
 ```
-
-## Sử dụng
-
-```bash
-# Quét chat sessions có sẵn
-ev scan
-
-# Extract, mã hóa và đồng bộ lên GitHub (tự động setup nếu lần đầu)
-ev sync
-
-# Hoặc chỉ định remote URL trực tiếp
-ev sync --remote https://github.com/username/my-vault.git
-```
-
-### Workflow đầy đủ
-
-1. **Lần đầu chạy `sync`**:
-   - Nhập GitHub remote URL
-   - Xác thực OAuth qua browser (github.com/login/device)
-   - Tạo passphrase mã hóa
-   - Tự động tạo repository nếu chưa tồn tại
-
-2. **Các lần sau**:
-   - Chỉ cần nhập passphrase
-   - Tự động extract, encrypt và push
-
-### GitHub OAuth Authentication
-
-EchoVault sử dụng OAuth Device Flow - không cần copy/paste token:
-
-1. Chạy `ev sync`
-2. Mở browser theo hướng dẫn: <https://github.com/login/device>
-3. Nhập code hiển thị trên terminal
-4. Authorize ứng dụng EchoVault
-
-Token được lưu trong vault và tự động sử dụng cho các lần sync tiếp theo.
-
-## Yêu cầu
-
-- Rust 1.80+
-- Git
 
 ## Phát triển
 
-Sử dụng [mise](https://mise.jdx.dev/) (khuyến nghị):
-
 ```bash
-# Setup
-mise install
+# Rust
+cargo build              # Debug build
+cargo test --workspace   # Run tests
+cargo clippy             # Lint
+cargo fmt                # Format
 
-# Build & Test
-mise run install      # Install ev to ~/.cargo/bin
-mise run build        # Debug build
-mise run release      # Release build
-mise run test         # Run tests
-mise run lint         # Run clippy
-mise run fmt          # Format code
-mise run ci           # Run all checks
+# TypeScript (src-web/)
+pnpm dev                 # Dev server
+pnpm build               # Production build
+pnpm lint                # ESLint
+pnpm format              # Prettier
 
-# Development
-mise run dev scan
-mise run dev sync
+# Tauri App
+cargo tauri dev          # Development mode
+cargo tauri build        # Production build
 ```
 
 ## Tài liệu
