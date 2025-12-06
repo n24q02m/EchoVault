@@ -245,6 +245,63 @@ impl OAuthDeviceFlow {
         }
     }
 
+    /// Poll một lần - không loop, trả về ngay
+    /// Dùng cho async context (Tauri commands)
+    pub fn poll_once(&self, device_code: &DeviceCodeResponse) -> Result<Option<OAuthCredentials>> {
+        let response = self
+            .client
+            .post(ACCESS_TOKEN_URL)
+            .header("Accept", "application/json")
+            .form(&[
+                ("client_id", &self.client_id),
+                ("device_code", &device_code.device_code),
+                (
+                    "grant_type",
+                    &"urn:ietf:params:oauth:grant-type:device_code".to_string(),
+                ),
+            ])
+            .send()
+            .context("Cannot poll for access token")?;
+
+        let response_text = response.text().context("Cannot read response")?;
+        let token_response: AccessTokenResponse = serde_json::from_str(&response_text).context(
+            format!("Cannot parse access token response: {}", response_text),
+        )?;
+
+        // Success!
+        if let Some(access_token) = token_response.access_token {
+            return Ok(Some(OAuthCredentials {
+                access_token,
+                token_type: token_response
+                    .token_type
+                    .unwrap_or_else(|| "bearer".to_string()),
+                scope: token_response.scope.unwrap_or_default(),
+            }));
+        }
+
+        // Check errors
+        if let Some(error) = &token_response.error {
+            match error.as_str() {
+                "authorization_pending" | "slow_down" => {
+                    // User chưa authorize - trả về None
+                    return Ok(None);
+                }
+                "expired_token" => bail!("Device code expired. Please try again."),
+                "access_denied" => bail!("User denied authorization."),
+                _ => {
+                    let desc = token_response
+                        .error_description
+                        .as_deref()
+                        .unwrap_or("Unknown error");
+                    bail!("OAuth error: {} - {}", error, desc);
+                }
+            }
+        }
+
+        // No token, no error - pending
+        Ok(None)
+    }
+
     /// Full flow: request device code + poll for token
     /// Trả về callback để hiển thị instructions cho user
     pub fn authenticate<F>(&self, display_instructions: F) -> Result<OAuthCredentials>

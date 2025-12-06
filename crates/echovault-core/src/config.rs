@@ -9,18 +9,34 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// Cấu hình sync với GitHub
+/// Cấu hình sync với cloud
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SyncConfig {
     /// URL của remote repository (GitHub)
     pub remote: Option<String>,
+    /// Tên repo (không có URL đầy đủ)
+    pub repo_name: Option<String>,
+    /// Provider type: github, google_drive, s3
+    #[serde(default = "default_provider")]
+    pub provider: String,
+}
+
+fn default_provider() -> String {
+    "github".to_string()
 }
 
 /// Cấu hình encryption
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncryptionConfig {
-    /// Encryption luôn bật, không thể tắt
-    /// Passphrase được lưu trong system keychain
+    /// Có bật mã hóa không
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+/// Cấu hình compression
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompressionConfig {
+    /// Có bật nén không
     #[serde(default = "default_enabled")]
     pub enabled: bool,
 }
@@ -30,6 +46,14 @@ fn default_enabled() -> bool {
 }
 
 impl Default for EncryptionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_enabled(),
+        }
+    }
+}
+
+impl Default for CompressionConfig {
     fn default() -> Self {
         Self {
             enabled: default_enabled(),
@@ -52,6 +76,10 @@ pub struct Config {
     #[serde(default = "default_version")]
     pub version: u32,
 
+    /// Đã hoàn thành setup chưa
+    #[serde(default)]
+    pub setup_complete: bool,
+
     /// Đường dẫn đến vault directory
     pub vault_path: PathBuf,
 
@@ -62,6 +90,10 @@ pub struct Config {
     /// Cấu hình encryption
     #[serde(default)]
     pub encryption: EncryptionConfig,
+
+    /// Cấu hình compression
+    #[serde(default)]
+    pub compression: CompressionConfig,
 
     /// Cấu hình extractors
     #[serde(default)]
@@ -76,16 +108,18 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             version: default_version(),
+            setup_complete: false,
             vault_path: default_vault_path(),
             sync: SyncConfig::default(),
             encryption: EncryptionConfig::default(),
+            compression: CompressionConfig::default(),
             extractors: ExtractorsConfig::default(),
         }
     }
 }
 
 /// Lấy đường dẫn vault mặc định
-fn default_vault_path() -> PathBuf {
+pub fn default_vault_path() -> PathBuf {
     dirs::data_dir()
         .map(|d| d.join("echovault").join("vault"))
         .unwrap_or_else(|| PathBuf::from("./vault"))
@@ -229,11 +263,15 @@ mod tests {
     fn test_toml_serialization() -> Result<()> {
         let config = Config {
             version: 1,
+            setup_complete: true,
             vault_path: PathBuf::from("/home/user/.echovault/vault"),
             sync: SyncConfig {
                 remote: Some("https://github.com/user/vault.git".to_string()),
+                repo_name: Some("user-vault".to_string()),
+                provider: "github".to_string(),
             },
             encryption: EncryptionConfig { enabled: true },
+            compression: CompressionConfig { enabled: true },
             extractors: ExtractorsConfig {
                 enabled_sources: vec!["vscode-copilot".to_string()],
             },

@@ -19,14 +19,10 @@
                 "title": "EchoVault",
                 "width": 400,
                 "height": 600,
-                "resizable": true,
+                "resizable": false,
                 "center": true,
                 "decorations": true,
-                "visible": true,
-                "minWidth": 320,
-                "minHeight": 400,
-                "maxWidth": 500,
-                "maxHeight": 800
+                "visible": true
             }
         ],
         "security": {

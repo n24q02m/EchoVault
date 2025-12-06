@@ -14,6 +14,7 @@ pub mod extractors;
 pub mod storage;
 pub mod sync;
 pub mod utils;
+pub mod vault;
 
 // Re-export main types
 pub use config::Config;
@@ -21,3 +22,5 @@ pub use crypto::Encryptor;
 pub use extractors::Extractor;
 pub use storage::SessionIndex;
 pub use sync::GitSync;
+pub use sync::{AuthStatus, GitHubProvider, PullResult, PushResult, SyncOptions, SyncProvider};
+pub use vault::{verify_passphrase, VaultMetadata};

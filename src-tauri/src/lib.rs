@@ -73,15 +73,26 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .manage(commands::AppState::default())
         .setup(|app| {
             setup_tray(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::check_setup_complete,
+            commands::complete_setup,
+            commands::check_repo_exists,
+            commands::clone_vault,
+            commands::get_vault_metadata,
+            commands::verify_passphrase_cmd,
+            commands::get_auth_status,
+            commands::start_auth,
+            commands::complete_auth,
             commands::scan_sessions,
-            commands::sync_vault,
+            commands::open_url,
+            commands::open_file,
             commands::get_config,
-            commands::set_config,
+            commands::sync_vault,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
