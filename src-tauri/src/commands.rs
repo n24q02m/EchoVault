@@ -163,6 +163,11 @@ pub async fn complete_setup(
     let mut config = Config::load_default().map_err(|e| e.to_string())?;
     let vault_path = config.vault_path.clone();
 
+    // Force encrypt và compress cho GitHub provider
+    // (Encrypt luôn bật vì security, compress bắt buộc vì GitHub file size limits)
+    let force_encrypt = true;
+    let force_compress = request.provider == "github";
+
     config.setup_complete = true;
     config.sync = SyncConfig {
         remote: Some(remote_url.clone()),
@@ -170,10 +175,10 @@ pub async fn complete_setup(
         provider: request.provider,
     };
     config.encryption = EncryptionConfig {
-        enabled: request.encrypt,
+        enabled: force_encrypt,
     };
     config.compression = CompressionConfig {
-        enabled: request.compress,
+        enabled: force_compress || request.compress,
     };
 
     config
@@ -189,7 +194,8 @@ pub async fn complete_setup(
             .map_err(|e| format!("Failed to create vault directory: {}", e))?;
 
         // Tạo vault.json
-        let metadata = VaultMetadata::new(request.encrypt, request.compress);
+        // Tạo vault.json với forced encrypt/compress
+        let metadata = VaultMetadata::new(force_encrypt, force_compress || request.compress);
         metadata
             .save(&vault_path)
             .map_err(|e| format!("Failed to save vault metadata: {}", e))?;

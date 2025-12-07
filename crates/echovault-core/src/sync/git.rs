@@ -496,6 +496,122 @@ DO NOT edit files manually - they may be encrypted and/or compressed.
         let ref_name = format!("refs/remotes/{}/{}", remote_name, branch);
         self.repo.find_reference(&ref_name).is_ok()
     }
+
+    /// Push lên remote với access token, tự động pull --rebase nếu bị rejected
+    /// Trả về Ok(true) nếu push thành công, Ok(false) nếu repo not found
+    pub fn push_with_pull(
+        &self,
+        remote_name: &str,
+        branch: &str,
+        access_token: &str,
+    ) -> Result<bool> {
+        let remote = self.repo.find_remote(remote_name)?;
+        let original_url = remote.url().context("Remote has no URL")?;
+        let https_url = ssh_to_https_url(original_url);
+
+        let auth_url = https_url.replace(
+            "https://github.com/",
+            &format!("https://x-access-token:{}@github.com/", access_token),
+        );
+
+        let workdir = self.repo.workdir().context("No workdir")?;
+
+        // Thử push trước
+        let output = std::process::Command::new("git")
+            .current_dir(workdir)
+            .args(["push", "-u", "--progress", &auth_url, branch])
+            .output()
+            .context("Cannot execute git push command")?;
+
+        if output.status.success() {
+            return Ok(true);
+        }
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        // Kiểm tra lỗi "not found" - repo chưa tồn tại
+        if stderr.contains("not found") || stderr.contains("Repository not found") {
+            return Ok(false);
+        }
+
+        // Kiểm tra rejected push (remote có commits mà local không có)
+        if stderr.contains("rejected") || stderr.contains("Updates were rejected") {
+            println!("[git] Push rejected, attempting pull --rebase first...");
+
+            // Pull với rebase để giữ local commits lên trên remote changes
+            let pull_output = std::process::Command::new("git")
+                .current_dir(workdir)
+                .args(["pull", "--rebase", &auth_url, branch])
+                .output()
+                .context("Cannot execute git pull --rebase command")?;
+
+            if pull_output.status.success() {
+                println!("[git] Pull --rebase success, retrying push...");
+
+                // Retry push
+                let retry_output = std::process::Command::new("git")
+                    .current_dir(workdir)
+                    .args(["push", "-u", "--progress", &auth_url, branch])
+                    .output()
+                    .context("Cannot execute git push command (retry)")?;
+
+                if retry_output.status.success() {
+                    return Ok(true);
+                }
+
+                let retry_stderr = String::from_utf8_lossy(&retry_output.stderr);
+                bail!("Git push failed after rebase: {}", retry_stderr);
+            } else {
+                let pull_stderr = String::from_utf8_lossy(&pull_output.stderr);
+
+                // Xử lý unrelated histories
+                if pull_stderr.contains("unrelated histories") {
+                    println!("[git] Unrelated histories, trying --allow-unrelated-histories...");
+
+                    let unrelated_output = std::process::Command::new("git")
+                        .current_dir(workdir)
+                        .args([
+                            "pull",
+                            "--rebase",
+                            "--allow-unrelated-histories",
+                            &auth_url,
+                            branch,
+                        ])
+                        .output()
+                        .context("Cannot execute git pull --allow-unrelated-histories")?;
+
+                    if unrelated_output.status.success() {
+                        // Retry push
+                        let retry_output = std::process::Command::new("git")
+                            .current_dir(workdir)
+                            .args(["push", "-u", "--progress", &auth_url, branch])
+                            .output()
+                            .context("Cannot execute git push command (after unrelated)")?;
+
+                        if retry_output.status.success() {
+                            return Ok(true);
+                        }
+                        let retry_stderr = String::from_utf8_lossy(&retry_output.stderr);
+                        bail!(
+                            "Git push failed after allow-unrelated-histories: {}",
+                            retry_stderr
+                        );
+                    } else {
+                        let unrelated_stderr = String::from_utf8_lossy(&unrelated_output.stderr);
+                        bail!(
+                            "Git pull --allow-unrelated-histories failed: {}",
+                            unrelated_stderr
+                        );
+                    }
+                }
+
+                bail!("Git pull --rebase failed: {}", pull_stderr);
+            }
+        }
+
+        // Lỗi khác
+        bail!("Git push failed: {}", stderr);
+    }
 }
 
 #[cfg(test)]

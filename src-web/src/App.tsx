@@ -67,6 +67,7 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
   const [existingVault, setExistingVault] =
     useState<VaultMetadataResponse | null>(null);
   const [checkingProgress, setCheckingProgress] = useState("");
+  const [isCopied, setIsCopied] = useState(false);
 
   const handleStartAuth = async () => {
     setIsAuthenticating(true);
@@ -262,9 +263,53 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
                 </p>
                 <p className="text-sm">
                   2. Enter code:{" "}
-                  <code className="rounded bg-[var(--bg-card)] px-2 py-1 font-mono text-lg">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(authStatus.user_code || "");
+                      setIsCopied(true);
+                      setTimeout(() => setIsCopied(false), 2000);
+                    }}
+                    className="group relative cursor-pointer rounded bg-[var(--bg-card)] px-3 py-1.5 font-mono text-lg transition-all hover:bg-[var(--accent)] hover:text-white"
+                    title="Click to copy"
+                  >
                     {authStatus.user_code}
-                  </code>
+                    <span className="ml-2 inline-flex items-center">
+                      {isCopied ? (
+                        <svg
+                          className="h-4 w-4 text-[var(--success)]"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          className="h-4 w-4 opacity-50 group-hover:opacity-100"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                          />
+                        </svg>
+                      )}
+                    </span>
+                  </button>
+                  {isCopied && (
+                    <span className="ml-2 text-xs text-[var(--success)]">
+                      Copied!
+                    </span>
+                  )}
                 </p>
                 <button
                   onClick={handleCompleteAuth}
@@ -394,38 +439,54 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
                 </p>
               </div>
 
-              <div className="flex items-center justify-between py-2">
+              {/* Encryption - luôn bật */}
+              <div className="flex items-center justify-between py-2 opacity-80">
                 <div>
                   <p className="font-medium">Encryption (AES-256)</p>
                   <p className="text-xs text-[var(--text-secondary)]">
-                    Lose passphrase = lose data
+                    Always enabled for security
                   </p>
                 </div>
-                <button
-                  onClick={() => setEncrypt(!encrypt)}
-                  className={`h-6 w-12 rounded-full transition-colors ${encrypt ? "bg-[var(--accent)]" : "bg-[var(--bg-card)]"}`}
-                >
-                  <div
-                    className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${encrypt ? "translate-x-6" : "translate-x-0.5"}`}
-                  />
-                </button>
+                <div className="flex h-6 items-center rounded-full bg-[var(--success)] px-2">
+                  <svg
+                    className="h-4 w-4 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                </div>
               </div>
 
-              <div className="flex items-center justify-between py-2">
+              {/* Compression - bắt buộc với GitHub provider */}
+              <div className="flex items-center justify-between py-2 opacity-80">
                 <div>
                   <p className="font-medium">Compression</p>
                   <p className="text-xs text-[var(--text-secondary)]">
-                    Reduce storage size
+                    Required for GitHub storage
                   </p>
                 </div>
-                <button
-                  onClick={() => setCompress(!compress)}
-                  className={`h-6 w-12 rounded-full transition-colors ${compress ? "bg-[var(--accent)]" : "bg-[var(--bg-card)]"}`}
-                >
-                  <div
-                    className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${compress ? "translate-x-6" : "translate-x-0.5"}`}
-                  />
-                </button>
+                <div className="flex h-6 items-center rounded-full bg-[var(--success)] px-2">
+                  <svg
+                    className="h-4 w-4 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                </div>
               </div>
 
               {/* Passphrase inputs when encryption enabled */}
@@ -582,9 +643,10 @@ function MainApp() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
-  const [scanStatus, setScanStatus] = useState<"idle" | "scanning" | "syncing">(
-    "idle"
-  );
+  // TODO: Use scanStatus to show loading indicator in sidebar
+  const [_scanStatus, setScanStatus] = useState<
+    "idle" | "scanning" | "syncing"
+  >("idle");
 
   const groupedSessions = sessions.reduce(
     (acc, session) => {
