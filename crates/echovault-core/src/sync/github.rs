@@ -286,8 +286,8 @@ impl SyncProvider for GitHubProvider {
             git.commit("Auto-sync from EchoVault")?;
         }
 
-        // Lần push đầu tiên
-        let success = git.push("origin", "main", token)?;
+        // Push với auto-pull nếu bị rejected
+        let success = git.push_with_pull("origin", "main", token)?;
 
         if success {
             return Ok(PushResult {
