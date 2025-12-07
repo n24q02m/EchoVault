@@ -464,27 +464,48 @@ pub async fn complete_auth(state: State<'_, AppState>) -> Result<AuthStatusRespo
 pub async fn scan_sessions() -> Result<ScanResult, String> {
     // Move heavy I/O work to spawn_blocking để không block Tauri runtime
     tokio::task::spawn_blocking(|| {
-        use echovault_core::extractors::{vscode_copilot::VSCodeCopilotExtractor, Extractor};
-
-        let extractor = VSCodeCopilotExtractor::new();
-        let locations = extractor
-            .find_storage_locations()
-            .map_err(|e| e.to_string())?;
+        use echovault_core::extractors::{
+            antigravity::AntigravityExtractor, vscode_copilot::VSCodeCopilotExtractor, Extractor,
+        };
 
         let mut sessions = Vec::new();
 
-        for location in locations {
-            if let Ok(files) = extractor.list_session_files(&location) {
-                for file in files {
-                    sessions.push(SessionInfo {
-                        id: file.metadata.id,
-                        source: file.metadata.source,
-                        title: file.metadata.title,
-                        workspace_name: file.metadata.workspace_name,
-                        created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
-                        file_size: file.metadata.file_size,
-                        path: file.metadata.original_path.to_string_lossy().to_string(),
-                    });
+        // 1. Scan VS Code Copilot sessions
+        let vscode_extractor = VSCodeCopilotExtractor::new();
+        if let Ok(locations) = vscode_extractor.find_storage_locations() {
+            for location in locations {
+                if let Ok(files) = vscode_extractor.list_session_files(&location) {
+                    for file in files {
+                        sessions.push(SessionInfo {
+                            id: file.metadata.id,
+                            source: file.metadata.source,
+                            title: file.metadata.title,
+                            workspace_name: file.metadata.workspace_name,
+                            created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
+                            file_size: file.metadata.file_size,
+                            path: file.metadata.original_path.to_string_lossy().to_string(),
+                        });
+                    }
+                }
+            }
+        }
+
+        // 2. Scan Antigravity sessions
+        let antigravity_extractor = AntigravityExtractor::new();
+        if let Ok(locations) = antigravity_extractor.find_storage_locations() {
+            for location in locations {
+                if let Ok(files) = antigravity_extractor.list_session_files(&location) {
+                    for file in files {
+                        sessions.push(SessionInfo {
+                            id: file.metadata.id,
+                            source: file.metadata.source,
+                            title: file.metadata.title,
+                            workspace_name: file.metadata.workspace_name,
+                            created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
+                            file_size: file.metadata.file_size,
+                            path: file.metadata.original_path.to_string_lossy().to_string(),
+                        });
+                    }
                 }
             }
         }
@@ -683,7 +704,9 @@ fn ingest_sessions(
     encryptor: Option<&echovault_core::crypto::Encryptor>,
     _compress: bool,
 ) -> Result<bool, String> {
-    use echovault_core::extractors::{vscode_copilot::VSCodeCopilotExtractor, Extractor};
+    use echovault_core::extractors::{
+        antigravity::AntigravityExtractor, vscode_copilot::VSCodeCopilotExtractor, Extractor,
+    };
     use echovault_core::storage::chunked::compress_encrypt_chunk;
     use rayon::prelude::*;
     use std::collections::HashMap;
@@ -706,23 +729,43 @@ fn ingest_sessions(
 
     println!("[ingest_sessions] Starting scan...");
 
-    // 1. Scan sessions
-    let extractor = VSCodeCopilotExtractor::new();
-    let locations = extractor
-        .find_storage_locations()
-        .map_err(|e| e.to_string())?;
-
-    println!("[ingest_sessions] Found {} locations", locations.len());
-
     let mut sessions = Vec::new();
-    for location in &locations {
-        if let Ok(files) = extractor.list_session_files(location) {
-            println!(
-                "[ingest_sessions] Location {:?}: {} files",
-                location,
-                files.len()
-            );
-            sessions.extend(files);
+
+    // 1. Scan VS Code Copilot sessions
+    let vscode_extractor = VSCodeCopilotExtractor::new();
+    if let Ok(locations) = vscode_extractor.find_storage_locations() {
+        println!(
+            "[ingest_sessions] VS Code Copilot: {} locations",
+            locations.len()
+        );
+        for location in &locations {
+            if let Ok(files) = vscode_extractor.list_session_files(location) {
+                println!(
+                    "[ingest_sessions] Location {:?}: {} files",
+                    location,
+                    files.len()
+                );
+                sessions.extend(files);
+            }
+        }
+    }
+
+    // 2. Scan Antigravity sessions
+    let antigravity_extractor = AntigravityExtractor::new();
+    if let Ok(locations) = antigravity_extractor.find_storage_locations() {
+        println!(
+            "[ingest_sessions] Antigravity: {} locations",
+            locations.len()
+        );
+        for location in &locations {
+            if let Ok(files) = antigravity_extractor.list_session_files(location) {
+                println!(
+                    "[ingest_sessions] Location {:?}: {} files",
+                    location,
+                    files.len()
+                );
+                sessions.extend(files);
+            }
         }
     }
 
