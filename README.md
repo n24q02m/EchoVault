@@ -20,13 +20,11 @@ git clone https://github.com/n24q02m/EchoVault.git
 cd EchoVault
 
 # Cài đặt Tauri dependencies (Linux)
-sudo apt update && sudo apt install -y pkg-config libgtk-3-dev \
-  libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
-
-# Yêu cầu: Rust (latest), Node (22), pnpm (latest) đã được cài đặt
+sudo apt update && sudo apt install -y pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+cargo install tauri-cli
 
 # Cài đặt frontend
-cd src-web && pnpm install && cd ..
+cd src-web && pnpm install && pnpm build && cd ..
 
 # Build
 cargo build --release
