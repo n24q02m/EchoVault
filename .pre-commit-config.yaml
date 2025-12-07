@@ -1,0 +1,125 @@
+# Pre-commit Hooks Configuration
+# Applies to: crates/* (Rust) and src-web (TypeScript/React)
+# Installation: https://pre-commit.com/
+#
+# Quick start:
+#   1. Install pre-commit: pip install pre-commit
+#   2. Install hooks: pre-commit install
+#   3. Run manually: pre-commit run --all-files
+#
+# Bypass checks: git commit --no-verify (use only in emergency)
+
+repos:
+  # ============================================================================
+  # Backend (Rust) - crates/* and src-tauri
+  # ============================================================================
+
+  # Cargo fmt: Rust formatter
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt (Rust)
+        entry: cargo fmt --all --
+        language: system
+        files: \.rs$
+        pass_filenames: false
+
+  # Cargo clippy: Rust linter
+  - repo: local
+    hooks:
+      - id: cargo-clippy
+        name: cargo clippy (Rust)
+        entry: cargo clippy --workspace -- -D warnings
+        language: system
+        files: \.rs$
+        pass_filenames: false
+
+  # Cargo test: Rust tests
+  - repo: local
+    hooks:
+      - id: cargo-test
+        name: cargo test (Rust)
+        entry: cargo test --workspace
+        language: system
+        files: \.rs$
+        pass_filenames: false
+
+  # ============================================================================
+  # Frontend (TypeScript/React) - src-web
+  # ============================================================================
+
+  # Prettier: Code formatter for TypeScript/JSON/CSS
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier format (TypeScript/React)
+        entry: bash -c 'cd src-web && pnpm exec prettier --write "${@#src-web/}"' --
+        language: system
+        files: ^src-web/
+        types_or: [javascript, tsx, jsx, json, css]
+        pass_filenames: true
+
+  # ESLint: Linter for TypeScript
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint lint (TypeScript/React)
+        entry: bash -c "cd src-web && pnpm exec eslint --max-warnings 0"
+        language: system
+        files: ^src-web/
+        exclude: ^src-web/(dist|node_modules)/
+        types_or: [javascript, tsx, jsx]
+        pass_filenames: false
+
+  # TypeScript: Type checker
+  - repo: local
+    hooks:
+      - id: typescript-check
+        name: typescript type check (TypeScript/React)
+        entry: bash -c "cd src-web && pnpm run typecheck"
+        language: system
+        files: ^src-web/
+        pass_filenames: false
+
+  # ============================================================================
+  # Common Checks
+  # ============================================================================
+
+  # Check for trailing whitespace
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        name: trim trailing whitespace
+        exclude_types: [image]
+
+  # Check for files that would conflict in merge
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-merge-conflict
+        name: check for merge conflicts
+
+  # Check JSON files are valid
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-json
+        name: check JSON files
+        types: [json]
+
+  # Check YAML files are valid
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-yaml
+        name: check YAML files
+        types: [yaml]
+
+  # Check TOML files are valid
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-toml
+        name: check TOML files
+        types: [toml]

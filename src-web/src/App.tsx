@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 // Types
@@ -641,12 +641,16 @@ function MainApp() {
     new Set()
   );
   const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   // TODO: Use scanStatus to show loading indicator in sidebar
   const [_scanStatus, setScanStatus] = useState<
     "idle" | "scanning" | "syncing"
   >("idle");
+  // Pagination: số items hiển thị per group
+  const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>(
+    {}
+  );
+  const ITEMS_PER_PAGE = 10;
 
   const groupedSessions = sessions.reduce(
     (acc, session) => {
@@ -711,9 +715,8 @@ function MainApp() {
     try {
       const success = await invoke<boolean>("sync_vault");
       if (success) {
-        setLastSyncTime(new Date().toLocaleTimeString());
-      } else {
-        setLastSyncTime(new Date().toLocaleTimeString());
+        // Refresh sessions list after successful sync
+        await loadSessions();
       }
     } catch (syncErr) {
       console.error("Sync failed:", syncErr);
@@ -776,9 +779,8 @@ function MainApp() {
     try {
       const success = await invoke<boolean>("sync_vault");
       if (success) {
-        setLastSyncTime(new Date().toLocaleTimeString());
-      } else {
-        setLastSyncTime(new Date().toLocaleTimeString());
+        // Refresh sessions list after successful sync
+        await loadSessions();
       }
     } catch (err) {
       console.error("Sync failed:", err);
@@ -788,46 +790,34 @@ function MainApp() {
     }
   };
 
-  // File watcher event listener - realtime sync khi có changes
+  // Auto-sync: Polling interval thay vì event-based
+  // (Tauri events không hoạt động trên WebKitGTK/Linux)
+  const backgroundSyncRef = useRef(backgroundSync);
+  backgroundSyncRef.current = backgroundSync;
+
   useEffect(() => {
-    let unlisten: (() => void) | null = null;
+    let mounted = true;
 
-    const setupListener = async () => {
-      try {
-        // Import Tauri event module
-        const { listen } = await import("@tauri-apps/api/event");
-
-        // Listen for file_changed event from backend FileWatcher
-        unlisten = await listen("file_changed", () => {
-          console.log("[App] File change detected, triggering sync...");
-          if (!isScanning && !isSyncing) {
-            backgroundSync();
-          }
-        });
-        console.log("[App] File watcher event listener registered");
-      } catch (err) {
-        console.error("Failed to setup event listener:", err);
+    // Sync khi app khởi động (sau 5s để UI load xong)
+    const initialSyncTimeout = setTimeout(() => {
+      if (mounted) {
+        backgroundSyncRef.current();
       }
-    };
+    }, 5000);
 
-    setupListener();
-
-    // Fallback: sync mỗi 15 phút (thay vì 5 phút - vì đã có file watcher)
-    const fallbackInterval = setInterval(
-      () => {
-        if (!isScanning && !isSyncing) {
-          console.log("[App] Fallback sync triggered");
-          backgroundSync();
-        }
-      },
-      15 * 60 * 1000
-    ); // 15 minutes
+    // Sync mỗi 30 giây (đủ nhanh để detect changes, đủ chậm để không spam)
+    const syncInterval = setInterval(() => {
+      if (mounted) {
+        backgroundSyncRef.current();
+      }
+    }, 30 * 1000);
 
     return () => {
-      if (unlisten) unlisten();
-      clearInterval(fallbackInterval);
+      mounted = false;
+      clearTimeout(initialSyncTimeout);
+      clearInterval(syncInterval);
     };
-  }, [isScanning, isSyncing]);
+  }, []); // Empty deps: setup 1 lần
 
   return (
     <div className="flex h-full flex-col">
@@ -840,11 +830,6 @@ function MainApp() {
           {syncError && (
             <span className="text-xs text-red-400" title={syncError}>
               Sync error
-            </span>
-          )}
-          {lastSyncTime && !syncError && (
-            <span className="text-xs text-[var(--text-secondary)]">
-              Last sync: {lastSyncTime}
             </span>
           )}
           <button
@@ -926,33 +911,62 @@ function MainApp() {
                         />
                       </svg>
                     </button>
-                    {expandedSources.has(source) && (
-                      <div className="space-y-1 px-3 pb-3">
-                        {items.map((session) => (
-                          <div
-                            key={session.id}
-                            onClick={() => handleOpenFile(session.path)}
-                            className="cursor-pointer rounded-lg bg-[var(--bg-card)] p-2.5 transition-colors hover:bg-[var(--border)]"
-                          >
-                            <div className="flex items-start justify-between">
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-medium">
-                                  {session.title ||
-                                    session.workspace_name ||
-                                    "Untitled"}
-                                </p>
-                                <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-                                  {formatFileSize(session.file_size)}
-                                </p>
+                    {expandedSources.has(source) &&
+                      (() => {
+                        const visibleCount =
+                          visibleCounts[source] || ITEMS_PER_PAGE;
+                        const visibleItems = items.slice(0, visibleCount);
+                        const hasMore = items.length > visibleCount;
+
+                        return (
+                          <div className="space-y-1 px-3 pb-3">
+                            {visibleItems.map((session) => (
+                              <div
+                                key={session.id}
+                                onClick={() => handleOpenFile(session.path)}
+                                className="cursor-pointer rounded-lg bg-[var(--bg-card)] p-2.5 transition-colors hover:bg-[var(--border)]"
+                              >
+                                <div className="flex items-start justify-between">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-medium">
+                                      {session.title ||
+                                        session.workspace_name ||
+                                        "Untitled"}
+                                    </p>
+                                    <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
+                                      {formatFileSize(session.file_size)}
+                                    </p>
+                                  </div>
+                                  <span className="ml-2 shrink-0 text-xs text-[var(--text-secondary)]">
+                                    {formatDate(session.created_at)}
+                                  </span>
+                                </div>
                               </div>
-                              <span className="text-xs text-[var(--text-secondary)]">
-                                {formatDate(session.created_at)}
-                              </span>
-                            </div>
+                            ))}
+                            {hasMore && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setVisibleCounts((prev) => ({
+                                    ...prev,
+                                    [source]:
+                                      (prev[source] || ITEMS_PER_PAGE) +
+                                      ITEMS_PER_PAGE,
+                                  }));
+                                }}
+                                className="mt-2 w-full rounded-lg border border-dashed border-[var(--border)] py-2 text-center text-xs text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                              >
+                                Load{" "}
+                                {Math.min(
+                                  ITEMS_PER_PAGE,
+                                  items.length - visibleCount
+                                )}{" "}
+                                more ({items.length - visibleCount} remaining)
+                              </button>
+                            )}
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        );
+                      })()}
                   </div>
                 ))}
               </div>

@@ -304,7 +304,7 @@ impl SyncProvider for GitHubProvider {
         let remote_url = git.get_remote_url("origin")?;
         let repo_name = remote_url
             .split('/')
-            .last()
+            .next_back()
             .unwrap_or("vault")
             .trim_end_matches(".git");
 

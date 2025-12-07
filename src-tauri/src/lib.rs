@@ -10,7 +10,7 @@
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager,
+    Manager,
 };
 
 mod commands;
@@ -64,49 +64,6 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Setup FileWatcher background thread
-/// Emit "file_changed" event khi phát hiện IDE file changes
-fn setup_file_watcher(app_handle: tauri::AppHandle) {
-    use echovault_core::{get_ide_storage_paths, FileWatcher};
-    use std::time::Duration;
-
-    println!("[FileWatcher] Initializing...");
-
-    let paths = get_ide_storage_paths();
-    if paths.is_empty() {
-        println!("[FileWatcher] No IDE paths found, watcher disabled");
-        return;
-    }
-
-    let watcher = match FileWatcher::new(paths) {
-        Ok(w) => w,
-        Err(e) => {
-            eprintln!("[FileWatcher] Failed to create watcher: {}", e);
-            return;
-        }
-    };
-
-    println!(
-        "[FileWatcher] Watching {} paths",
-        watcher.watched_paths().len()
-    );
-
-    // Poll mỗi 5 giây để check for changes
-    // Nhẹ hơn nhiều so với full scan mỗi 5 phút
-    loop {
-        std::thread::sleep(Duration::from_secs(5));
-
-        if watcher.has_changes() {
-            println!("[FileWatcher] Changes detected, emitting event...");
-
-            // Emit event đến frontend
-            if let Err(e) = app_handle.emit("file_changed", ()) {
-                eprintln!("[FileWatcher] Failed to emit event: {}", e);
-            }
-        }
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -119,13 +76,6 @@ pub fn run() {
         .manage(commands::AppState::default())
         .setup(|app| {
             setup_tray(app)?;
-
-            // Khởi tạo FileWatcher cho IDE directories
-            let app_handle = app.handle().clone();
-            std::thread::spawn(move || {
-                setup_file_watcher(app_handle);
-            });
-
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

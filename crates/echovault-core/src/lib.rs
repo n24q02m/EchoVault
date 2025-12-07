@@ -15,7 +15,6 @@ pub mod storage;
 pub mod sync;
 pub mod utils;
 pub mod vault;
-pub mod watcher;
 
 // Re-export main types
 pub use config::Config;
@@ -25,4 +24,3 @@ pub use storage::SessionIndex;
 pub use sync::GitSync;
 pub use sync::{AuthStatus, GitHubProvider, PullResult, PushResult, SyncOptions, SyncProvider};
 pub use vault::{verify_passphrase, VaultMetadata};
-pub use watcher::{get_ide_storage_paths, FileWatcher};

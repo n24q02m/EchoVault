@@ -817,7 +817,7 @@ fn ingest_sessions(
                 }
 
                 let current = processed.fetch_add(1, Ordering::Relaxed) + 1;
-                if current % 10 == 0 || current == to_process {
+                if current.is_multiple_of(10) || current == to_process {
                     println!(
                         "[ingest_sessions] Progress: {}/{} ({}%)",
                         current,
