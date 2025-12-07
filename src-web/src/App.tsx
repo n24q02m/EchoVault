@@ -788,18 +788,45 @@ function MainApp() {
     }
   };
 
-  // Auto-sync every 5 minutes
+  // File watcher event listener - realtime sync khi có changes
   useEffect(() => {
-    const interval = setInterval(
+    let unlisten: (() => void) | null = null;
+
+    const setupListener = async () => {
+      try {
+        // Import Tauri event module
+        const { listen } = await import("@tauri-apps/api/event");
+
+        // Listen for file_changed event from backend FileWatcher
+        unlisten = await listen("file_changed", () => {
+          console.log("[App] File change detected, triggering sync...");
+          if (!isScanning && !isSyncing) {
+            backgroundSync();
+          }
+        });
+        console.log("[App] File watcher event listener registered");
+      } catch (err) {
+        console.error("Failed to setup event listener:", err);
+      }
+    };
+
+    setupListener();
+
+    // Fallback: sync mỗi 15 phút (thay vì 5 phút - vì đã có file watcher)
+    const fallbackInterval = setInterval(
       () => {
         if (!isScanning && !isSyncing) {
+          console.log("[App] Fallback sync triggered");
           backgroundSync();
         }
       },
-      5 * 60 * 1000
-    ); // 5 minutes
+      15 * 60 * 1000
+    ); // 15 minutes
 
-    return () => clearInterval(interval);
+    return () => {
+      if (unlisten) unlisten();
+      clearInterval(fallbackInterval);
+    };
   }, [isScanning, isSyncing]);
 
   return (

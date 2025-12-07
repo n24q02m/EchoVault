@@ -70,6 +70,9 @@ indicatif = { version = "0.17", features = ["rayon"] }
 # Parallel processing
 rayon = "1.10"
 
+# File system watching
+notify = "8"
+
 # Password input
 rpassword = "7"
 
