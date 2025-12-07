@@ -88,6 +88,32 @@ impl GitSync {
             "# Local-only files\nindex.db\nindex.db-journal\nindex.db-wal\n",
         )?;
 
+        // Tạo README.md cho vault
+        let readme_path = vault_dir.join("README.md");
+        std::fs::write(
+            &readme_path,
+            r#"# EchoVault
+
+This repository contains encrypted AI chat sessions from various IDEs.
+
+## Structure
+
+- `sessions/` - Encrypted session files organized by source
+- `vault.json` - Vault metadata (encryption settings, compression settings)
+
+## Security
+
+- Sessions are encrypted with AES-256-GCM
+- Key derived from your passphrase using Argon2id
+- Passphrase is stored locally in OS keyring
+
+## Usage
+
+This vault is managed by [EchoVault](https://github.com/n24q02m/EchoVault) app.
+DO NOT edit files manually - they may be encrypted and/or compressed.
+"#,
+        )?;
+
         Ok(Self { repo })
     }
 

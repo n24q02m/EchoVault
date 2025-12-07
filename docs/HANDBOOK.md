@@ -421,7 +421,7 @@ remote = "https://github.com/username/my-vault.git"
 
 ### 7.1. Prerequisites
 
-- [mise](https://mise.jdx.dev/) (quản lý toolchain)
+- Rust (latest), Node (22), pnpm (latest)
 - Git
 
 ### 7.2. Setup
@@ -434,9 +434,6 @@ cd EchoVault
 # Cài đặt Tauri dependencies (Linux)
 sudo apt update && sudo apt install -y pkg-config libgtk-3-dev \
   libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
-
-# Cài đặt toolchain qua mise
-mise trust && mise install
 
 # Cài đặt frontend dependencies
 cd src-web && pnpm install && cd ..
@@ -481,7 +478,6 @@ cargo tauri build     # Production build
 ```text
 EchoVault/
   Cargo.toml                      # Workspace root
-  mise.toml                       # Toolchain (rust, node)
   crates/
     echovault-core/               # Core library
       src/
@@ -590,7 +586,7 @@ EchoVault/
 
 ### 10.1. CLI Distribution
 
-- **Cargo**: `cargo install --path .` hoặc `mise run install`
+- **Cargo**: `cargo install --path .`
 - **Binary**: `ev` - Single executable cho Windows/macOS/Linux
 - **Homebrew**: Formula cho macOS (planned)
 - **AUR**: Package cho Arch Linux (planned)

@@ -70,7 +70,7 @@ impl GitHubProvider {
         // Gọi GitHub API để check repo
         let client = reqwest::blocking::Client::new();
         let response = client
-            .get(format!("https://api.github.com/user/repos?per_page=100"))
+            .get("https://api.github.com/user/repos?per_page=100")
             .header("Authorization", format!("Bearer {}", token))
             .header("User-Agent", "EchoVault")
             .header("Accept", "application/vnd.github+json")
@@ -139,6 +139,53 @@ impl GitHubProvider {
             .and_then(|l| l.as_str())
             .map(|s| s.to_string())
             .ok_or_else(|| anyhow::anyhow!("Could not get username from GitHub"))
+    }
+
+    /// Tạo private repo mới trên GitHub
+    pub fn create_repo(&self, repo_name: &str) -> Result<String> {
+        let token = self
+            .access_token()
+            .ok_or_else(|| anyhow::anyhow!("Not authenticated"))?;
+
+        let client = reqwest::blocking::Client::new();
+
+        // Tạo repo mới với GitHub API
+        let body = serde_json::json!({
+            "name": repo_name,
+            "description": "EchoVault - Encrypted AI chat session backup",
+            "private": true,
+            "auto_init": false  // Không tạo initial commit để tránh conflict
+        });
+
+        let response = client
+            .post("https://api.github.com/user/repos")
+            .header("Authorization", format!("Bearer {}", token))
+            .header("User-Agent", "EchoVault")
+            .header("Accept", "application/vnd.github+json")
+            .json(&body)
+            .send()
+            .context("Failed to create repo on GitHub")?;
+
+        if response.status() == 201 {
+            // Repo created successfully
+            let repo: serde_json::Value = response
+                .json()
+                .context("Failed to parse create repo response")?;
+            let clone_url = repo
+                .get("clone_url")
+                .and_then(|u| u.as_str())
+                .unwrap_or("")
+                .to_string();
+            Ok(clone_url)
+        } else if response.status() == 422 {
+            // Repo already exists (validation failed)
+            let username = self.get_username()?;
+            Ok(format!("https://github.com/{}/{}.git", username, repo_name))
+        } else {
+            let status = response.status();
+            let error_text = response.text().unwrap_or_default();
+            anyhow::bail!("Failed to create repo: {} - {}", status, error_text)
+        }
     }
 }
 
@@ -239,15 +286,52 @@ impl SyncProvider for GitHubProvider {
             git.commit("Auto-sync from EchoVault")?;
         }
 
+        // Lần push đầu tiên
         let success = git.push("origin", "main", token)?;
 
+        if success {
+            return Ok(PushResult {
+                success: true,
+                files_pushed: 0,
+                message: None,
+            });
+        }
+
+        // Push failed (likely repo doesn't exist), try to create it
+        println!("[GitHubProvider::push] Push failed, attempting to create repo...");
+
+        // Lấy repo name từ remote URL
+        let remote_url = git.get_remote_url("origin")?;
+        let repo_name = remote_url
+            .split('/')
+            .last()
+            .unwrap_or("vault")
+            .trim_end_matches(".git");
+
+        // Tạo repo trên GitHub
+        match self.create_repo(repo_name) {
+            Ok(url) => {
+                println!("[GitHubProvider::push] Created repo: {}", url);
+            }
+            Err(e) => {
+                println!(
+                    "[GitHubProvider::push] create_repo error (may already exist): {}",
+                    e
+                );
+                // Continue anyway, repo might already exist
+            }
+        }
+
+        // Retry push
+        let success_retry = git.push("origin", "main", token)?;
+
         Ok(PushResult {
-            success,
-            files_pushed: 0, // TODO: Track actual count
-            message: if success {
+            success: success_retry,
+            files_pushed: 0,
+            message: if success_retry {
                 None
             } else {
-                Some("Push failed".to_string())
+                Some("Push failed after creating repo".to_string())
             },
         })
     }

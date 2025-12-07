@@ -30,8 +30,8 @@ impl VaultMetadata {
         use rand::RngCore;
 
         let salt = if encrypted {
-            // Tạo salt random 32 bytes
-            let mut salt_bytes = [0u8; 32];
+            // Tạo salt random 16 bytes (khớp với SALT_LEN của derive_key)
+            let mut salt_bytes = [0u8; 16];
             rand::thread_rng().fill_bytes(&mut salt_bytes);
             Some(base64_encode(&salt_bytes))
         } else {
@@ -140,7 +140,7 @@ fn find_encrypted_file(vault_dir: &Path) -> Result<Option<std::path::PathBuf>> {
         for entry in fs::read_dir(&sessions_dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.is_file() && path.extension().map_or(false, |e| e == "enc") {
+            if path.is_file() && path.extension().is_some_and(|e| e == "enc") {
                 return Ok(Some(path));
             }
         }

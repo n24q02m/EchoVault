@@ -9,6 +9,7 @@ interface SessionInfo {
   workspace_name: string | null;
   created_at: string | null;
   file_size: number;
+  path: string;
 }
 
 interface ScanResult {
@@ -545,11 +546,45 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
 }
 
 // ==================== MAIN APP ====================
+
+// Cache keys for localStorage
+const CACHE_KEY = "echovault_sessions_cache";
+const CACHE_TIMESTAMP_KEY = "echovault_cache_timestamp";
+
+// Helper functions for cache
+const loadCachedSessions = (): SessionInfo[] => {
+  try {
+    const cached = localStorage.getItem(CACHE_KEY);
+    return cached ? JSON.parse(cached) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveCachedSessions = (sessions: SessionInfo[]) => {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(sessions));
+    localStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
+  } catch (err) {
+    console.error("Failed to cache sessions:", err);
+  }
+};
+
 function MainApp() {
   const [activeTab, setActiveTab] = useState<Tab>("sessions");
-  const [sessions, setSessions] = useState<SessionInfo[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  // Initialize with cached data for instant display
+  const [sessions, setSessions] = useState<SessionInfo[]>(loadCachedSessions());
+  const [isScanning, setIsScanning] = useState(false);
   const [config, setConfig] = useState<AppConfig | null>(null);
+  const [expandedSources, setExpandedSources] = useState<Set<string>>(
+    new Set()
+  );
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [scanStatus, setScanStatus] = useState<"idle" | "scanning" | "syncing">(
+    "idle"
+  );
 
   const groupedSessions = sessions.reduce(
     (acc, session) => {
@@ -561,29 +596,69 @@ function MainApp() {
     {} as Record<string, SessionInfo[]>
   );
 
+  // Initialize provider with saved credentials and load sessions
   useEffect(() => {
-    loadSessions();
-    loadConfig();
+    const initialize = async () => {
+      try {
+        // Load config first
+        const cfg = await invoke<AppConfig>("get_config");
+        setConfig(cfg);
+
+        // Initialize provider with saved credentials (for sync later)
+        try {
+          await invoke<boolean>("init_provider");
+        } catch (initErr) {
+          console.error("init_provider failed:", initErr);
+        }
+
+        // Scan sessions (separate from sync)
+        await loadSessions();
+      } catch (err) {
+        console.error("Initialization failed:", err);
+      }
+    };
+
+    initialize();
   }, []);
 
+  // Load sessions from backend
   const loadSessions = async () => {
-    setIsLoading(true);
+    setIsScanning(true);
+    setScanStatus("scanning");
+
     try {
       const result = await invoke<ScanResult>("scan_sessions");
       setSessions(result.sessions);
+      saveCachedSessions(result.sessions);
     } catch (err) {
       console.error("Failed to scan sessions:", err);
     } finally {
-      setIsLoading(false);
+      setIsScanning(false);
+      setScanStatus("idle");
     }
   };
 
-  const loadConfig = async () => {
+  // Background sync (separate function, called by interval or manual button)
+  const backgroundSync = async () => {
+    if (isSyncing) return;
+
+    setIsSyncing(true);
+    setScanStatus("syncing");
+    setSyncError(null);
+
     try {
-      const cfg = await invoke<AppConfig>("get_config");
-      setConfig(cfg);
-    } catch (err) {
-      console.error("Failed to load config:", err);
+      const success = await invoke<boolean>("sync_vault");
+      if (success) {
+        setLastSyncTime(new Date().toLocaleTimeString());
+      } else {
+        setLastSyncTime(new Date().toLocaleTimeString());
+      }
+    } catch (syncErr) {
+      console.error("Sync failed:", syncErr);
+      setSyncError(String(syncErr));
+    } finally {
+      setIsSyncing(false);
+      setScanStatus("idle");
     }
   };
 
@@ -612,6 +687,59 @@ function MainApp() {
     });
   };
 
+  const toggleSource = (source: string) => {
+    setExpandedSources((prev) => {
+      const next = new Set(prev);
+      if (next.has(source)) {
+        next.delete(source);
+      } else {
+        next.add(source);
+      }
+      return next;
+    });
+  };
+
+  // Expand all sources by default when sessions load
+  useEffect(() => {
+    if (sessions.length > 0) {
+      const sources = [...new Set(sessions.map((s) => s.source || "unknown"))];
+      setExpandedSources(new Set(sources));
+    }
+  }, [sessions]);
+
+  // Manual sync handler
+  const handleSync = async () => {
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      const success = await invoke<boolean>("sync_vault");
+      if (success) {
+        setLastSyncTime(new Date().toLocaleTimeString());
+      } else {
+        setLastSyncTime(new Date().toLocaleTimeString());
+      }
+    } catch (err) {
+      console.error("Sync failed:", err);
+      setSyncError(String(err));
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Auto-sync every 5 minutes
+  useEffect(() => {
+    const interval = setInterval(
+      () => {
+        if (!isScanning && !isSyncing) {
+          backgroundSync();
+        }
+      },
+      5 * 60 * 1000
+    ); // 5 minutes
+
+    return () => clearInterval(interval);
+  }, [isScanning, isSyncing]);
+
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
@@ -619,23 +747,57 @@ function MainApp() {
           <img src="/logo.png" alt="EchoVault" className="h-8 w-8 rounded-lg" />
           <span className="font-semibold">EchoVault</span>
         </div>
-        <div
-          className="h-2 w-2 rounded-full bg-[var(--success)]"
-          title="Online"
-        />
+        <div className="flex items-center gap-3">
+          {syncError && (
+            <span className="text-xs text-red-400" title={syncError}>
+              Sync error
+            </span>
+          )}
+          {lastSyncTime && !syncError && (
+            <span className="text-xs text-[var(--text-secondary)]">
+              Last sync: {lastSyncTime}
+            </span>
+          )}
+          <button
+            onClick={handleSync}
+            disabled={isSyncing}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors hover:bg-[var(--bg-card)] disabled:opacity-50"
+            title="Sync to cloud"
+          >
+            <svg
+              className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {isSyncing ? "Syncing..." : "Sync"}
+          </button>
+          <div
+            className={`h-2 w-2 rounded-full ${isSyncing ? "animate-pulse bg-yellow-500" : "bg-[var(--success)]"}`}
+            title={isSyncing ? "Syncing" : "Online"}
+          />
+        </div>
       </header>
 
       <main className="flex-1 overflow-y-auto">
         {activeTab === "sessions" && (
           <div className="p-4">
-            {isLoading ? (
+            {/* Show cached data immediately, with spinner if scanning */}
+            {sessions.length === 0 && isScanning ? (
               <div className="flex flex-col items-center justify-center py-8">
                 <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
                 <p className="mt-2 text-sm text-[var(--text-secondary)]">
                   Scanning sessions...
                 </p>
               </div>
-            ) : Object.keys(groupedSessions).length === 0 ? (
+            ) : sessions.length === 0 ? (
               <div className="py-8 text-center text-[var(--text-secondary)]">
                 <p>No sessions found</p>
                 <button
@@ -646,37 +808,62 @@ function MainApp() {
                 </button>
               </div>
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-3">
                 {Object.entries(groupedSessions).map(([source, items]) => (
-                  <div key={source}>
-                    <h3 className="mb-2 text-sm font-medium uppercase text-[var(--text-secondary)]">
-                      {source} ({items.length})
-                    </h3>
-                    <div className="space-y-2">
-                      {items.map((session) => (
-                        <div
-                          key={session.id}
-                          onClick={() => handleOpenFile(session.id)}
-                          className="glass cursor-pointer rounded-lg p-3 transition-colors hover:bg-[var(--bg-card)]"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate font-medium">
-                                {session.title ||
-                                  session.workspace_name ||
-                                  "Untitled"}
-                              </p>
-                              <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-                                {formatFileSize(session.file_size)}
-                              </p>
+                  <div
+                    key={source}
+                    className="glass overflow-hidden rounded-lg"
+                  >
+                    <button
+                      onClick={() => toggleSource(source)}
+                      className="flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-[var(--bg-card)]"
+                    >
+                      <span className="text-sm font-medium uppercase text-[var(--text-secondary)]">
+                        {source} ({items.length})
+                      </span>
+                      <svg
+                        className={`h-4 w-4 text-[var(--text-secondary)] transition-transform ${
+                          expandedSources.has(source) ? "rotate-180" : ""
+                        }`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </button>
+                    {expandedSources.has(source) && (
+                      <div className="space-y-1 px-3 pb-3">
+                        {items.map((session) => (
+                          <div
+                            key={session.id}
+                            onClick={() => handleOpenFile(session.path)}
+                            className="cursor-pointer rounded-lg bg-[var(--bg-card)] p-2.5 transition-colors hover:bg-[var(--border)]"
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium">
+                                  {session.title ||
+                                    session.workspace_name ||
+                                    "Untitled"}
+                                </p>
+                                <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
+                                  {formatFileSize(session.file_size)}
+                                </p>
+                              </div>
+                              <span className="text-xs text-[var(--text-secondary)]">
+                                {formatDate(session.created_at)}
+                              </span>
                             </div>
-                            <span className="text-xs text-[var(--text-secondary)]">
-                              {formatDate(session.created_at)}
-                            </span>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -719,7 +906,6 @@ function MainApp() {
           </div>
         )}
       </main>
-
       <nav className="flex border-t border-[var(--border)] bg-[var(--bg-secondary)]">
         <button
           onClick={() => setActiveTab("sessions")}

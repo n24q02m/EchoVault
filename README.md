@@ -23,8 +23,7 @@ cd EchoVault
 sudo apt update && sudo apt install -y pkg-config libgtk-3-dev \
   libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
 
-# Cài đặt toolchain
-mise trust && mise install
+# Yêu cầu: Rust (latest), Node (22), pnpm (latest) đã được cài đặt
 
 # Cài đặt frontend
 cd src-web && pnpm install && cd ..

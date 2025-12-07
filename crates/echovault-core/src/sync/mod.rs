@@ -13,4 +13,5 @@ pub mod provider;
 
 pub use git::GitSync;
 pub use github::GitHubProvider;
+pub use oauth::{load_credentials_from_file, save_credentials_to_file, OAuthCredentials};
 pub use provider::{AuthStatus, PullResult, PushResult, SyncOptions, SyncProvider};

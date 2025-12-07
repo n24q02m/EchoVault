@@ -85,6 +85,7 @@ pub fn run() {
             commands::clone_vault,
             commands::get_vault_metadata,
             commands::verify_passphrase_cmd,
+            commands::init_provider,
             commands::get_auth_status,
             commands::start_auth,
             commands::complete_auth,
