@@ -23,11 +23,8 @@ cd EchoVault
 sudo apt update && sudo apt install -y pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
 cargo install tauri-cli
 
-# Cài đặt frontend
-cd src-web && pnpm install && pnpm build && cd ..
-
-# Build
-cargo build --release
+# Cài đặt app
+cargo tauri dev
 ```
 
 ## Phát triển
