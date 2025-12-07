@@ -470,34 +470,64 @@ fn find_vault_session_info(
 
     let sessions_dir = vault_dir.join("sessions");
 
+    // Xử lý ID có chứa `/` (Antigravity artifact format: uuid/filename)
+    // Ví dụ: "6c276bda-72b9-47b8-b5ce-79079007168d/task.md"
+    let (base_id, file_part) = if session_id.contains('/') {
+        let parts: Vec<&str> = session_id.splitn(2, '/').collect();
+        (parts[0], Some(parts.get(1).copied().unwrap_or("")))
+    } else {
+        (session_id, None)
+    };
+
     // Thử tìm trong các source directories
     let sources = ["vscode-copilot", "antigravity", "antigravity-artifact"];
     let mut found_source = "vault".to_string();
     let mut found_path = String::new();
+    let mut display_title: Option<String> = None;
 
     for source in &sources {
         let source_dir = sessions_dir.join(source);
-        if source_dir.exists() {
-            // Tìm manifest file hoặc .enc file
-            let manifest_pattern = format!("{}.json.gz.enc.manifest", session_id);
-            let enc_pattern = format!("{}.json.gz.enc", session_id);
+        if !source_dir.exists() {
+            continue;
+        }
 
-            let manifest_path = source_dir.join(&manifest_pattern);
-            let enc_path = source_dir.join(&enc_pattern);
+        // Tạo các patterns để tìm file
+        let patterns = if let Some(file_name) = file_part {
+            // Antigravity artifact: file name là phần sau `/`
+            let clean_name = file_name.replace(".md", "");
+            vec![
+                format!("{}.json.gz.enc", clean_name),
+                format!("{}.json.gz.enc.manifest", clean_name),
+                format!("{}.json.gz.enc", base_id),
+            ]
+        } else {
+            // Normal session: dùng full ID
+            vec![
+                format!("{}.json.gz.enc", session_id),
+                format!("{}.json.gz.enc.manifest", session_id),
+            ]
+        };
 
-            if manifest_path.exists() {
+        for pattern in &patterns {
+            let file_path = source_dir.join(pattern);
+            if file_path.exists() {
                 found_source = source.to_string();
-                found_path = manifest_path.to_string_lossy().to_string();
-                break;
-            } else if enc_path.exists() {
-                found_source = source.to_string();
-                found_path = enc_path.to_string_lossy().to_string();
+                found_path = file_path.to_string_lossy().to_string();
+
+                // Lấy title từ file name nếu là artifact
+                if file_part.is_some() {
+                    display_title = file_part.map(|f| f.replace(".md", "").replace('_', " "));
+                }
                 break;
             }
         }
+
+        if !found_path.is_empty() {
+            break;
+        }
     }
 
-    // Nếu không tìm thấy path cụ thể, đặt path tới vault dir
+    // Nếu không tìm thấy path cụ thể, vẫn hiển thị session với default info
     if found_path.is_empty() {
         found_path = sessions_dir.to_string_lossy().to_string();
     }
@@ -511,13 +541,13 @@ fn find_vault_session_info(
                     .and_then(|v| v.as_str())
                     .map(|s| s.replace(".json", ""))
             } else {
-                None
+                display_title
             }
         } else {
-            None
+            display_title
         }
     } else {
-        None
+        display_title
     };
 
     SessionInfo {
