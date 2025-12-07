@@ -497,7 +497,8 @@ DO NOT edit files manually - they may be encrypted and/or compressed.
         self.repo.find_reference(&ref_name).is_ok()
     }
 
-    /// Push lên remote với access token, tự động pull --rebase nếu bị rejected
+    /// Push lên remote với access token, tự động xử lý conflicts
+    /// Logic: push -> nếu rejected -> pull rebase -> nếu conflict -> abort + merge theirs
     /// Trả về Ok(true) nếu push thành công, Ok(false) nếu repo not found
     pub fn push_with_pull(
         &self,
@@ -516,97 +517,112 @@ DO NOT edit files manually - they may be encrypted and/or compressed.
 
         let workdir = self.repo.workdir().context("No workdir")?;
 
-        // Thử push trước
-        let output = std::process::Command::new("git")
-            .current_dir(workdir)
-            .args(["push", "-u", "--progress", &auth_url, branch])
-            .output()
+        // Helper để tạo git command với isolated environment
+        let git_cmd = |args: &[&str]| {
+            std::process::Command::new("git")
+                .current_dir(workdir)
+                // Isolated git config - không bị ảnh hưởng bởi user config
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_SYSTEM", "/dev/null")
+                .env("GIT_AUTHOR_NAME", "EchoVault")
+                .env("GIT_AUTHOR_EMAIL", "echovault@local")
+                .env("GIT_COMMITTER_NAME", "EchoVault")
+                .env("GIT_COMMITTER_EMAIL", "echovault@local")
+                .args(args)
+                .output()
+        };
+
+        // 1. Thử push trước
+        println!("[git] Attempting push...");
+        let output = git_cmd(&["push", "-u", "--progress", &auth_url, branch])
             .context("Cannot execute git push command")?;
 
         if output.status.success() {
+            println!("[git] Push successful!");
             return Ok(true);
         }
 
         let stderr = String::from_utf8_lossy(&output.stderr);
 
-        // Kiểm tra lỗi "not found" - repo chưa tồn tại
+        // Repo không tồn tại
         if stderr.contains("not found") || stderr.contains("Repository not found") {
             return Ok(false);
         }
 
-        // Kiểm tra rejected push (remote có commits mà local không có)
+        // Push bị rejected - remote có commits ahead
         if stderr.contains("rejected") || stderr.contains("Updates were rejected") {
             println!("[git] Push rejected, attempting pull --rebase first...");
 
-            // Pull với rebase để giữ local commits lên trên remote changes
-            let pull_output = std::process::Command::new("git")
-                .current_dir(workdir)
-                .args(["pull", "--rebase", &auth_url, branch])
-                .output()
+            // 2. Thử pull --rebase
+            let pull_output = git_cmd(&["pull", "--rebase", &auth_url, branch])
                 .context("Cannot execute git pull --rebase command")?;
 
             if pull_output.status.success() {
                 println!("[git] Pull --rebase success, retrying push...");
-
-                // Retry push
-                let retry_output = std::process::Command::new("git")
-                    .current_dir(workdir)
-                    .args(["push", "-u", "--progress", &auth_url, branch])
-                    .output()
+                let retry_output = git_cmd(&["push", "-u", "--progress", &auth_url, branch])
                     .context("Cannot execute git push command (retry)")?;
 
                 if retry_output.status.success() {
                     return Ok(true);
                 }
-
                 let retry_stderr = String::from_utf8_lossy(&retry_output.stderr);
                 bail!("Git push failed after rebase: {}", retry_stderr);
-            } else {
-                let pull_stderr = String::from_utf8_lossy(&pull_output.stderr);
-
-                // Xử lý unrelated histories
-                if pull_stderr.contains("unrelated histories") {
-                    println!("[git] Unrelated histories, trying --allow-unrelated-histories...");
-
-                    let unrelated_output = std::process::Command::new("git")
-                        .current_dir(workdir)
-                        .args([
-                            "pull",
-                            "--rebase",
-                            "--allow-unrelated-histories",
-                            &auth_url,
-                            branch,
-                        ])
-                        .output()
-                        .context("Cannot execute git pull --allow-unrelated-histories")?;
-
-                    if unrelated_output.status.success() {
-                        // Retry push
-                        let retry_output = std::process::Command::new("git")
-                            .current_dir(workdir)
-                            .args(["push", "-u", "--progress", &auth_url, branch])
-                            .output()
-                            .context("Cannot execute git push command (after unrelated)")?;
-
-                        if retry_output.status.success() {
-                            return Ok(true);
-                        }
-                        let retry_stderr = String::from_utf8_lossy(&retry_output.stderr);
-                        bail!(
-                            "Git push failed after allow-unrelated-histories: {}",
-                            retry_stderr
-                        );
-                    } else {
-                        let unrelated_stderr = String::from_utf8_lossy(&unrelated_output.stderr);
-                        bail!(
-                            "Git pull --allow-unrelated-histories failed: {}",
-                            unrelated_stderr
-                        );
-                    }
-                }
-
-                bail!("Git pull --rebase failed: {}", pull_stderr);
             }
+
+            let pull_stderr = String::from_utf8_lossy(&pull_output.stderr);
+
+            // 3. Rebase failed - có thể do conflict hoặc unrelated histories
+            println!("[git] Pull --rebase failed: {}", pull_stderr);
+
+            // Abort rebase nếu đang trong trạng thái rebase
+            println!("[git] Aborting rebase...");
+            let _ = git_cmd(&["rebase", "--abort"]);
+
+            // 4. Thử merge với strategy theirs (ưu tiên remote vì vault.json gốc ở đó)
+            println!("[git] Trying merge with theirs strategy (prefer remote vault.json)...");
+
+            // Fetch first
+            let _ = git_cmd(&["fetch", &auth_url, branch]);
+
+            // Reset to match remote branch
+            println!("[git] Resetting to remote state...");
+            let reset_output = git_cmd(&["reset", "--hard", &format!("FETCH_HEAD")])
+                .context("Cannot execute git reset")?;
+
+            if reset_output.status.success() {
+                println!("[git] Reset to remote successful!");
+                // Local changes đã bị overwrite, push sẽ up-to-date
+                return Ok(true);
+            }
+
+            // Fallback: thử merge với allow-unrelated-histories và theirs
+            println!("[git] Trying merge with allow-unrelated-histories...");
+            let merge_output = git_cmd(&[
+                "merge",
+                "FETCH_HEAD",
+                "--allow-unrelated-histories",
+                "-X",
+                "theirs",
+                "-m",
+                "Merge remote vault",
+            ])
+            .context("Cannot execute git merge")?;
+
+            if merge_output.status.success() {
+                println!("[git] Merge successful, pushing...");
+                let push_output = git_cmd(&["push", "-u", "--progress", &auth_url, branch])
+                    .context("Cannot execute git push after merge")?;
+
+                if push_output.status.success() {
+                    return Ok(true);
+                }
+            }
+
+            // Cuối cùng: bail với message rõ ràng
+            bail!(
+                "Git sync failed. This may happen when vault was initialized on multiple machines.\n\
+                 Solution: Delete local vault (~/.local/share/echovault/vault) and re-setup to clone from remote."
+            );
         }
 
         // Lỗi khác
