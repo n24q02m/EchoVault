@@ -459,6 +459,78 @@ pub async fn complete_auth(state: State<'_, AppState>) -> Result<AuthStatusRespo
 
 // ============ SESSION COMMANDS ============
 
+/// Helper: Tìm thông tin session từ vault directory
+/// Đọc từ manifest files hoặc tạo default info nếu không tìm thấy
+fn find_vault_session_info(
+    vault_dir: &std::path::Path,
+    session_id: &str,
+    file_size: u64,
+) -> SessionInfo {
+    use std::fs;
+
+    let sessions_dir = vault_dir.join("sessions");
+
+    // Thử tìm trong các source directories
+    let sources = ["vscode-copilot", "antigravity", "antigravity-artifact"];
+    let mut found_source = "vault".to_string();
+    let mut found_path = String::new();
+
+    for source in &sources {
+        let source_dir = sessions_dir.join(source);
+        if source_dir.exists() {
+            // Tìm manifest file hoặc .enc file
+            let manifest_pattern = format!("{}.json.gz.enc.manifest", session_id);
+            let enc_pattern = format!("{}.json.gz.enc", session_id);
+
+            let manifest_path = source_dir.join(&manifest_pattern);
+            let enc_path = source_dir.join(&enc_pattern);
+
+            if manifest_path.exists() {
+                found_source = source.to_string();
+                found_path = manifest_path.to_string_lossy().to_string();
+                break;
+            } else if enc_path.exists() {
+                found_source = source.to_string();
+                found_path = enc_path.to_string_lossy().to_string();
+                break;
+            }
+        }
+    }
+
+    // Nếu không tìm thấy path cụ thể, đặt path tới vault dir
+    if found_path.is_empty() {
+        found_path = sessions_dir.to_string_lossy().to_string();
+    }
+
+    // Thử đọc manifest để lấy thêm thông tin
+    let title = if found_path.ends_with(".manifest") {
+        if let Ok(content) = fs::read_to_string(&found_path) {
+            // Parse manifest để lấy original_file name
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                json.get("original_file")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.replace(".json", ""))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    SessionInfo {
+        id: session_id.to_string(),
+        source: format!("{} (synced)", found_source),
+        title,
+        workspace_name: None,
+        created_at: None, // Không có timestamp chính xác từ index
+        file_size,
+        path: found_path,
+    }
+}
+
 /// Scan tất cả sessions có sẵn (async, offloaded to blocking thread)
 #[tauri::command]
 pub async fn scan_sessions() -> Result<ScanResult, String> {
@@ -467,44 +539,85 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
         use echovault_core::extractors::{
             antigravity::AntigravityExtractor, vscode_copilot::VSCodeCopilotExtractor, Extractor,
         };
+        use echovault_core::Config;
+        use std::collections::{HashMap, HashSet};
 
         let mut sessions = Vec::new();
+        let mut seen_ids: HashSet<String> = HashSet::new();
 
-        // 1. Scan VS Code Copilot sessions
+        // 1. Scan VS Code Copilot sessions (local)
         let vscode_extractor = VSCodeCopilotExtractor::new();
         if let Ok(locations) = vscode_extractor.find_storage_locations() {
             for location in locations {
                 if let Ok(files) = vscode_extractor.list_session_files(&location) {
                     for file in files {
-                        sessions.push(SessionInfo {
-                            id: file.metadata.id,
-                            source: file.metadata.source,
-                            title: file.metadata.title,
-                            workspace_name: file.metadata.workspace_name,
-                            created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
-                            file_size: file.metadata.file_size,
-                            path: file.metadata.original_path.to_string_lossy().to_string(),
-                        });
+                        let id = file.metadata.id.clone();
+                        if seen_ids.insert(id) {
+                            sessions.push(SessionInfo {
+                                id: file.metadata.id,
+                                source: file.metadata.source,
+                                title: file.metadata.title,
+                                workspace_name: file.metadata.workspace_name,
+                                created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
+                                file_size: file.metadata.file_size,
+                                path: file.metadata.original_path.to_string_lossy().to_string(),
+                            });
+                        }
                     }
                 }
             }
         }
 
-        // 2. Scan Antigravity sessions
+        // 2. Scan Antigravity sessions (local)
         let antigravity_extractor = AntigravityExtractor::new();
         if let Ok(locations) = antigravity_extractor.find_storage_locations() {
             for location in locations {
                 if let Ok(files) = antigravity_extractor.list_session_files(&location) {
                     for file in files {
-                        sessions.push(SessionInfo {
-                            id: file.metadata.id,
-                            source: file.metadata.source,
-                            title: file.metadata.title,
-                            workspace_name: file.metadata.workspace_name,
-                            created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
-                            file_size: file.metadata.file_size,
-                            path: file.metadata.original_path.to_string_lossy().to_string(),
-                        });
+                        let id = file.metadata.id.clone();
+                        if seen_ids.insert(id) {
+                            sessions.push(SessionInfo {
+                                id: file.metadata.id,
+                                source: file.metadata.source,
+                                title: file.metadata.title,
+                                workspace_name: file.metadata.workspace_name,
+                                created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
+                                file_size: file.metadata.file_size,
+                                path: file.metadata.original_path.to_string_lossy().to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Read sessions from vault (synced from other machines)
+        // The vault contains an index.json with metadata of all ingested sessions
+        if let Ok(config) = Config::load_default() {
+            let vault_dir = config.vault_path;
+            let index_path = vault_dir.join("index.json");
+
+            if index_path.exists() {
+                if let Ok(content) = std::fs::read_to_string(&index_path) {
+                    // index.json format: { "session_id": (mtime, file_size), ... }
+                    if let Ok(index) = serde_json::from_str::<HashMap<String, (u64, u64)>>(&content)
+                    {
+                        println!(
+                            "[scan_sessions] Found {} entries in vault index",
+                            index.len()
+                        );
+
+                        // For each session in index that we don't already have locally,
+                        // add it as a "vault" session (synced from other machine)
+                        for (session_id, (_mtime, file_size)) in index {
+                            if seen_ids.insert(session_id.clone()) {
+                                // This session is from another machine (not in local extractors)
+                                // Try to find more info from the vault files
+                                let session_info =
+                                    find_vault_session_info(&vault_dir, &session_id, file_size);
+                                sessions.push(session_info);
+                            }
+                        }
                     }
                 }
             }
@@ -1014,13 +1127,44 @@ pub async fn sync_vault(state: State<'_, AppState>) -> Result<bool, String> {
         None
     };
 
-    // 2. Ingest Sessions
+    // 2. Pull from Remote (get changes from other machines first)
+    println!("[sync_vault] Pulling from remote...");
+    let vault_dir_for_pull = vault_dir.clone();
+    let provider_for_pull = state.provider.clone();
+    let options_for_pull = SyncOptions {
+        encrypt: config.encryption.enabled,
+        compress: config.compression.enabled,
+    };
+
+    let pull_result = tokio::task::spawn_blocking(move || {
+        let provider = provider_for_pull.lock().map_err(|e| e.to_string())?;
+        provider
+            .pull(&vault_dir_for_pull, &options_for_pull)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match pull_result {
+        Ok(result) => {
+            println!(
+                "[sync_vault] Pull complete: has_changes={}",
+                result.has_changes
+            );
+        }
+        Err(e) => {
+            // Pull failure is not fatal - might be first sync or network issue
+            println!("[sync_vault] Pull failed (continuing anyway): {}", e);
+        }
+    }
+
+    // 3. Ingest Sessions (local -> vault)
     println!("[sync_vault] Ingesting sessions...");
     let _ingest_changes =
         ingest_sessions(&vault_dir, encryptor.as_ref(), config.compression.enabled)?;
     println!("[sync_vault] Ingest complete");
 
-    // 3. Push to Remote
+    // 4. Push to Remote
     println!("[sync_vault] Pushing to remote...");
     let options = SyncOptions {
         encrypt: config.encryption.enabled,
