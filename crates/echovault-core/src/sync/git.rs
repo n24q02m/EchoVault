@@ -571,51 +571,65 @@ DO NOT edit files manually - they may be encrypted and/or compressed.
 
             let pull_stderr = String::from_utf8_lossy(&pull_output.stderr);
 
-            // 3. Rebase failed - có thể do conflict hoặc unrelated histories
+            // 3. Rebase failed - có thể do conflict ở vault.json
             println!("[git] Pull --rebase failed: {}", pull_stderr);
 
             // Abort rebase nếu đang trong trạng thái rebase
             println!("[git] Aborting rebase...");
             let _ = git_cmd(&["rebase", "--abort"]);
 
-            // 4. Thử merge với strategy theirs (ưu tiên remote vì vault.json gốc ở đó)
-            println!("[git] Trying merge with theirs strategy (prefer remote vault.json)...");
-
-            // Fetch first
+            // 4. Strategy: Checkout setup files từ remote, giữ nguyên local sessions
+            // Đây là cách đúng: chỉ lấy vault.json từ remote (salt gốc), giữ local data
+            println!("[git] Fetching remote...");
             let _ = git_cmd(&["fetch", &auth_url, branch]);
 
-            // Reset to match remote branch
-            println!("[git] Resetting to remote state...");
-            let reset_output = git_cmd(&["reset", "--hard", &format!("FETCH_HEAD")])
-                .context("Cannot execute git reset")?;
+            // Checkout chỉ các setup files từ remote (vault.json, .gitignore, README.md nếu có)
+            println!("[git] Checking out setup files from remote (vault.json)...");
+            let _ = git_cmd(&["checkout", "FETCH_HEAD", "--", "vault.json"]);
+            let _ = git_cmd(&["checkout", "FETCH_HEAD", "--", ".gitignore"]);
 
-            if reset_output.status.success() {
-                println!("[git] Reset to remote successful!");
-                // Local changes đã bị overwrite, push sẽ up-to-date
+            // Stage tất cả changes (bao gồm local sessions và merged vault.json)
+            println!("[git] Staging all changes...");
+            let _ = git_cmd(&["add", "-A"]);
+
+            // Commit merge
+            println!("[git] Creating merge commit...");
+            let commit_output = git_cmd(&[
+                "commit",
+                "-m",
+                "Merge: use remote vault.json, keep local sessions",
+                "--allow-empty",
+            ]);
+
+            if let Ok(output) = commit_output {
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    println!("[git] Commit warning: {}", stderr);
+                }
+            }
+
+            // Push lên remote
+            println!("[git] Pushing merged changes...");
+            let push_output = git_cmd(&["push", "-u", "--force-with-lease", &auth_url, branch])
+                .context("Cannot execute git push after merge")?;
+
+            if push_output.status.success() {
+                println!("[git] Push successful after merge!");
                 return Ok(true);
             }
 
-            // Fallback: thử merge với allow-unrelated-histories và theirs
-            println!("[git] Trying merge with allow-unrelated-histories...");
-            let merge_output = git_cmd(&[
-                "merge",
-                "FETCH_HEAD",
-                "--allow-unrelated-histories",
-                "-X",
-                "theirs",
-                "-m",
-                "Merge remote vault",
-            ])
-            .context("Cannot execute git merge")?;
+            let push_stderr = String::from_utf8_lossy(&push_output.stderr);
+            println!("[git] Push after merge failed: {}", push_stderr);
 
-            if merge_output.status.success() {
-                println!("[git] Merge successful, pushing...");
-                let push_output = git_cmd(&["push", "-u", "--progress", &auth_url, branch])
-                    .context("Cannot execute git push after merge")?;
+            // Fallback: thử force push nếu force-with-lease không work
+            // Điều này an toàn vì chỉ ảnh hưởng vault riêng của user
+            println!("[git] Trying force push as fallback...");
+            let force_output = git_cmd(&["push", "-u", "--force", &auth_url, branch])
+                .context("Cannot execute git force push")?;
 
-                if push_output.status.success() {
-                    return Ok(true);
-                }
+            if force_output.status.success() {
+                println!("[git] Force push successful!");
+                return Ok(true);
             }
 
             // Cuối cùng: bail với message rõ ràng
