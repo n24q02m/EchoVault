@@ -1,7 +1,7 @@
 # ECHOVAULT - DEVELOPER HANDBOOK
 
-**Phiên bản:** 2.3.0
-**Ngày cập nhật:** 17/07/2025
+**Phiên bản:** 2.4.0
+**Ngày cập nhật:** 08/12/2025
 **Dành cho:** Solo Developer
 
 ---
@@ -629,9 +629,9 @@ EchoVault/
 
 1. Kiểm tra kết nối internet
 2. Xóa file credentials và chạy lại:
-   - Linux: `rm ~/.config/echovault/.credentials.json && ev sync`
-   - macOS: `rm ~/Library/Application\ Support/echovault/.credentials.json && ev sync`
-   - Windows: `del %APPDATA%\echovault\.credentials.json && ev sync`
+   - Linux: `rm -rf ~/.config/echovault ~/.local/share/echovault`
+   - macOS: `rm -rf ~/Library/Application\ Support/echovault`
+   - Windows: `del %APPDATA%\echovault`
 3. Kiểm tra GitHub status page
 4. Revoke token cũ trong GitHub Settings > Applications > Authorized OAuth Apps
 

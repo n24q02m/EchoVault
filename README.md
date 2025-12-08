@@ -6,7 +6,7 @@ EchoVault trích xuất, mã hóa và đồng bộ lịch sử chat từ GitHub 
 
 ## Tính năng
 
-- **Universal Extraction**: Hỗ trợ VS Code Copilot, Antigravity (sắp ra mắt), Cursor, Cline
+- **Universal Extraction**: Hỗ trợ VS Code Copilot, Antigravity, Cursor, Cline
 - **Privacy First**: Mã hóa AES-256-GCM trước khi rời khỏi máy
 - **Multi-Provider Sync**: GitHub, Google Drive, S3 (sắp ra mắt)
 - **Desktop App**: Mini window giống Google Drive Desktop
@@ -30,7 +30,8 @@ pre-commit install
 cd src-web && pnpm install && cd ..
 
 # Run app
-cargo tauri dev
+cargo build --release -p echovault-tauri
+./target/release/echovault-tauri
 ```
 
 ## Phát triển
