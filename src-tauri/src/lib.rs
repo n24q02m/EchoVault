@@ -10,7 +10,7 @@
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Emitter, Manager,
 };
 
 mod commands;
@@ -32,7 +32,13 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 app.exit(0);
             }
             "sync_now" => {
-                // TODO: Trigger sync
+                // Emit event để frontend trigger sync
+                let _ = app.emit("trigger-sync", ());
+                // Hiển thị window nếu đang ẩn
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
             }
             "settings" => {
                 if let Some(window) = app.get_webview_window("main") {
@@ -41,7 +47,21 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 }
             }
             "open_vault" => {
-                // TODO: Open vault directory
+                // Open vault directory trong file manager
+                if let Ok(config) = echovault_core::Config::load_default() {
+                    #[cfg(target_os = "linux")]
+                    let _ = std::process::Command::new("xdg-open")
+                        .arg(&config.vault_path)
+                        .spawn();
+                    #[cfg(target_os = "macos")]
+                    let _ = std::process::Command::new("open")
+                        .arg(&config.vault_path)
+                        .spawn();
+                    #[cfg(target_os = "windows")]
+                    let _ = std::process::Command::new("explorer")
+                        .arg(&config.vault_path)
+                        .spawn();
+                }
             }
             _ => {}
         })
@@ -77,6 +97,14 @@ pub fn run() {
         .setup(|app| {
             setup_tray(app)?;
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Minimize to tray thay vì đóng hoàn toàn
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Ẩn window thay vì đóng
+                let _ = window.hide();
+                api.prevent_close();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::check_setup_complete,

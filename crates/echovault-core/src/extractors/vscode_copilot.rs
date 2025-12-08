@@ -21,12 +21,26 @@ impl VSCodeCopilotExtractor {
     pub fn new() -> Self {
         let mut storage_paths = Vec::new();
 
-        // Lấy đường dẫn theo platform
+        // Ưu tiên đọc từ HOME env variable (để hỗ trợ testing với HOME override)
+        if let Ok(home) = std::env::var("HOME") {
+            let home_path = PathBuf::from(home);
+            // Linux: $HOME/.config/Code/User/workspaceStorage
+            storage_paths.push(home_path.join(".config/Code/User/workspaceStorage"));
+            storage_paths.push(home_path.join(".config/Code - Insiders/User/workspaceStorage"));
+        }
+
+        // Fallback: Lấy đường dẫn theo platform qua dirs crate
         if let Some(config_dir) = dirs::config_dir() {
             // Linux: ~/.config/Code/User/workspaceStorage
             // macOS: ~/Library/Application Support/Code/User/workspaceStorage
-            storage_paths.push(config_dir.join("Code/User/workspaceStorage"));
-            storage_paths.push(config_dir.join("Code - Insiders/User/workspaceStorage"));
+            let code_path = config_dir.join("Code/User/workspaceStorage");
+            if !storage_paths.contains(&code_path) {
+                storage_paths.push(code_path);
+            }
+            let insiders_path = config_dir.join("Code - Insiders/User/workspaceStorage");
+            if !storage_paths.contains(&insiders_path) {
+                storage_paths.push(insiders_path);
+            }
         }
 
         #[cfg(target_os = "windows")]
@@ -34,38 +48,6 @@ impl VSCodeCopilotExtractor {
             // Windows: %APPDATA%\Code\User\workspaceStorage
             storage_paths.push(appdata.join("Code/User/workspaceStorage"));
             storage_paths.push(appdata.join("Code - Insiders/User/workspaceStorage"));
-        }
-
-        // WSL: ~/.vscode-server/data/User/workspaceStorage
-        if let Some(home) = dirs::home_dir() {
-            storage_paths.push(home.join(".vscode-server/data/User/workspaceStorage"));
-        }
-
-        // WSL: Truy cập Windows filesystem qua /mnt/c
-        #[cfg(target_os = "linux")]
-        {
-            if std::path::Path::new("/mnt/c/Windows").exists() {
-                if let Ok(entries) = std::fs::read_dir("/mnt/c/Users") {
-                    for entry in entries.flatten() {
-                        let username = entry.file_name();
-                        let username_str = username.to_string_lossy();
-                        // Bỏ qua các thư mục hệ thống
-                        if username_str == "Public"
-                            || username_str == "Default"
-                            || username_str == "Default User"
-                            || username_str == "All Users"
-                        {
-                            continue;
-                        }
-                        let appdata_path = entry.path().join("AppData/Roaming");
-                        if appdata_path.exists() {
-                            storage_paths.push(appdata_path.join("Code/User/workspaceStorage"));
-                            storage_paths
-                                .push(appdata_path.join("Code - Insiders/User/workspaceStorage"));
-                        }
-                    }
-                }
-            }
         }
 
         Self { storage_paths }

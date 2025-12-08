@@ -169,6 +169,7 @@ pub async fn complete_setup(
     let force_compress = request.provider == "github";
 
     config.setup_complete = true;
+    let repo_name_for_later = request.repo_name.clone();
     config.sync = SyncConfig {
         remote: Some(remote_url.clone()),
         repo_name: Some(request.repo_name),
@@ -186,41 +187,86 @@ pub async fn complete_setup(
         .map_err(|e| e.to_string())?;
 
     // Tạo vault directory và metadata nếu chưa tồn tại (new vault)
+    // IMPORTANT: Clone-first approach để đảm bảo salt consistency
     if !VaultMetadata::exists(&vault_path) {
-        println!("[complete_setup] Creating new vault at {:?}", vault_path);
+        println!("[complete_setup] Local vault not found, checking remote...");
 
-        // Tạo vault directory
-        std::fs::create_dir_all(&vault_path)
-            .map_err(|e| format!("Failed to create vault directory: {}", e))?;
+        // Clone state để dùng trong spawn_blocking
+        let provider_for_check = state.provider.clone();
+        let repo_name_clone = repo_name_for_later.clone();
 
-        // Tạo vault.json
-        // Tạo vault.json với forced encrypt/compress
-        let metadata = VaultMetadata::new(force_encrypt, force_compress || request.compress);
-        metadata
-            .save(&vault_path)
-            .map_err(|e| format!("Failed to save vault metadata: {}", e))?;
-        println!("[complete_setup] vault.json created");
+        // Kiểm tra repo có tồn tại trên GitHub không
+        let repo_exists = tokio::task::spawn_blocking(move || {
+            let provider = provider_for_check.lock().map_err(|e| e.to_string())?;
+            provider
+                .repo_exists(&repo_name_clone)
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking failed: {}", e))?
+        .unwrap_or(false);
 
-        // Khởi tạo git repository
-        let git = GitSync::init(&vault_path)
-            .map_err(|e| format!("Failed to init git repository: {}", e))?;
-        println!("[complete_setup] Git repository initialized");
+        if repo_exists {
+            // CLONE-FIRST: Repo đã tồn tại → clone để lấy salt gốc
+            println!("[complete_setup] Remote repo exists, cloning to get original salt...");
 
-        // Thêm remote 'origin'
-        git.add_remote("origin", &remote_url)
-            .map_err(|e| format!("Failed to add git remote: {}", e))?;
-        println!("[complete_setup] Git remote 'origin' added: {}", remote_url);
+            let provider_for_clone = state.provider.clone();
+            let repo_name_for_clone = repo_name_for_later.clone();
 
-        // Tạo initial commit
-        git.stage_all()
-            .map_err(|e| format!("Failed to stage files: {}", e))?;
-        git.commit("Initial vault setup")
-            .map_err(|e| format!("Failed to create initial commit: {}", e))?;
-        println!("[complete_setup] Initial commit created");
+            tokio::task::spawn_blocking(move || {
+                let provider = provider_for_clone.lock().map_err(|e| e.to_string())?;
+                provider
+                    .clone_repo(&repo_name_for_clone)
+                    .map_err(|e| e.to_string())
+            })
+            .await
+            .map_err(|e| format!("spawn_blocking failed: {}", e))?
+            .map_err(|e| format!("Failed to clone vault: {}", e))?;
 
-        // Set remote cho provider
-        let mut provider = state.provider.lock().map_err(|e| e.to_string())?;
-        provider.set_remote(remote_url);
+            println!("[complete_setup] Vault cloned successfully with original salt");
+
+            // Set remote cho provider
+            let mut provider = state.provider.lock().map_err(|e| e.to_string())?;
+            provider.set_remote(remote_url);
+
+            // Lưu passphrase sau clone (passphrase phải match với salt trong vault.json)
+            // Không tạo vault.json mới - sử dụng cái đã clone
+        } else {
+            // NEW VAULT: Repo chưa tồn tại → tạo vault mới với salt mới
+            println!("[complete_setup] Remote repo not found, creating new vault...");
+
+            // Tạo vault directory
+            std::fs::create_dir_all(&vault_path)
+                .map_err(|e| format!("Failed to create vault directory: {}", e))?;
+
+            // Tạo vault.json với salt mới
+            let metadata = VaultMetadata::new(force_encrypt, force_compress || request.compress);
+            metadata
+                .save(&vault_path)
+                .map_err(|e| format!("Failed to save vault metadata: {}", e))?;
+            println!("[complete_setup] vault.json created with new salt");
+
+            // Khởi tạo git repository
+            let git = GitSync::init(&vault_path)
+                .map_err(|e| format!("Failed to init git repository: {}", e))?;
+            println!("[complete_setup] Git repository initialized");
+
+            // Thêm remote 'origin'
+            git.add_remote("origin", &remote_url)
+                .map_err(|e| format!("Failed to add git remote: {}", e))?;
+            println!("[complete_setup] Git remote 'origin' added: {}", remote_url);
+
+            // Tạo initial commit
+            git.stage_all()
+                .map_err(|e| format!("Failed to stage files: {}", e))?;
+            git.commit("Initial vault setup")
+                .map_err(|e| format!("Failed to create initial commit: {}", e))?;
+            println!("[complete_setup] Initial commit created");
+
+            // Set remote cho provider
+            let mut provider = state.provider.lock().map_err(|e| e.to_string())?;
+            provider.set_remote(remote_url);
+        }
     }
 
     // Lưu passphrase nếu encryption enabled
@@ -667,100 +713,93 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
     .map_err(|e| e.to_string())?
 }
 
-/// Mở URL trong browser (hỗ trợ WSL)
+/// Mở URL trong browser mặc định (chỉ hỗ trợ native OS)
+/// Sử dụng real HOME để xdg-open tìm được default browser đúng
 #[tauri::command]
 pub async fn open_url(url: String) -> Result<(), String> {
     use std::process::Command;
 
-    // Kiểm tra nếu đang chạy trong WSL
-    let is_wsl = std::fs::read_to_string("/proc/version")
-        .map(|v| v.contains("microsoft") || v.contains("WSL"))
-        .unwrap_or(false);
+    #[cfg(target_os = "linux")]
+    {
+        // Thử $BROWSER env trước (nếu user set explicitly)
+        if let Ok(browser) = std::env::var("BROWSER") {
+            if Command::new(&browser).arg(&url).spawn().is_ok() {
+                return Ok(());
+            }
+        }
 
-    if is_wsl {
-        // Trong WSL, dùng cmd.exe để mở browser trong Windows
-        Command::new("cmd.exe")
+        // Thử xdg-open với real home directory
+        // Để detect browser đúng khi HOME bị thay đổi cho testing
+        let real_home = std::fs::read_to_string("/etc/passwd")
+            .ok()
+            .and_then(|content| {
+                let uid = unsafe { libc::getuid() };
+                content
+                    .lines()
+                    .find(|line| {
+                        line.split(':').nth(2).and_then(|s| s.parse::<u32>().ok()) == Some(uid)
+                    })
+                    .and_then(|line| line.split(':').nth(5).map(String::from))
+            });
+
+        let mut cmd = Command::new("xdg-open");
+        if let Some(home) = real_home {
+            cmd.env("HOME", home);
+        }
+        cmd.arg(&url)
+            .spawn()
+            .map_err(|e| format!("Failed to open URL: {}", e))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("cmd")
             .args(["/c", "start", "", &url])
             .spawn()
-            .map_err(|e| format!("Failed to open URL in Windows: {}", e))?;
-    } else {
-        #[cfg(target_os = "linux")]
-        {
-            Command::new("xdg-open")
-                .arg(&url)
-                .spawn()
-                .map_err(|e| e.to_string())?;
-        }
+            .map_err(|e| format!("Failed to open URL: {}", e))?;
+    }
 
-        #[cfg(target_os = "windows")]
-        {
-            Command::new("cmd")
-                .args(["/c", "start", "", &url])
-                .spawn()
-                .map_err(|e| e.to_string())?;
-        }
-
-        #[cfg(target_os = "macos")]
-        {
-            Command::new("open")
-                .arg(&url)
-                .spawn()
-                .map_err(|e| e.to_string())?;
-        }
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("Failed to open URL: {}", e))?;
     }
 
     Ok(())
 }
 
-/// Mở file trong text editor
+/// Mở file trong text editor/viewer mặc định (chỉ hỗ trợ native OS)
 #[tauri::command]
 pub async fn open_file(file_path: String) -> Result<(), String> {
     use std::process::Command;
 
     #[cfg(target_os = "linux")]
     {
-        // WSL detection: check if running in WSL
-        let is_wsl = std::fs::read_to_string("/proc/version")
-            .map(|v| v.to_lowercase().contains("microsoft"))
-            .unwrap_or(false);
-
-        if is_wsl {
-            // Convert Linux path to Windows path and open with notepad
-            let win_path = Command::new("wslpath")
-                .arg("-w")
-                .arg(&file_path)
-                .output()
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                .unwrap_or_else(|_| file_path.clone());
-
-            Command::new("cmd.exe")
-                .args(["/C", "notepad.exe", &win_path])
-                .spawn()
-                .map_err(|e| format!("Failed to open file: {}", e))?;
-        } else {
-            // Native Linux - use xdg-open
-            Command::new("xdg-open")
-                .arg(&file_path)
-                .spawn()
-                .map_err(|e| format!("Failed to open file: {}", e))?;
-        }
+        // Native Linux - use xdg-open to open with default application
+        Command::new("xdg-open")
+            .arg(&file_path)
+            .spawn()
+            .map_err(|e| format!("Failed to open file: {}", e))?;
     }
 
     #[cfg(target_os = "windows")]
     {
-        Command::new("notepad")
-            .arg(&file_path)
+        // Windows - use default application
+        Command::new("cmd")
+            .args(["/c", "start", "", &file_path])
             .spawn()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("Failed to open file: {}", e))?;
     }
 
     #[cfg(target_os = "macos")]
     {
+        // macOS - use open command
         Command::new("open")
-            .arg("-t")
             .arg(&file_path)
             .spawn()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("Failed to open file: {}", e))?;
     }
 
     Ok(())
@@ -786,12 +825,12 @@ pub async fn get_config() -> Result<AppConfig, String> {
 
 // ============ SYNC COMMANDS ============
 
-/// Path for fallback passphrase file (when keyring doesn't work in WSL)
+/// Path for fallback passphrase file (when keyring doesn't work)
 fn passphrase_file_path() -> std::path::PathBuf {
     echovault_core::config::default_config_dir().join(".passphrase")
 }
 
-/// Helper: Save passphrase to file (fallback for WSL)
+/// Helper: Save passphrase to file (fallback when keyring fails)
 fn save_passphrase_to_file(passphrase: &str) -> Result<(), std::io::Error> {
     use std::fs;
     let path = passphrase_file_path();
@@ -803,7 +842,7 @@ fn save_passphrase_to_file(passphrase: &str) -> Result<(), std::io::Error> {
     fs::write(&path, encoded)
 }
 
-/// Helper: Load passphrase from file (fallback for WSL)
+/// Helper: Load passphrase from file (fallback when keyring fails)
 fn load_passphrase_from_file() -> Option<String> {
     use std::fs;
     let path = passphrase_file_path();
@@ -819,14 +858,14 @@ fn load_passphrase_from_file() -> Option<String> {
     None
 }
 
-/// Helper: Load passphrase from keyring, fallback to file
+/// Helper: Load passphrase from keyring, fallback to file if keyring fails
 fn get_passphrase() -> Result<Option<String>, keyring::Error> {
     // Try keyring first
     let entry = keyring::Entry::new("echovault", "passphrase")?;
     match entry.get_password() {
         Ok(p) => Ok(Some(p)),
         Err(keyring::Error::NoEntry) => {
-            // Fallback to file (for WSL)
+            // Fallback to file
             println!("[get_passphrase] Keyring empty, trying file fallback...");
             Ok(load_passphrase_from_file())
         }
@@ -1077,8 +1116,31 @@ pub async fn sync_vault(state: State<'_, AppState>) -> Result<bool, String> {
     use echovault_core::crypto::{key_derivation::derive_key, Encryptor};
     use echovault_core::Config;
     use echovault_core::VaultMetadata;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
-    println!("[sync_vault] Starting...");
+    // Local sync lock để prevent concurrent sync từ cùng instance
+    static SYNC_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+    // Try to acquire lock
+    if SYNC_IN_PROGRESS
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        println!("[sync_vault] Another sync is already in progress, skipping...");
+        return Ok(false); // Return success=false to indicate skipped
+    }
+
+    // Ensure lock is released when function returns
+    struct SyncLockGuard;
+    impl Drop for SyncLockGuard {
+        fn drop(&mut self) {
+            SYNC_IN_PROGRESS.store(false, Ordering::SeqCst);
+            println!("[sync_vault] Sync lock released");
+        }
+    }
+    let _lock_guard = SyncLockGuard;
+
+    println!("[sync_vault] Starting (lock acquired)...");
 
     // Check auth status early and drop lock immediately
     {

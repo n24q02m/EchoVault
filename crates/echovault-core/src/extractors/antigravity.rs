@@ -34,39 +34,26 @@ impl AntigravityExtractor {
     pub fn new() -> Self {
         let mut storage_paths = Vec::new();
 
-        // ~/.gemini/antigravity/ là location chính trên tất cả platforms
+        // Ưu tiên đọc từ HOME env variable (để hỗ trợ testing với HOME override)
+        if let Ok(home) = std::env::var("HOME") {
+            let home_path = Path::new(&home);
+            storage_paths.push(home_path.join(".gemini/antigravity"));
+        }
+
+        // Fallback: ~/.gemini/antigravity/ qua dirs crate
         if let Some(home) = dirs::home_dir() {
-            storage_paths.push(home.join(".gemini/antigravity"));
+            let path = home.join(".gemini/antigravity");
+            if !storage_paths.contains(&path) {
+                storage_paths.push(path);
+            }
         }
 
         // Windows: %USERPROFILE%\.gemini\antigravity\
         #[cfg(target_os = "windows")]
         if let Some(home) = dirs::home_dir() {
-            storage_paths.push(home.join(".gemini").join("antigravity"));
-        }
-
-        // WSL: Truy cập Windows filesystem qua /mnt/c
-        #[cfg(target_os = "linux")]
-        {
-            if Path::new("/mnt/c/Windows").exists() {
-                if let Ok(entries) = std::fs::read_dir("/mnt/c/Users") {
-                    for entry in entries.flatten() {
-                        let username = entry.file_name();
-                        let username_str = username.to_string_lossy();
-                        // Bỏ qua các thư mục hệ thống
-                        if username_str == "Public"
-                            || username_str == "Default"
-                            || username_str == "Default User"
-                            || username_str == "All Users"
-                        {
-                            continue;
-                        }
-                        let antigravity_path = entry.path().join(".gemini").join("antigravity");
-                        if antigravity_path.exists() {
-                            storage_paths.push(antigravity_path);
-                        }
-                    }
-                }
+            let path = home.join(".gemini").join("antigravity");
+            if !storage_paths.contains(&path) {
+                storage_paths.push(path);
             }
         }
 

@@ -73,6 +73,9 @@ rayon = "1.10"
 # Password input
 rpassword = "7"
 
+# Hostname for distributed lock
+hostname = "0.4"
+
 [dev-dependencies]
 git2 = "0.20"
 tempfile = "3.14"

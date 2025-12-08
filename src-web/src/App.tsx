@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { useEffect, useRef, useState } from "react";
 
 // Types
 interface SessionInfo {
@@ -37,13 +38,7 @@ type View = "setup" | "main";
 type Tab = "sessions" | "settings";
 
 // ==================== SETUP WIZARD ====================
-type SetupStep =
-  | "auth"
-  | "checking"
-  | "cloning"
-  | "passphrase_check"
-  | "config"
-  | "done";
+type SetupStep = "auth" | "checking" | "cloning" | "passphrase_check" | "config" | "done";
 
 interface VaultMetadataResponse {
   exists: boolean;
@@ -64,8 +59,7 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
   const [error, setError] = useState<string | null>(null);
   // Clone flow states
   const [isCloning, setIsCloning] = useState(false);
-  const [existingVault, setExistingVault] =
-    useState<VaultMetadataResponse | null>(null);
+  const [existingVault, setExistingVault] = useState<VaultMetadataResponse | null>(null);
   const [checkingProgress, setCheckingProgress] = useState("");
   const [isCopied, setIsCopied] = useState(false);
 
@@ -115,8 +109,7 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
         setIsCloning(false);
 
         // Đọc metadata
-        const metadata =
-          await invoke<VaultMetadataResponse>("get_vault_metadata");
+        const metadata = await invoke<VaultMetadataResponse>("get_vault_metadata");
         setExistingVault(metadata);
         setEncrypt(metadata.encrypted);
         setCompress(metadata.compressed);
@@ -223,15 +216,9 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
   return (
     <div className="flex h-full flex-col p-6">
       <div className="mb-8 text-center">
-        <img
-          src="/logo.png"
-          alt="EchoVault"
-          className="mx-auto mb-4 h-16 w-16 rounded-2xl"
-        />
+        <img src="/logo.png" alt="EchoVault" className="mx-auto mb-4 h-16 w-16 rounded-2xl" />
         <h1 className="text-xl font-bold">EchoVault</h1>
-        <p className="mt-1 text-sm text-[var(--text-secondary)]">
-          First Time Setup
-        </p>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">First Time Setup</p>
       </div>
 
       {step === "auth" && (
@@ -252,9 +239,7 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
                 <p className="text-sm">
                   1. Click{" "}
                   <button
-                    onClick={() =>
-                      invoke("open_url", { url: authStatus.verify_url })
-                    }
+                    onClick={() => invoke("open_url", { url: authStatus.verify_url })}
                     className="text-[var(--accent)] underline"
                   >
                     Open GitHub
@@ -305,11 +290,7 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
                       )}
                     </span>
                   </button>
-                  {isCopied && (
-                    <span className="ml-2 text-xs text-[var(--success)]">
-                      Copied!
-                    </span>
-                  )}
+                  {isCopied && <span className="ml-2 text-xs text-[var(--success)]">Copied!</span>}
                 </p>
                 <button
                   onClick={handleCompleteAuth}
@@ -368,12 +349,7 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               >
                 {showPassword ? (
-                  <svg
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -382,12 +358,7 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
                     />
                   </svg>
                 ) : (
-                  <svg
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -406,9 +377,7 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
             </div>
           </div>
 
-          {error && (
-            <p className="mb-2 text-center text-sm text-red-400">{error}</p>
-          )}
+          {error && <p className="mb-2 text-center text-sm text-red-400">{error}</p>}
 
           <button
             onClick={handleVerifyPassphrase}
@@ -546,9 +515,7 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
                     </div>
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm">
-                      Confirm Passphrase
-                    </label>
+                    <label className="mb-1 block text-sm">Confirm Passphrase</label>
                     <div className="relative">
                       <input
                         type={showPassword ? "text" : "password"}
@@ -559,17 +526,13 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
                       />
                     </div>
                   </div>
-                  <p className="text-xs text-yellow-400">
-                    Warning: Lost passphrase = lost data!
-                  </p>
+                  <p className="text-xs text-yellow-400">Warning: Lost passphrase = lost data!</p>
                 </div>
               )}
             </div>
           </div>
 
-          {error && (
-            <p className="mb-2 text-center text-sm text-red-400">{error}</p>
-          )}
+          {error && <p className="mb-2 text-center text-sm text-red-400">{error}</p>}
 
           <button
             onClick={handleFinishSetup}
@@ -637,19 +600,13 @@ function MainApp() {
   const [sessions, setSessions] = useState<SessionInfo[]>(loadCachedSessions());
   const [isScanning, setIsScanning] = useState(false);
   const [config, setConfig] = useState<AppConfig | null>(null);
-  const [expandedSources, setExpandedSources] = useState<Set<string>>(
-    new Set()
-  );
+  const [expandedSources, setExpandedSources] = useState<Set<string>>(new Set());
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   // TODO: Use scanStatus to show loading indicator in sidebar
-  const [_scanStatus, setScanStatus] = useState<
-    "idle" | "scanning" | "syncing"
-  >("idle");
+  const [_scanStatus, setScanStatus] = useState<"idle" | "scanning" | "syncing">("idle");
   // Pagination: số items hiển thị per group
-  const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>(
-    {}
-  );
+  const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
   const ITEMS_PER_PAGE = 10;
 
   const groupedSessions = sessions.reduce(
@@ -812,10 +769,20 @@ function MainApp() {
       }
     }, 30 * 1000);
 
+    // Listen for tray menu "Sync Now" event
+    const unlistenPromise = listen("trigger-sync", () => {
+      console.log("[App] Received trigger-sync event from tray");
+      if (mounted) {
+        backgroundSyncRef.current();
+      }
+    });
+
     return () => {
       mounted = false;
       clearTimeout(initialSyncTimeout);
       clearInterval(syncInterval);
+      // Cleanup event listener
+      unlistenPromise.then((unlisten) => unlisten());
     };
   }, []); // Empty deps: setup 1 lần
 
@@ -867,9 +834,7 @@ function MainApp() {
             {sessions.length === 0 && isScanning ? (
               <div className="flex flex-col items-center justify-center py-8">
                 <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
-                <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                  Scanning sessions...
-                </p>
+                <p className="mt-2 text-sm text-[var(--text-secondary)]">Scanning sessions...</p>
               </div>
             ) : sessions.length === 0 ? (
               <div className="py-8 text-center text-[var(--text-secondary)]">
@@ -884,10 +849,7 @@ function MainApp() {
             ) : (
               <div className="space-y-3">
                 {Object.entries(groupedSessions).map(([source, items]) => (
-                  <div
-                    key={source}
-                    className="glass overflow-hidden rounded-lg"
-                  >
+                  <div key={source} className="glass overflow-hidden rounded-lg">
                     <button
                       onClick={() => toggleSource(source)}
                       className="flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-[var(--bg-card)]"
@@ -913,8 +875,7 @@ function MainApp() {
                     </button>
                     {expandedSources.has(source) &&
                       (() => {
-                        const visibleCount =
-                          visibleCounts[source] || ITEMS_PER_PAGE;
+                        const visibleCount = visibleCounts[source] || ITEMS_PER_PAGE;
                         const visibleItems = items.slice(0, visibleCount);
                         const hasMore = items.length > visibleCount;
 
@@ -929,9 +890,7 @@ function MainApp() {
                                 <div className="flex items-start justify-between">
                                   <div className="min-w-0 flex-1">
                                     <p className="truncate text-sm font-medium">
-                                      {session.title ||
-                                        session.workspace_name ||
-                                        "Untitled"}
+                                      {session.title || session.workspace_name || "Untitled"}
                                     </p>
                                     <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
                                       {formatFileSize(session.file_size)}
@@ -949,19 +908,13 @@ function MainApp() {
                                   e.stopPropagation();
                                   setVisibleCounts((prev) => ({
                                     ...prev,
-                                    [source]:
-                                      (prev[source] || ITEMS_PER_PAGE) +
-                                      ITEMS_PER_PAGE,
+                                    [source]: (prev[source] || ITEMS_PER_PAGE) + ITEMS_PER_PAGE,
                                   }));
                                 }}
                                 className="mt-2 w-full rounded-lg border border-dashed border-[var(--border)] py-2 text-center text-xs text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
                               >
-                                Load{" "}
-                                {Math.min(
-                                  ITEMS_PER_PAGE,
-                                  items.length - visibleCount
-                                )}{" "}
-                                more ({items.length - visibleCount} remaining)
+                                Load {Math.min(ITEMS_PER_PAGE, items.length - visibleCount)} more (
+                                {items.length - visibleCount} remaining)
                               </button>
                             )}
                           </div>
@@ -977,34 +930,20 @@ function MainApp() {
         {activeTab === "settings" && config && (
           <div className="space-y-4 p-4">
             <div className="glass rounded-lg p-4">
-              <h3 className="mb-1 text-sm text-[var(--text-secondary)]">
-                Provider
-              </h3>
+              <h3 className="mb-1 text-sm text-[var(--text-secondary)]">Provider</h3>
               <p className="font-medium">{config.provider}</p>
             </div>
             <div className="glass rounded-lg p-4">
-              <h3 className="mb-1 text-sm text-[var(--text-secondary)]">
-                Repository
-              </h3>
-              <p className="font-medium">
-                {config.repo_name || "Not configured"}
-              </p>
+              <h3 className="mb-1 text-sm text-[var(--text-secondary)]">Repository</h3>
+              <p className="font-medium">{config.repo_name || "Not configured"}</p>
             </div>
             <div className="glass rounded-lg p-4">
-              <h3 className="mb-1 text-sm text-[var(--text-secondary)]">
-                Encryption
-              </h3>
-              <p className="font-medium">
-                {config.encrypt ? "Enabled (AES-256-GCM)" : "Disabled"}
-              </p>
+              <h3 className="mb-1 text-sm text-[var(--text-secondary)]">Encryption</h3>
+              <p className="font-medium">{config.encrypt ? "Enabled (AES-256-GCM)" : "Disabled"}</p>
             </div>
             <div className="glass rounded-lg p-4">
-              <h3 className="mb-1 text-sm text-[var(--text-secondary)]">
-                Compression
-              </h3>
-              <p className="font-medium">
-                {config.compress ? "Enabled" : "Disabled"}
-              </p>
+              <h3 className="mb-1 text-sm text-[var(--text-secondary)]">Compression</h3>
+              <p className="font-medium">{config.compress ? "Enabled" : "Disabled"}</p>
             </div>
           </div>
         )}
@@ -1014,12 +953,7 @@ function MainApp() {
           onClick={() => setActiveTab("sessions")}
           className={`flex flex-1 flex-col items-center gap-1 py-3 transition-colors ${activeTab === "sessions" ? "text-[var(--accent)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
         >
-          <svg
-            className="h-5 w-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -1033,12 +967,7 @@ function MainApp() {
           onClick={() => setActiveTab("settings")}
           className={`flex flex-1 flex-col items-center gap-1 py-3 transition-colors ${activeTab === "settings" ? "text-[var(--accent)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
         >
-          <svg
-            className="h-5 w-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
