@@ -777,11 +777,36 @@ pub async fn open_file(file_path: String) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
-        // Native Linux - use xdg-open to open with default application
-        Command::new("xdg-open")
-            .arg(&file_path)
-            .spawn()
-            .map_err(|e| format!("Failed to open file: {}", e))?;
+        // Try to open with a text editor first
+        // Priority: VS Code -> Sublime -> Common Linux Editors
+        let editors = [
+            "code",
+            "code-oss",
+            "codium",
+            "subl",
+            "gedit",
+            "kate",
+            "gnome-text-editor",
+            "mousepad",
+            "pluma",
+            "leafpad",
+        ];
+
+        let mut opened = false;
+        for editor in editors {
+            if Command::new(editor).arg(&file_path).spawn().is_ok() {
+                opened = true;
+                break;
+            }
+        }
+
+        if !opened {
+            // Fallback to xdg-open if no editor found or all failed
+            Command::new("xdg-open")
+                .arg(&file_path)
+                .spawn()
+                .map_err(|e| format!("Failed to open file: {}", e))?;
+        }
     }
 
     #[cfg(target_os = "windows")]

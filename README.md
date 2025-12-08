@@ -30,8 +30,7 @@ pre-commit install
 cd src-web && pnpm install && cd ..
 
 # Run app
-cargo build --release -p echovault-tauri
-./target/release/echovault-tauri
+cargo tauri dev
 ```
 
 ## Phát triển
