@@ -22,9 +22,14 @@ cd EchoVault
 # Cài đặt Tauri dependencies (Linux)
 sudo apt update && sudo apt install -y pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
 cargo install tauri-cli
+
+# Cài đặt pre-commit hooks
 pre-commit install
 
-# Cài đặt app
+# Cài đặt frontend
+cd src-web && pnpm install && cd ..
+
+# Run app
 cargo tauri dev
 ```
 
