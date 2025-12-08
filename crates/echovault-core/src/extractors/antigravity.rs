@@ -57,6 +57,38 @@ impl AntigravityExtractor {
             }
         }
 
+        // Windows: Thêm hỗ trợ đọc từ WSL (\\wsl$\<distro>\home\<user>\.gemini\antigravity\)
+        #[cfg(target_os = "windows")]
+        {
+            // Lấy username từ Windows để tạo đường dẫn WSL
+            // Trong WSL, username thường giống Windows hoặc cần scan home directories
+            if let Ok(wsl_path) = std::fs::read_dir(r"\\wsl$") {
+                for entry in wsl_path.flatten() {
+                    let distro_path = entry.path();
+                    if distro_path.is_dir() {
+                        // Scan tất cả home directories trong WSL distro
+                        let wsl_home = distro_path.join("home");
+                        if wsl_home.exists() && wsl_home.is_dir() {
+                            if let Ok(home_entries) = std::fs::read_dir(&wsl_home) {
+                                for home_entry in home_entries.flatten() {
+                                    let user_home = home_entry.path();
+                                    if user_home.is_dir() {
+                                        let wsl_antigravity =
+                                            user_home.join(".gemini").join("antigravity");
+                                        if wsl_antigravity.exists()
+                                            && !storage_paths.contains(&wsl_antigravity)
+                                        {
+                                            storage_paths.push(wsl_antigravity);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Self { storage_paths }
     }
 

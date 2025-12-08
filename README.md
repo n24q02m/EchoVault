@@ -21,6 +21,11 @@ cd EchoVault
 
 # Cài đặt Tauri dependencies (Linux)
 sudo apt update && sudo apt install -y pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+
+# Cài đặt Tauri dependencies (Windows)
+winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+
+# Cài đặt Tauri CLI
 cargo install tauri-cli
 
 # Cài đặt pre-commit hooks

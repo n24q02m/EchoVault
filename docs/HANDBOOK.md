@@ -1,6 +1,6 @@
 # ECHOVAULT - DEVELOPER HANDBOOK
 
-**Phiên bản:** 2.4.0
+**Phiên bản:** 2.5.0
 **Ngày cập nhật:** 08/12/2025
 **Dành cho:** Solo Developer
 
@@ -70,7 +70,19 @@ IDE Files (JSON/SQLite) -> EchoVault CLI -> Raw JSON Storage -> Encryption -> Gi
 - **Git-Native**: Git + GitHub là cơ chế sync chính.
 - **Future-Proof**: Lưu trữ raw data gốc, không transform/format.
 
-### 2.2. Key Features
+### 2.2. Platform Support Tiers
+
+| Tier       | Platforms        | Mức Độ Hỗ Trợ                                     |
+| :--------- | :--------------- | :------------------------------------------------ |
+| **Tier 1** | Windows, Linux   | Full support, tested manually & CI                |
+| **Tier 2** | macOS            | Best effort - CI builds pass, limited manual test |
+
+> [!NOTE]
+> **macOS Support**: Builds được cung cấp nhưng chưa được test kỹ do không có máy macOS.
+> Code vẫn cross-platform, CI đảm bảo build + unit tests pass.
+> Community contributions cho macOS-specific issues được welcome!
+
+### 2.3. Key Features
 
 1. **Universal Extraction**:
     - Copy nguyên vẹn JSON/SQLite files từ các IDE.
@@ -160,11 +172,11 @@ IDE Files (JSON/SQLite) -> EchoVault CLI -> Raw JSON Storage -> Encryption -> Gi
 
 **Packaging Formats:**
 
-| Platform    | Formats                     | Mô tả                                            |
-| :---------- | :-------------------------- | :----------------------------------------------- |
-| **Windows** | `.exe`, `.msi`              | Portable executable hoặc MSI installer           |
-| **macOS**   | `.dmg`, `.app`              | DMG disk image hoặc App bundle                   |
-| **Linux**   | `.AppImage`, `.deb`, `.rpm` | Universal AppImage hoặc distro-specific packages |
+| Platform    | Formats                     | Mô tả                                            | Tier |
+| :---------- | :-------------------------- | :----------------------------------------------- | :--- |
+| **Windows** | `.exe`, `.msi`              | Portable executable hoặc MSI installer           | 1    |
+| **Linux**   | `.AppImage`, `.deb`, `.rpm` | Universal AppImage hoặc distro-specific packages | 1    |
+| **macOS**   | `.dmg`, `.app`              | DMG disk image hoặc App bundle (best effort)     | 2    |
 
 #### 3.2.3. Extractors (Plugin Architecture)
 
@@ -245,12 +257,12 @@ src/
 
 ### 4.4. Build & Distribution
 
-| Platform          | Method                          |
-| :---------------- | :------------------------------ |
-| **Linux**         | cargo build --release, AppImage |
-| **macOS**         | cargo build --release, Homebrew |
-| **Windows**       | cargo build --release, MSI/exe  |
-| **Cross-compile** | cross (Docker-based)            |
+| Platform          | Method                          | Tier |
+| :---------------- | :------------------------------ | :--- |
+| **Windows**       | cargo build --release, MSI/exe  | 1    |
+| **Linux**         | cargo build --release, AppImage | 1    |
+| **macOS**         | cargo build --release, Homebrew | 2    |
+| **Cross-compile** | cross (Docker-based)            | -    |
 
 ---
 
@@ -391,19 +403,30 @@ remote = "https://github.com/username/my-vault.git"
 | Windows  | `%APPDATA%\Code\User\workspaceStorage\<hash>\chatSessions\*.json`                           |
 | macOS    | `~/Library/Application Support/Code/User/workspaceStorage/<hash>/chatSessions/*.json`       |
 | Linux    | `~/.config/Code/User/workspaceStorage/<hash>/chatSessions/*.json`                           |
-| WSL      | `/mnt/c/Users/<user>/AppData/Roaming/Code/User/workspaceStorage/<hash>/chatSessions/*.json` |
 
 - **Format**: JSON files (từ VS Code 1.96+)
-- **Versions**: v1 (cũ), v2, v3 (hiện tại) - format thay đổi thường xuyên
 - **Data**: Structured JSON với messages, tool calls, thinking steps
 
 ### 6.2. Phase 2: Antigravity + Others
 
 #### Google Antigravity
 
-- VS Code fork với AI-first design
-- Storage location: Cần research (likely similar to VS Code)
-- Có "Knowledge Items" feature
+- VS Code fork với AI-first design từ Google DeepMind
+- Có "Knowledge Items" feature (artifacts)
+
+**Storage Location:**
+
+| Platform           | Storage Path                                                              |
+| :----------------- | :------------------------------------------------------------------------ |
+| Windows            | `%USERPROFILE%\.gemini\antigravity\`                                      |
+| macOS              | `~/.gemini/antigravity/`                                                  |
+| Linux              | `~/.gemini/antigravity/`                                                  |
+| WSL (from Windows) | `\\wsl$\<distro>\home\<user>\.gemini\antigravity\`                        |
+
+**Data Structure:**
+
+- **Conversations**: `conversations/{uuid}.pb` (Protobuf format)
+- **Artifacts**: `brain/{uuid}/*.md` (Markdown + metadata JSON)
 
 #### Các IDE khác (Phase 3)
 
@@ -587,15 +610,20 @@ EchoVault/
 ### 10.1. CLI Distribution
 
 - **Cargo**: `cargo install --path .`
-- **Binary**: `ev` - Single executable cho Windows/macOS/Linux
-- **Homebrew**: Formula cho macOS (planned)
+- **Binary**: `ev` - Single executable cho Windows/Linux (Tier 1), macOS (Tier 2)
 - **AUR**: Package cho Arch Linux (planned)
+- **Homebrew**: Formula cho macOS (planned, low priority)
 
 ### 10.2. Desktop App Distribution
 
-- **Windows**: MSI installer
-- **macOS**: DMG
+**Tier 1 (Fully Tested):**
+
+- **Windows**: MSI installer, portable exe
 - **Linux**: AppImage, deb, rpm
+
+**Tier 2 (Best Effort):**
+
+- **macOS**: DMG (CI builds, limited manual testing)
 
 ---
 
