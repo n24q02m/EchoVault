@@ -20,17 +20,14 @@ interface ScanResult {
 
 interface AuthStatusResponse {
   status: "not_authenticated" | "pending" | "authenticated" | "error";
-  user_code: string | null;
-  verify_url: string | null;
-  error: string | null;
+  message: string | null;
 }
 
 interface AppConfig {
   setup_complete: boolean;
-  provider: string;
-  repo_name: string | null;
-  encrypt: boolean;
-  compress: boolean;
+  vault_path: string;
+  remote_name: string | null;
+  folder_name: string;
 }
 
 // Views
@@ -38,35 +35,14 @@ type View = "setup" | "main";
 type Tab = "sessions" | "settings";
 
 // ==================== SETUP WIZARD ====================
-type SetupStep = "auth" | "checking" | "cloning" | "passphrase_check" | "config" | "done";
-
-interface VaultMetadataResponse {
-  exists: boolean;
-  encrypted: boolean;
-  compressed: boolean;
-}
+type SetupStep = "connect" | "config" | "done";
 
 function SetupWizard({ onComplete }: { onComplete: () => void }) {
-  const [step, setStep] = useState<SetupStep>("auth");
+  const [step, setStep] = useState<SetupStep>("connect");
   const [authStatus, setAuthStatus] = useState<AuthStatusResponse | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  // === PROVIDER CONFIG: Set to "google_drive" or "github" ===
-  const SYNC_PROVIDER = "google_drive";
-  const IS_GOOGLE_DRIVE = SYNC_PROVIDER === "google_drive";
-  // ===========================================================
-
-  const [repoName, setRepoName] = useState(IS_GOOGLE_DRIVE ? "EchoVault" : "my-vault");
-  const [encrypt, setEncrypt] = useState(!IS_GOOGLE_DRIVE); // Disabled for Google Drive testing
-  const [compress, setCompress] = useState(!IS_GOOGLE_DRIVE); // Disabled for Google Drive testing
-  const [passphrase, setPassphrase] = useState("");
-  const [confirmPassphrase, setConfirmPassphrase] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [folderName, setFolderName] = useState("EchoVault");
   const [error, setError] = useState<string | null>(null);
-  // Clone flow states
-  const [isCloning, setIsCloning] = useState(false);
-  const [existingVault, setExistingVault] = useState<VaultMetadataResponse | null>(null);
-  const [checkingProgress, setCheckingProgress] = useState("");
-  const [isCopied, setIsCopied] = useState(false);
 
   const handleStartAuth = async () => {
     setIsAuthenticating(true);
@@ -74,6 +50,9 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
     try {
       const status = await invoke<AuthStatusResponse>("start_auth");
       setAuthStatus(status);
+      if (status.status === "authenticated") {
+        setStep("config");
+      }
     } catch (err) {
       setError(String(err));
     } finally {
@@ -81,19 +60,17 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
     }
   };
 
-  const handleCompleteAuth = async () => {
+  const handleCheckAuth = async () => {
     setIsAuthenticating(true);
     setError(null);
     try {
       const status = await invoke<AuthStatusResponse>("complete_auth");
       setAuthStatus(status);
       if (status.status === "authenticated") {
-        // Sau khi auth xong, check xem repo đã tồn tại chưa
-        setStep("checking");
-        await checkExistingVault();
+        setStep("config");
       } else if (status.status === "pending") {
-        // Chưa xác thực, poll lại sau 3 giây
-        setTimeout(handleCompleteAuth, 3000);
+        // Keep polling
+        setTimeout(handleCheckAuth, 3000);
       }
     } catch (err) {
       setError(String(err));
@@ -101,122 +78,15 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
     }
   };
 
-  const checkExistingVault = async () => {
-    // Google Drive không cần check existing vault vì không có repo concept
-    if (IS_GOOGLE_DRIVE) {
-      setStep("config");
-      return;
-    }
-
-    // === GitHub-specific logic (commented out for Google Drive testing) ===
-    setCheckingProgress("Checking for existing vault...");
-    try {
-      const exists = await invoke<boolean>("check_repo_exists", { repoName });
-      if (exists) {
-        // Vault đã tồn tại, clone về
-        setCheckingProgress("Found existing vault! Cloning...");
-        setStep("cloning");
-        setIsCloning(true);
-        await invoke("clone_vault", { repoName });
-        setIsCloning(false);
-
-        // Đọc metadata
-        const metadata = await invoke<VaultMetadataResponse>("get_vault_metadata");
-        setExistingVault(metadata);
-        setEncrypt(metadata.encrypted);
-        setCompress(metadata.compressed);
-
-        if (metadata.encrypted) {
-          // Cần nhập passphrase
-          setStep("passphrase_check");
-        } else {
-          // Không encrypted, hoàn tất
-          await invoke("complete_setup", {
-            request: {
-              provider: SYNC_PROVIDER,
-              repo_name: repoName,
-              encrypt: metadata.encrypted,
-              compress: metadata.compressed,
-              passphrase: null,
-            },
-          });
-          setStep("done");
-          setTimeout(onComplete, 1000);
-        }
-      } else {
-        // Không có vault, tạo mới
-        setStep("config");
-      }
-    } catch (err) {
-      setError(String(err));
-      setStep("config"); // Fallback to manual config
-    }
-  };
-
-  const handleVerifyPassphrase = async () => {
-    if (!passphrase) {
-      setError("Please enter your passphrase");
-      return;
-    }
-    if (passphrase.length < 8) {
-      setError("Passphrase must be at least 8 characters");
-      return;
-    }
-
-    setError(null);
-    setCheckingProgress("Verifying passphrase...");
-
-    try {
-      const valid = await invoke<boolean>("verify_passphrase_cmd", {
-        passphrase,
-      });
-      if (valid) {
-        // Passphrase đúng, lưu vào keyring và hoàn tất
-        await invoke("complete_setup", {
-          request: {
-            provider: SYNC_PROVIDER,
-            repo_name: repoName,
-            encrypt: true,
-            compress: existingVault?.compressed ?? true,
-            passphrase,
-          },
-        });
-        setStep("done");
-        setTimeout(onComplete, 1000);
-      } else {
-        setError("Incorrect passphrase. Please try again.");
-      }
-    } catch (err) {
-      setError(String(err));
-    }
-  };
-
   const handleFinishSetup = async () => {
-    // Validate passphrase if encryption enabled
-    if (encrypt) {
-      if (!passphrase) {
-        setError("Please enter a passphrase");
-        return;
-      }
-      if (passphrase.length < 8) {
-        setError("Passphrase must be at least 8 characters");
-        return;
-      }
-      if (passphrase !== confirmPassphrase) {
-        setError("Passphrases do not match");
-        return;
-      }
+    if (!folderName.trim()) {
+      setError("Please enter a folder name");
+      return;
     }
 
     try {
       await invoke("complete_setup", {
-        request: {
-          provider: SYNC_PROVIDER,
-          repo_name: repoName,
-          encrypt,
-          compress,
-          passphrase: encrypt ? passphrase : null,
-        },
+        request: { folder_name: folderName },
       });
       setStep("done");
       setTimeout(onComplete, 1000);
@@ -233,12 +103,13 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
         <p className="mt-1 text-sm text-[var(--text-secondary)]">First Time Setup</p>
       </div>
 
-      {step === "auth" && (
+      {step === "connect" && (
         <div className="flex flex-1 flex-col">
           <div className="glass mb-4 rounded-xl p-5">
-            <h2 className="mb-3 font-semibold">
-              1. Authenticate with {IS_GOOGLE_DRIVE ? "Google Drive" : "GitHub"}
-            </h2>
+            <h2 className="mb-3 font-semibold">1. Connect Cloud Storage</h2>
+            <p className="mb-4 text-sm text-[var(--text-secondary)]">
+              Connect to Google Drive, Dropbox, OneDrive, or any other cloud service via Rclone.
+            </p>
 
             {!authStatus || authStatus.status === "not_authenticated" ? (
               <button
@@ -246,79 +117,34 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
                 disabled={isAuthenticating}
                 className="w-full rounded-lg bg-[var(--accent)] py-2.5 font-medium text-white disabled:opacity-50"
               >
-                {isAuthenticating
-                  ? "Processing..."
-                  : `Login with ${IS_GOOGLE_DRIVE ? "Google" : "GitHub"}`}
+                {isAuthenticating ? "Connecting..." : "Connect Cloud Storage"}
               </button>
             ) : authStatus.status === "pending" ? (
               <div className="space-y-3">
-                <p className="text-sm">
-                  1. Click{" "}
-                  <button
-                    onClick={() => invoke("open_url", { url: authStatus.verify_url })}
-                    className="text-[var(--accent)] underline"
-                  >
-                    Open {IS_GOOGLE_DRIVE ? "Google" : "GitHub"}
-                  </button>{" "}
-                  to authenticate
-                </p>
-                <p className="text-sm">
-                  2. Enter code:{" "}
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(authStatus.user_code || "");
-                      setIsCopied(true);
-                      setTimeout(() => setIsCopied(false), 2000);
-                    }}
-                    className="group relative cursor-pointer rounded bg-[var(--bg-card)] px-3 py-1.5 font-mono text-lg transition-all hover:bg-[var(--accent)] hover:text-white"
-                    title="Click to copy"
-                  >
-                    {authStatus.user_code}
-                    <span className="ml-2 inline-flex items-center">
-                      {isCopied ? (
-                        <svg
-                          className="h-4 w-4 text-[var(--success)]"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M5 13l4 4L19 7"
-                          />
-                        </svg>
-                      ) : (
-                        <svg
-                          className="h-4 w-4 opacity-50 group-hover:opacity-100"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                          />
-                        </svg>
-                      )}
-                    </span>
-                  </button>
-                  {isCopied && <span className="ml-2 text-xs text-[var(--success)]">Copied!</span>}
+                <p className="text-sm text-[var(--text-secondary)]">
+                  {authStatus.message || "Please complete authentication in your browser..."}
                 </p>
                 <button
-                  onClick={handleCompleteAuth}
+                  onClick={handleCheckAuth}
                   disabled={isAuthenticating}
                   className="w-full rounded-lg bg-[var(--success)] py-2.5 font-medium text-white disabled:opacity-50"
                 >
-                  {isAuthenticating ? "Checking..." : "I've authorized"}
+                  {isAuthenticating ? "Checking..." : "I've connected"}
                 </button>
               </div>
             ) : authStatus.status === "authenticated" ? (
               <div className="py-3 text-center">
-                <span className="text-[var(--success)]">Authenticated!</span>
+                <span className="text-[var(--success)]">Connected!</span>
+              </div>
+            ) : authStatus.status === "error" ? (
+              <div className="space-y-3">
+                <p className="text-sm text-red-400">{authStatus.message}</p>
+                <button
+                  onClick={handleStartAuth}
+                  className="w-full rounded-lg bg-[var(--accent)] py-2.5 font-medium text-white"
+                >
+                  Try Again
+                </button>
               </div>
             ) : null}
           </div>
@@ -327,235 +153,25 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
         </div>
       )}
 
-      {/* Checking for existing vault */}
-      {(step === "checking" || step === "cloning") && (
-        <div className="flex flex-1 flex-col items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
-          <p className="mt-4 text-[var(--text-secondary)]">
-            {checkingProgress || "Please wait..."}
-          </p>
-          {isCloning && (
-            <p className="mt-2 text-sm text-[var(--text-secondary)]">
-              Downloading your vault from GitHub...
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Passphrase verification for existing vault */}
-      {step === "passphrase_check" && (
+      {step === "config" && (
         <div className="flex flex-1 flex-col">
           <div className="glass mb-4 rounded-xl p-5">
-            <h2 className="mb-3 font-semibold">Unlock Your Vault</h2>
-            <p className="mb-4 text-sm text-[var(--text-secondary)]">
-              Your vault is encrypted. Please enter your passphrase to unlock.
-            </p>
-
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                value={passphrase}
-                onChange={(e) => setPassphrase(e.target.value)}
-                placeholder="Enter your passphrase"
-                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 pr-10"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              >
-                {showPassword ? (
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
-                    />
-                  </svg>
-                ) : (
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                    />
-                  </svg>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {error && <p className="mb-2 text-center text-sm text-red-400">{error}</p>}
-
-          <button
-            onClick={handleVerifyPassphrase}
-            className="w-full rounded-lg bg-[var(--accent)] py-3 font-semibold text-white"
-          >
-            Unlock Vault
-          </button>
-        </div>
-      )}
-
-      {step === "config" && (
-        <div className="flex flex-1 flex-col overflow-y-auto">
-          <div className="glass mb-4 rounded-xl p-5">
-            <h2 className="mb-4 font-semibold">2. Configure Vault</h2>
+            <h2 className="mb-4 font-semibold">2. Configure Sync Folder</h2>
 
             <div className="space-y-4">
               <div>
-                <label className="mb-1.5 block text-sm">
-                  {IS_GOOGLE_DRIVE ? "Folder Name" : "Repository Name"}
-                </label>
+                <label className="mb-1.5 block text-sm">Folder Name</label>
                 <input
                   type="text"
-                  value={repoName}
-                  onChange={(e) => setRepoName(e.target.value)}
-                  placeholder={IS_GOOGLE_DRIVE ? "EchoVault" : "my-vault"}
+                  value={folderName}
+                  onChange={(e) => setFolderName(e.target.value)}
+                  placeholder="EchoVault"
                   className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2"
                 />
                 <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                  {IS_GOOGLE_DRIVE
-                    ? `Data will be stored in Google Drive folder: ${repoName}`
-                    : `Will create: github.com/username/${repoName}`}
+                  Your data will be synced to this folder in cloud storage.
                 </p>
               </div>
-
-              {/* Encryption và Compression UI - chỉ hiển thị với GitHub provider */}
-              {!IS_GOOGLE_DRIVE && (
-                <>
-                  {/* Encryption - luôn bật */}
-                  <div className="flex items-center justify-between py-2 opacity-80">
-                    <div>
-                      <p className="font-medium">Encryption (AES-256)</p>
-                      <p className="text-xs text-[var(--text-secondary)]">
-                        Always enabled for security
-                      </p>
-                    </div>
-                    <div className="flex h-6 items-center rounded-full bg-[var(--success)] px-2">
-                      <svg
-                        className="h-4 w-4 text-white"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <title>Enabled</title>
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-
-                  {/* Compression - bắt buộc với GitHub provider */}
-                  <div className="flex items-center justify-between py-2 opacity-80">
-                    <div>
-                      <p className="font-medium">Compression</p>
-                      <p className="text-xs text-[var(--text-secondary)]">
-                        Required for GitHub storage
-                      </p>
-                    </div>
-                    <div className="flex h-6 items-center rounded-full bg-[var(--success)] px-2">
-                      <svg
-                        className="h-4 w-4 text-white"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <title>Enabled</title>
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Passphrase inputs when encryption enabled */}
-              {encrypt && (
-                <div className="mt-2 space-y-3 border-t border-[var(--border)] pt-4">
-                  <div>
-                    <label className="mb-1 block text-sm">Passphrase</label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        value={passphrase}
-                        onChange={(e) => setPassphrase(e.target.value)}
-                        placeholder="Enter passphrase (min 8 chars)"
-                        className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 pr-10 text-sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                      >
-                        {showPassword ? (
-                          <svg
-                            className="h-5 w-5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
-                            />
-                          </svg>
-                        ) : (
-                          <svg
-                            className="h-5 w-5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                            />
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                            />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm">Confirm Passphrase</label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        value={confirmPassphrase}
-                        onChange={(e) => setConfirmPassphrase(e.target.value)}
-                        placeholder="Confirm passphrase"
-                        className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 pr-10 text-sm"
-                      />
-                    </div>
-                  </div>
-                  <p className="text-xs text-yellow-400">Warning: Lost passphrase = lost data!</p>
-                </div>
-              )}
             </div>
           </div>
 
@@ -575,18 +191,8 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--success)]">
-              <svg
-                className="h-8 w-8 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
-                />
+              <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
             <p className="text-lg font-medium">Setup Complete!</p>
@@ -624,16 +230,12 @@ const saveCachedSessions = (sessions: SessionInfo[]) => {
 
 function MainApp() {
   const [activeTab, setActiveTab] = useState<Tab>("sessions");
-  // Initialize with cached data for instant display
   const [sessions, setSessions] = useState<SessionInfo[]>(loadCachedSessions());
   const [isScanning, setIsScanning] = useState(false);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [expandedSources, setExpandedSources] = useState<Set<string>>(new Set());
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
-  // TODO: Use scanStatus to show loading indicator in sidebar
-  const [_scanStatus, setScanStatus] = useState<"idle" | "scanning" | "syncing">("idle");
-  // Pagination: số items hiển thị per group
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
   const ITEMS_PER_PAGE = 10;
 
@@ -647,36 +249,21 @@ function MainApp() {
     {} as Record<string, SessionInfo[]>
   );
 
-  // Initialize provider with saved credentials and load sessions
   useEffect(() => {
     const initialize = async () => {
       try {
-        // Load config first
         const cfg = await invoke<AppConfig>("get_config");
         setConfig(cfg);
-
-        // Initialize provider with saved credentials (for sync later)
-        try {
-          await invoke<boolean>("init_provider");
-        } catch (initErr) {
-          console.error("init_provider failed:", initErr);
-        }
-
-        // Scan sessions (separate from sync)
         await loadSessions();
       } catch (err) {
         console.error("Initialization failed:", err);
       }
     };
-
     initialize();
   }, []);
 
-  // Load sessions from backend
   const loadSessions = async () => {
     setIsScanning(true);
-    setScanStatus("scanning");
-
     try {
       const result = await invoke<ScanResult>("scan_sessions");
       setSessions(result.sessions);
@@ -685,36 +272,27 @@ function MainApp() {
       console.error("Failed to scan sessions:", err);
     } finally {
       setIsScanning(false);
-      setScanStatus("idle");
     }
   };
 
-  // Background sync (separate function, called by interval or manual button)
-  const backgroundSync = async () => {
+  const handleSync = async () => {
     if (isSyncing) return;
-
     setIsSyncing(true);
-    setScanStatus("syncing");
     setSyncError(null);
-
     try {
-      const success = await invoke<boolean>("sync_vault");
-      if (success) {
-        // Refresh sessions list after successful sync
-        await loadSessions();
-      }
-    } catch (syncErr) {
-      console.error("Sync failed:", syncErr);
-      setSyncError(String(syncErr));
+      await invoke<string>("sync_vault");
+      await loadSessions();
+    } catch (err) {
+      console.error("Sync failed:", err);
+      setSyncError(String(err));
     } finally {
       setIsSyncing(false);
-      setScanStatus("idle");
     }
   };
 
-  const handleOpenFile = async (sessionId: string) => {
+  const handleOpenFile = async (path: string) => {
     try {
-      await invoke("open_file", { filePath: sessionId });
+      await invoke("open_file", { path });
     } catch (err) {
       console.error("Failed to open file:", err);
     }
@@ -749,7 +327,6 @@ function MainApp() {
     });
   };
 
-  // Expand all sources by default when sessions load
   useEffect(() => {
     if (sessions.length > 0) {
       const sources = [...new Set(sessions.map((s) => s.source || "unknown"))];
@@ -757,261 +334,182 @@ function MainApp() {
     }
   }, [sessions]);
 
-  // Manual sync handler
-  const handleSync = async () => {
-    setIsSyncing(true);
-    setSyncError(null);
-    try {
-      const success = await invoke<boolean>("sync_vault");
-      if (success) {
-        // Refresh sessions list after successful sync
-        await loadSessions();
-      }
-    } catch (err) {
-      console.error("Sync failed:", err);
-      setSyncError(String(err));
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  // Auto-sync: Polling interval thay vì event-based
-  // (Tauri events không hoạt động trên WebKitGTK/Linux)
-  const backgroundSyncRef = useRef(backgroundSync);
-  backgroundSyncRef.current = backgroundSync;
+  // Auto-sync interval
+  const syncRef = useRef(handleSync);
+  syncRef.current = handleSync;
 
   useEffect(() => {
-    let mounted = true;
+    // Initial sync after 5s
+    const timeout = setTimeout(() => syncRef.current(), 5000);
+    // Periodic sync every 30s
+    const interval = setInterval(() => syncRef.current(), 30000);
 
-    // Sync khi app khởi động (sau 5s để UI load xong)
-    const initialSyncTimeout = setTimeout(() => {
-      if (mounted) {
-        backgroundSyncRef.current();
-      }
-    }, 5000);
-
-    // Sync mỗi 30 giây (đủ nhanh để detect changes, đủ chậm để không spam)
-    const syncInterval = setInterval(() => {
-      if (mounted) {
-        backgroundSyncRef.current();
-      }
-    }, 30 * 1000);
-
-    // Listen for tray menu "Sync Now" event
-    const unlistenPromise = listen("trigger-sync", () => {
-      console.log("[App] Received trigger-sync event from tray");
-      if (mounted) {
-        backgroundSyncRef.current();
-      }
-    });
+    // Listen for tray menu event
+    const unlisten = listen("trigger-sync", () => syncRef.current());
 
     return () => {
-      mounted = false;
-      clearTimeout(initialSyncTimeout);
-      clearInterval(syncInterval);
-      // Cleanup event listener
-      unlistenPromise.then((unlisten) => unlisten());
+      clearTimeout(timeout);
+      clearInterval(interval);
+      unlisten.then((fn) => fn());
     };
-  }, []); // Empty deps: setup 1 lần
+  }, []);
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
         <div className="flex items-center gap-2">
           <img src="/logo.png" alt="EchoVault" className="h-8 w-8 rounded-lg" />
           <span className="font-semibold">EchoVault</span>
         </div>
-        <div className="flex items-center gap-3">
-          {syncError && (
-            <span className="text-xs text-red-400" title={syncError}>
-              Sync error
-            </span>
-          )}
+        <div className="flex items-center gap-2">
           <button
             onClick={handleSync}
             disabled={isSyncing}
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors hover:bg-[var(--bg-card)] disabled:opacity-50"
-            title="Sync to cloud"
+            className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
-            <svg
-              className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
             {isSyncing ? "Syncing..." : "Sync"}
           </button>
-          <div
-            className={`h-2 w-2 rounded-full ${isSyncing ? "animate-pulse bg-yellow-500" : "bg-[var(--success)]"}`}
-            title={isSyncing ? "Syncing" : "Online"}
-          />
         </div>
-      </header>
+      </div>
 
-      <main className="flex-1 overflow-y-auto">
+      {/* Tabs */}
+      <div className="flex border-b border-[var(--border)]">
+        <button
+          onClick={() => setActiveTab("sessions")}
+          className={`flex-1 py-2 text-sm font-medium ${activeTab === "sessions"
+              ? "border-b-2 border-[var(--accent)] text-[var(--accent)]"
+              : "text-[var(--text-secondary)]"
+            }`}
+        >
+          Sessions ({sessions.length})
+        </button>
+        <button
+          onClick={() => setActiveTab("settings")}
+          className={`flex-1 py-2 text-sm font-medium ${activeTab === "settings"
+              ? "border-b-2 border-[var(--accent)] text-[var(--accent)]"
+              : "text-[var(--text-secondary)]"
+            }`}
+        >
+          Settings
+        </button>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4">
         {activeTab === "sessions" && (
-          <div className="p-4">
-            {/* Show cached data immediately, with spinner if scanning */}
-            {sessions.length === 0 && isScanning ? (
-              <div className="flex flex-col items-center justify-center py-8">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
-                <p className="mt-2 text-sm text-[var(--text-secondary)]">Scanning sessions...</p>
-              </div>
-            ) : sessions.length === 0 ? (
-              <div className="py-8 text-center text-[var(--text-secondary)]">
-                <p>No sessions found</p>
-                <button
-                  onClick={loadSessions}
-                  className="mt-2 text-sm text-[var(--accent)] hover:underline"
-                >
-                  Scan again
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {Object.entries(groupedSessions).map(([source, items]) => (
-                  <div key={source} className="glass overflow-hidden rounded-lg">
-                    <button
-                      onClick={() => toggleSource(source)}
-                      className="flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-[var(--bg-card)]"
-                    >
-                      <span className="text-sm font-medium uppercase text-[var(--text-secondary)]">
-                        {source} ({items.length})
-                      </span>
-                      <svg
-                        className={`h-4 w-4 text-[var(--text-secondary)] transition-transform ${
-                          expandedSources.has(source) ? "rotate-180" : ""
-                        }`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
-                    </button>
-                    {expandedSources.has(source) &&
-                      (() => {
-                        const visibleCount = visibleCounts[source] || ITEMS_PER_PAGE;
-                        const visibleItems = items.slice(0, visibleCount);
-                        const hasMore = items.length > visibleCount;
-
-                        return (
-                          <div className="space-y-1 px-3 pb-3">
-                            {visibleItems.map((session) => (
-                              <div
-                                key={session.id}
-                                onClick={() => handleOpenFile(session.path)}
-                                className="cursor-pointer rounded-lg bg-[var(--bg-card)] p-2.5 transition-colors hover:bg-[var(--border)]"
-                              >
-                                <div className="flex items-start justify-between">
-                                  <div className="min-w-0 flex-1">
-                                    <p className="truncate text-sm font-medium">
-                                      {session.title || session.workspace_name || "Untitled"}
-                                    </p>
-                                    <p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-                                      {formatFileSize(session.file_size)}
-                                    </p>
-                                  </div>
-                                  <span className="ml-2 shrink-0 text-xs text-[var(--text-secondary)]">
-                                    {formatDate(session.created_at)}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
-                            {hasMore && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setVisibleCounts((prev) => ({
-                                    ...prev,
-                                    [source]: (prev[source] || ITEMS_PER_PAGE) + ITEMS_PER_PAGE,
-                                  }));
-                                }}
-                                className="mt-2 w-full rounded-lg border border-dashed border-[var(--border)] py-2 text-center text-xs text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
-                              >
-                                Load {Math.min(ITEMS_PER_PAGE, items.length - visibleCount)} more (
-                                {items.length - visibleCount} remaining)
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })()}
-                  </div>
-                ))}
+          <div className="space-y-4">
+            {isScanning && sessions.length === 0 && (
+              <div className="flex items-center justify-center py-8">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
               </div>
             )}
+
+            {!isScanning && sessions.length === 0 && (
+              <div className="py-8 text-center text-[var(--text-secondary)]">
+                <p>No sessions found.</p>
+                <p className="mt-2 text-sm">Open VS Code with GitHub Copilot to create chat sessions.</p>
+              </div>
+            )}
+
+            {Object.entries(groupedSessions).map(([source, sourceSessions]) => {
+              const isExpanded = expandedSources.has(source);
+              const visibleCount = visibleCounts[source] || ITEMS_PER_PAGE;
+              const visibleSessions = sourceSessions.slice(0, visibleCount);
+              const hasMore = sourceSessions.length > visibleCount;
+
+              return (
+                <div key={source} className="glass rounded-xl">
+                  <button
+                    onClick={() => toggleSource(source)}
+                    className="flex w-full items-center justify-between px-4 py-3"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{source}</span>
+                      <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs text-white">
+                        {sourceSessions.length}
+                      </span>
+                    </div>
+                    <svg
+                      className={`h-5 w-5 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="border-t border-[var(--border)]">
+                      {visibleSessions.map((session) => (
+                        <button
+                          key={session.id}
+                          onClick={() => handleOpenFile(session.path)}
+                          className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-[var(--bg-card)]"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">
+                              {session.title || session.workspace_name || session.id}
+                            </p>
+                            <p className="text-xs text-[var(--text-secondary)]">
+                              {formatDate(session.created_at)} - {formatFileSize(session.file_size)}
+                            </p>
+                          </div>
+                          <svg className="h-4 w-4 text-[var(--text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      ))}
+                      {hasMore && (
+                        <button
+                          onClick={() =>
+                            setVisibleCounts((prev) => ({
+                              ...prev,
+                              [source]: visibleCount + ITEMS_PER_PAGE,
+                            }))
+                          }
+                          className="block w-full py-2 text-center text-sm text-[var(--accent)]"
+                        >
+                          Show more ({sourceSessions.length - visibleCount} remaining)
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
         {activeTab === "settings" && config && (
-          <div className="space-y-4 p-4">
-            <div className="glass rounded-lg p-4">
-              <h3 className="mb-1 text-sm text-[var(--text-secondary)]">Provider</h3>
-              <p className="font-medium">{config.provider}</p>
+          <div className="space-y-4">
+            <div className="glass rounded-xl p-4">
+              <h3 className="mb-3 font-semibold">Vault Settings</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-[var(--text-secondary)]">Vault Path</span>
+                  <span className="truncate max-w-[200px]">{config.vault_path}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[var(--text-secondary)]">Cloud Folder</span>
+                  <span>{config.folder_name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[var(--text-secondary)]">Remote</span>
+                  <span>{config.remote_name || "Not connected"}</span>
+                </div>
+              </div>
             </div>
-            <div className="glass rounded-lg p-4">
-              <h3 className="mb-1 text-sm text-[var(--text-secondary)]">Repository</h3>
-              <p className="font-medium">{config.repo_name || "Not configured"}</p>
-            </div>
-            <div className="glass rounded-lg p-4">
-              <h3 className="mb-1 text-sm text-[var(--text-secondary)]">Encryption</h3>
-              <p className="font-medium">{config.encrypt ? "Enabled (AES-256-GCM)" : "Disabled"}</p>
-            </div>
-            <div className="glass rounded-lg p-4">
-              <h3 className="mb-1 text-sm text-[var(--text-secondary)]">Compression</h3>
-              <p className="font-medium">{config.compress ? "Enabled" : "Disabled"}</p>
-            </div>
+
+            {syncError && (
+              <div className="rounded-xl bg-red-500/10 p-4">
+                <p className="text-sm text-red-400">{syncError}</p>
+              </div>
+            )}
           </div>
         )}
-      </main>
-      <nav className="flex border-t border-[var(--border)] bg-[var(--bg-secondary)]">
-        <button
-          onClick={() => setActiveTab("sessions")}
-          className={`flex flex-1 flex-col items-center gap-1 py-3 transition-colors ${activeTab === "sessions" ? "text-[var(--accent)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
-        >
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 6h16M4 12h16M4 18h16"
-            />
-          </svg>
-          <span className="text-xs">Sessions</span>
-        </button>
-        <button
-          onClick={() => setActiveTab("settings")}
-          className={`flex flex-1 flex-col items-center gap-1 py-3 transition-colors ${activeTab === "settings" ? "text-[var(--accent)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
-        >
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-            />
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-            />
-          </svg>
-          <span className="text-xs">Settings</span>
-        </button>
-      </nav>
+      </div>
     </div>
   );
 }
@@ -1019,26 +517,26 @@ function MainApp() {
 // ==================== ROOT APP ====================
 function App() {
   const [view, setView] = useState<View>("main");
-  const [isChecking, setIsChecking] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    const checkSetup = async () => {
+      try {
+        const complete = await invoke<boolean>("check_setup_complete");
+        setView(complete ? "main" : "setup");
+      } catch (err) {
+        console.error("Failed to check setup:", err);
+        setView("setup");
+      } finally {
+        setIsLoading(false);
+      }
+    };
     checkSetup();
   }, []);
 
-  const checkSetup = async () => {
-    try {
-      const complete = await invoke<boolean>("check_setup_complete");
-      setView(complete ? "main" : "setup");
-    } catch {
-      setView("setup");
-    } finally {
-      setIsChecking(false);
-    }
-  };
-
-  if (isChecking) {
+  if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center">
+      <div className="flex h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
       </div>
     );

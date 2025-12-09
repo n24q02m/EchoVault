@@ -1,7 +1,7 @@
 //! Config module - Quản lý cấu hình EchoVault (echovault.toml).
 //!
 //! File cấu hình chứa:
-//! - Thông tin sync (remote repo, auth method)
+//! - Thông tin sync với Rclone
 //! - Đường dẫn vault
 //! - Các settings khác
 
@@ -9,63 +9,18 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// Cấu hình sync với cloud
+/// Cấu hình sync với cloud via Rclone
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SyncConfig {
-    /// URL của remote repository (GitHub)
-    pub remote: Option<String>,
-    /// Tên repo (GitHub) hoặc folder (Google Drive)
-    pub repo_name: Option<String>,
-    /// Provider type: github, google_drive, s3
-    #[serde(default = "default_provider")]
-    pub provider: String,
-    /// Tên folder trên Google Drive (mặc định: "EchoVault")
-    #[serde(default)]
-    pub folder_name: Option<String>,
+    /// Tên remote trong rclone config (e.g., "echovault")
+    pub remote_name: Option<String>,
+    /// Tên folder trên cloud (mặc định: "EchoVault")
+    #[serde(default = "default_folder_name")]
+    pub folder_name: String,
 }
 
-fn default_provider() -> String {
-    // NOTE: Temporarily using google_drive for testing
-    // Original: "github".to_string()
-    "google_drive".to_string()
-}
-
-/// Cấu hình encryption
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EncryptionConfig {
-    /// Có bật mã hóa không
-    #[serde(default = "default_enabled")]
-    pub enabled: bool,
-}
-
-/// Cấu hình compression
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CompressionConfig {
-    /// Có bật nén không
-    #[serde(default = "default_enabled")]
-    pub enabled: bool,
-}
-
-fn default_enabled() -> bool {
-    // NOTE: Temporarily disabled for testing
-    // Original: true
-    false
-}
-
-impl Default for EncryptionConfig {
-    fn default() -> Self {
-        Self {
-            enabled: default_enabled(),
-        }
-    }
-}
-
-impl Default for CompressionConfig {
-    fn default() -> Self {
-        Self {
-            enabled: default_enabled(),
-        }
-    }
+fn default_folder_name() -> String {
+    "EchoVault".to_string()
 }
 
 /// Cấu hình extractors
@@ -94,21 +49,13 @@ pub struct Config {
     #[serde(default)]
     pub sync: SyncConfig,
 
-    /// Cấu hình encryption
-    #[serde(default)]
-    pub encryption: EncryptionConfig,
-
-    /// Cấu hình compression
-    #[serde(default)]
-    pub compression: CompressionConfig,
-
     /// Cấu hình extractors
     #[serde(default)]
     pub extractors: ExtractorsConfig,
 }
 
 fn default_version() -> u32 {
-    1
+    2 // Version 2: simplified, Rclone-only
 }
 
 impl Default for Config {
@@ -118,8 +65,6 @@ impl Default for Config {
             setup_complete: false,
             vault_path: default_vault_path(),
             sync: SyncConfig::default(),
-            encryption: EncryptionConfig::default(),
-            compression: CompressionConfig::default(),
             extractors: ExtractorsConfig::default(),
         }
     }
@@ -142,11 +87,6 @@ pub fn default_config_dir() -> PathBuf {
 /// Lấy đường dẫn config file mặc định
 pub fn default_config_path() -> PathBuf {
     default_config_dir().join("echovault.toml")
-}
-
-/// Lấy đường dẫn credentials file mặc định (trong config dir, không phải vault)
-pub fn default_credentials_path() -> PathBuf {
-    default_config_dir().join(".credentials.json")
 }
 
 #[allow(dead_code)]
@@ -210,12 +150,7 @@ impl Config {
 
     /// Kiểm tra config đã được khởi tạo chưa (đã có remote)
     pub fn is_initialized(&self) -> bool {
-        self.sync.remote.is_some()
-    }
-
-    /// Set remote repository URL
-    pub fn set_remote(&mut self, remote: String) {
-        self.sync.remote = Some(remote);
+        self.sync.remote_name.is_some()
     }
 
     /// Lấy đường dẫn đến vault directory
@@ -227,11 +162,6 @@ impl Config {
     pub fn index_db_path(&self) -> PathBuf {
         self.vault_path.join("index.db")
     }
-
-    /// Lấy đường dẫn đến thư mục chứa encrypted files
-    pub fn encrypted_dir(&self) -> PathBuf {
-        self.vault_path.join("encrypted")
-    }
 }
 
 #[cfg(test)]
@@ -242,9 +172,8 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = Config::default();
-        assert_eq!(config.version, 1);
+        assert_eq!(config.version, 2);
         assert!(!config.is_initialized());
-        assert!(!config.encryption.enabled);
     }
 
     #[test]
@@ -253,41 +182,12 @@ mod tests {
         let config_path = temp_dir.path().join("test.toml");
 
         let mut config = Config::new();
-        config.set_remote("https://github.com/user/vault.git".to_string());
+        config.sync.remote_name = Some("echovault".to_string());
         config.save(&config_path)?;
 
         let loaded = Config::load(&config_path)?;
         assert!(loaded.is_initialized());
-        assert_eq!(
-            loaded.sync.remote,
-            Some("https://github.com/user/vault.git".to_string())
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_toml_serialization() -> Result<()> {
-        let config = Config {
-            version: 1,
-            setup_complete: true,
-            vault_path: PathBuf::from("/home/user/.echovault/vault"),
-            sync: SyncConfig {
-                remote: Some("https://github.com/user/vault.git".to_string()),
-                repo_name: Some("user-vault".to_string()),
-                provider: "github".to_string(),
-                folder_name: None,
-            },
-            encryption: EncryptionConfig { enabled: true },
-            compression: CompressionConfig { enabled: true },
-            extractors: ExtractorsConfig {
-                enabled_sources: vec!["vscode-copilot".to_string()],
-            },
-        };
-
-        let toml_str = toml::to_string_pretty(&config)?;
-        assert!(toml_str.contains("version = 1"));
-        assert!(toml_str.contains("vault_path ="));
+        assert_eq!(loaded.sync.remote_name, Some("echovault".to_string()));
 
         Ok(())
     }

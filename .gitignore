@@ -176,3 +176,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Rclone binaries (bundled, not committed)
+src-tauri/binaries/*
+!src-tauri/binaries/README.md

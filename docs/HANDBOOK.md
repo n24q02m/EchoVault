@@ -1,7 +1,7 @@
 # ECHOVAULT - DEVELOPER HANDBOOK
 
-**Phiên bản:** 2.5.0
-**Ngày cập nhật:** 08/12/2025
+**Phiên bản:** 2.6.0
+**Ngày cập nhật:** 09/12/2025
 **Dành cho:** Solo Developer
 
 ---
@@ -40,10 +40,10 @@ Hiện tại, GitHub Copilot, Cursor, Cline và các công cụ AI khác đều 
 ### 1.3. Giải Pháp
 
 ```text
-IDE Files (JSON/SQLite) -> EchoVault CLI -> Raw JSON Storage -> Encryption -> GitHub Sync
+IDE Files (JSON/SQLite) -> EchoVault App -> Raw JSON Storage -> Encryption -> Sync Providers
                                 |                                               |
-                                +-> Copy nguyên vẹn file gốc                    +-> OAuth Device Flow
-                                +-> Không format/transform                      +-> Auto push
+                                +-> Copy nguyên vẹn file gốc                    +-> Rclone (Google Drive, S3, etc.)
+                                +-> Không format/transform                      +-> GitHub (Legacy)
                                 +-> Index metadata để search                    +-> Multi-device sync
 ```
 
@@ -113,16 +113,16 @@ IDE Files (JSON/SQLite) -> EchoVault CLI -> Raw JSON Storage -> Encryption -> Gi
 
 ```text
 +------------------+     +------------------+     +------------------+     +------------------+
-|   IDE Files      | --> |   EchoVault CLI  | --> |   AES-256-GCM    | --> |     GitHub       |
-|  (JSON, SQLite)  |     |     (Rust)       |     |   Encryption     |     |  (Remote Repo)   |
+|   IDE Files      | --> |   EchoVault App  | --> |   AES-256-GCM    | --> |   Sync Providers |
+|  (JSON, SQLite)  |     |     (Tauri)      |     |   Encryption     |     | (Rclone/GitHub)  |
 +------------------+     +------------------+     +------------------+     +------------------+
         |                        |                        |                        |
         v                        v                        v                        v
 +------------------+     +------------------+     +------------------+     +------------------+
-| - VS Code        |     | - Copy raw files |     | - Passphrase     |     | - OAuth Device   |
-| - Cursor         |     | - Index metadata |     | - Argon2id KDF   |     |   Flow           |
-| - Cline          |     | - Desktop App    |     | - .json.enc      |     | - Auto Push      |
-| - Antigravity    |     | - Sync Engine    |     | - Fast (<10ms)   |     | - Version Ctrl   |
+| - VS Code        |     | - Copy raw files |     | - Passphrase     |     | - Rclone (Main)  |
+| - Cursor         |     | - Index metadata |     | - Argon2id KDF   |     |   - GDrive, etc. |
+| - Cline          |     | - UI Dashboard   |     | - .json.enc      |     |   - Bundled binary|
+| - Antigravity    |     | - Background Sync|     | - Fast (<10ms)   |     | - GitHub (Legacy)|
 +------------------+     +------------------+     +------------------+     +------------------+
 ```
 
@@ -248,6 +248,24 @@ src/
 | **Primary** | Raw JSON gốc     | Copy nguyên vẹn từ IDE |
 | **Index**   | SQLite           | Fast search, metadata  |
 | **Sync**    | Encrypted (.enc) | Secure sync to GitHub  |
+
+### 3.3. Sync Providers (Open-Source Friendly)
+
+EchoVault ưu tiên sử dụng các giải pháp sync có thể hoạt động hoàn toàn open-source mà không yêu cầu user phải tạo credentials phức tạp.
+
+#### 3.3.1. Rclone (Recommended)
+
+Chúng tôi sử dụng **Rclone** như một sync engine chính để hỗ trợ nhiều cloud providers.
+
+- **Tại sao?**: Rclone đã tích hợp sẵn và được verify các OAuth credentials với Google, Dropbox, OneDrive, v.v.
+- **Cơ chế**: EchoVault bundle sẵn Rclone binary (được gọi là sidecar).
+- **User Flow**: User click "Connect", Rclone tự động mở browser để đăng nhập. Không cần nhập Client ID/Secret.
+- **Encryption**: Vẫn sử dụng lớp encryption của EchoVault trước khi gửi file cho Rclone (Rclone chỉ sync file blob .enc).
+
+#### 3.3.2. GitHub (Legacy)
+
+- Sử dụng OAuth Device Flow (GitHub Apps).
+- Lưu trữ dưới dạng private git repository.
 
 **Tại sao không format lại?**
 

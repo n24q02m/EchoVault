@@ -3,7 +3,7 @@ name = "echovault-core"
 version = "0.1.0"
 edition = "2021"
 authors = ["n24q02m"]
-description = "Core library for EchoVault - Extract, sync, and search chat history across IDEs"
+description = "Core library for EchoVault - Extract and sync chat history across IDEs"
 license = "MIT"
 repository = "https://github.com/n24q02m/EchoVault"
 
@@ -21,34 +21,6 @@ serde_json = "1.0"
 
 # TOML config files
 toml = "0.8"
-
-# Encryption
-aes-gcm = "0.10"
-argon2 = "0.5"
-rand = "0.8"
-
-# Compression
-flate2 = "1.0"
-
-# Checksums
-sha2 = "0.10"
-
-# Git operations (sử dụng vendored libgit2 và openssl cho HTTPS)
-git2 = { version = "0.20", default-features = false, features = [
-    "vendored-libgit2",
-    "vendored-openssl",
-    "https",
-] }
-
-# HTTP client cho OAuth (sử dụng rustls thay vì native-tls)
-reqwest = { version = "0.12", default-features = false, features = [
-    "blocking",
-    "json",
-    "rustls-tls",
-] }
-
-# Keyring cho lưu credentials (optional)
-keyring = "3"
 
 # Error handling
 anyhow = "1.0"
@@ -70,12 +42,8 @@ indicatif = { version = "0.17", features = ["rayon"] }
 # Parallel processing
 rayon = "1.10"
 
-# Password input
-rpassword = "7"
-
 # Hostname for distributed lock
 hostname = "0.4"
 
 [dev-dependencies]
-git2 = "0.20"
 tempfile = "3.14"
