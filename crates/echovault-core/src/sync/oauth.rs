@@ -16,8 +16,12 @@ use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
 /// GitHub OAuth App Client ID cho EchoVault
-/// Note: Đây là public client, client_secret không cần thiết cho Device Flow
-const GITHUB_CLIENT_ID: &str = "Ov23li17qiwKE2rOq5fx";
+/// Đọc từ environment variables (managed by Doppler)
+fn get_github_client_id() -> String {
+    std::env::var("GITHUB_CLIENT_ID").expect(
+        "GITHUB_CLIENT_ID environment variable not set. Run with: doppler run -- cargo tauri dev",
+    )
+}
 
 /// GitHub OAuth endpoints
 const DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
@@ -86,7 +90,7 @@ impl OAuthDeviceFlow {
     pub fn new() -> Self {
         Self {
             client: reqwest::blocking::Client::new(),
-            client_id: GITHUB_CLIENT_ID.to_string(),
+            client_id: get_github_client_id(),
         }
     }
 

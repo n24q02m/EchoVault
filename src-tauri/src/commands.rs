@@ -2,21 +2,123 @@
 //!
 //! Các commands này được gọi từ frontend qua IPC.
 
-use echovault_core::{AuthStatus, GitHubProvider, SyncOptions, SyncProvider};
+use echovault_core::{AuthStatus, GitHubProvider, GoogleDriveProvider, SyncOptions, SyncProvider};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::State;
 
+/// Enum để chứa provider hiện tại (Google Drive hoặc GitHub)
+#[allow(dead_code)] // GitHub variant sẽ được dùng khi toggle về GitHub provider
+pub enum ProviderType {
+    GitHub(GitHubProvider),
+    GoogleDrive(GoogleDriveProvider),
+}
+
+impl ProviderType {
+    pub fn as_sync_provider(&self) -> &dyn SyncProvider {
+        match self {
+            ProviderType::GitHub(p) => p,
+            ProviderType::GoogleDrive(p) => p,
+        }
+    }
+
+    pub fn as_sync_provider_mut(&mut self) -> &mut dyn SyncProvider {
+        match self {
+            ProviderType::GitHub(p) => p,
+            ProviderType::GoogleDrive(p) => p,
+        }
+    }
+
+    // Delegate SyncProvider trait methods
+    pub fn is_authenticated(&self) -> bool {
+        self.as_sync_provider().is_authenticated()
+    }
+
+    pub fn auth_status(&self) -> AuthStatus {
+        self.as_sync_provider().auth_status()
+    }
+
+    pub fn start_auth(&mut self) -> anyhow::Result<AuthStatus> {
+        self.as_sync_provider_mut().start_auth()
+    }
+
+    pub fn complete_auth(&mut self) -> anyhow::Result<AuthStatus> {
+        self.as_sync_provider_mut().complete_auth()
+    }
+
+    pub fn pull(
+        &self,
+        vault_dir: &std::path::Path,
+        options: &SyncOptions,
+    ) -> anyhow::Result<echovault_core::PullResult> {
+        self.as_sync_provider().pull(vault_dir, options)
+    }
+
+    pub fn push(
+        &self,
+        vault_dir: &std::path::Path,
+        options: &SyncOptions,
+    ) -> anyhow::Result<echovault_core::PushResult> {
+        self.as_sync_provider().push(vault_dir, options)
+    }
+
+    // GitHub-specific methods (only work with GitHub provider)
+    pub fn get_username(&self) -> anyhow::Result<String> {
+        match self {
+            ProviderType::GitHub(p) => p.get_username(),
+            ProviderType::GoogleDrive(_) => Ok("user".to_string()), // N/A for Google Drive
+        }
+    }
+
+    pub fn repo_exists(&self, repo_name: &str) -> anyhow::Result<bool> {
+        match self {
+            ProviderType::GitHub(p) => p.repo_exists(repo_name),
+            ProviderType::GoogleDrive(_) => Ok(true), // Always "exists" for Google Drive
+        }
+    }
+
+    pub fn clone_repo(&self, repo_name: &str) -> anyhow::Result<()> {
+        match self {
+            ProviderType::GitHub(p) => p.clone_repo(repo_name),
+            ProviderType::GoogleDrive(_) => Ok(()), // N/A for Google Drive
+        }
+    }
+
+    pub fn set_remote(&mut self, url: String) {
+        match self {
+            ProviderType::GitHub(p) => p.set_remote(url),
+            ProviderType::GoogleDrive(_) => {} // N/A for Google Drive
+        }
+    }
+
+    pub fn set_credentials(&mut self, creds: echovault_core::sync::OAuthCredentials) {
+        match self {
+            ProviderType::GitHub(p) => p.set_credentials(creds.clone()),
+            ProviderType::GoogleDrive(p) => p.set_credentials(creds),
+        }
+    }
+
+    pub fn access_token(&self) -> Option<&str> {
+        match self {
+            ProviderType::GitHub(p) => p.access_token(),
+            ProviderType::GoogleDrive(p) => p.access_token(),
+        }
+    }
+}
+
 /// State chứa provider hiện tại
 #[derive(Clone)]
 pub struct AppState {
-    pub provider: Arc<Mutex<GitHubProvider>>,
+    pub provider: Arc<Mutex<ProviderType>>,
 }
 
 impl Default for AppState {
     fn default() -> Self {
+        // NOTE: Default to GoogleDriveProvider for testing
         Self {
-            provider: Arc::new(Mutex::new(GitHubProvider::new())),
+            provider: Arc::new(Mutex::new(ProviderType::GoogleDrive(
+                GoogleDriveProvider::new(),
+            ))),
         }
     }
 }
@@ -126,6 +228,71 @@ pub async fn complete_setup(
     use echovault_core::Config;
     use echovault_core::VaultMetadata;
 
+    let mut config = Config::load_default().map_err(|e| e.to_string())?;
+    let vault_path = config.vault_path.clone();
+
+    // ========== GOOGLE DRIVE PROVIDER ==========
+    if request.provider == "google_drive" {
+        println!("[complete_setup] Using Google Drive provider");
+
+        // Google Drive: không cần force encrypt/compress
+        config.setup_complete = true;
+        config.sync = SyncConfig {
+            remote: None, // Google Drive không dùng remote URL
+            repo_name: Some(request.repo_name.clone()),
+            provider: request.provider.clone(),
+            folder_name: Some(request.repo_name.clone()), // Folder name = repo_name
+        };
+        config.encryption = EncryptionConfig {
+            enabled: request.encrypt,
+        };
+        config.compression = CompressionConfig {
+            enabled: request.compress,
+        };
+
+        config
+            .save(&default_config_path())
+            .map_err(|e| e.to_string())?;
+
+        // Tạo vault directory nếu chưa tồn tại
+        if !vault_path.exists() {
+            std::fs::create_dir_all(&vault_path)
+                .map_err(|e| format!("Failed to create vault directory: {}", e))?;
+            println!("[complete_setup] Vault directory created: {:?}", vault_path);
+        }
+
+        // Tạo vault metadata nếu chưa tồn tại
+        if !VaultMetadata::exists(&vault_path) {
+            let metadata = VaultMetadata::new(request.encrypt, request.compress);
+            metadata
+                .save(&vault_path)
+                .map_err(|e| format!("Failed to save vault metadata: {}", e))?;
+            println!("[complete_setup] vault.json created");
+        }
+
+        // Lưu passphrase nếu encryption enabled
+        if request.encrypt {
+            if let Some(ref passphrase) = request.passphrase {
+                let keyring_result = keyring::Entry::new("echovault", "passphrase")
+                    .and_then(|entry| entry.set_password(passphrase));
+
+                if let Err(e) = keyring_result {
+                    println!(
+                        "[complete_setup] Keyring failed: {}, using file fallback",
+                        e
+                    );
+                }
+
+                save_passphrase_to_file(passphrase)
+                    .map_err(|e| format!("Failed to save passphrase: {}", e))?;
+            }
+        }
+
+        println!("[complete_setup] Google Drive setup complete!");
+        return Ok(());
+    }
+
+    // ========== GITHUB PROVIDER (legacy) ==========
     // Clone state cho spawn_blocking
     let provider_clone = state.provider.clone();
 
@@ -160,13 +327,9 @@ pub async fn complete_setup(
     let remote_url = format!("https://github.com/{}/{}.git", username, request.repo_name);
     println!("[complete_setup] Remote URL: {}", remote_url);
 
-    let mut config = Config::load_default().map_err(|e| e.to_string())?;
-    let vault_path = config.vault_path.clone();
-
     // Force encrypt và compress cho GitHub provider
-    // (Encrypt luôn bật vì security, compress bắt buộc vì GitHub file size limits)
     let force_encrypt = true;
-    let force_compress = request.provider == "github";
+    let force_compress = true;
 
     config.setup_complete = true;
     let repo_name_for_later = request.repo_name.clone();
@@ -174,12 +337,13 @@ pub async fn complete_setup(
         remote: Some(remote_url.clone()),
         repo_name: Some(request.repo_name),
         provider: request.provider,
+        folder_name: None,
     };
     config.encryption = EncryptionConfig {
         enabled: force_encrypt,
     };
     config.compression = CompressionConfig {
-        enabled: force_compress || request.compress,
+        enabled: force_compress,
     };
 
     config
@@ -187,15 +351,12 @@ pub async fn complete_setup(
         .map_err(|e| e.to_string())?;
 
     // Tạo vault directory và metadata nếu chưa tồn tại (new vault)
-    // IMPORTANT: Clone-first approach để đảm bảo salt consistency
     if !VaultMetadata::exists(&vault_path) {
         println!("[complete_setup] Local vault not found, checking remote...");
 
-        // Clone state để dùng trong spawn_blocking
         let provider_for_check = state.provider.clone();
         let repo_name_clone = repo_name_for_later.clone();
 
-        // Kiểm tra repo có tồn tại trên GitHub không
         let repo_exists = tokio::task::spawn_blocking(move || {
             let provider = provider_for_check.lock().map_err(|e| e.to_string())?;
             provider
@@ -207,7 +368,6 @@ pub async fn complete_setup(
         .unwrap_or(false);
 
         if repo_exists {
-            // CLONE-FIRST: Repo đã tồn tại → clone để lấy salt gốc
             println!("[complete_setup] Remote repo exists, cloning to get original salt...");
 
             let provider_for_clone = state.provider.clone();
@@ -225,45 +385,34 @@ pub async fn complete_setup(
 
             println!("[complete_setup] Vault cloned successfully with original salt");
 
-            // Set remote cho provider
             let mut provider = state.provider.lock().map_err(|e| e.to_string())?;
             provider.set_remote(remote_url);
-
-            // Lưu passphrase sau clone (passphrase phải match với salt trong vault.json)
-            // Không tạo vault.json mới - sử dụng cái đã clone
         } else {
-            // NEW VAULT: Repo chưa tồn tại → tạo vault mới với salt mới
             println!("[complete_setup] Remote repo not found, creating new vault...");
 
-            // Tạo vault directory
             std::fs::create_dir_all(&vault_path)
                 .map_err(|e| format!("Failed to create vault directory: {}", e))?;
 
-            // Tạo vault.json với salt mới
-            let metadata = VaultMetadata::new(force_encrypt, force_compress || request.compress);
+            let metadata = VaultMetadata::new(force_encrypt, force_compress);
             metadata
                 .save(&vault_path)
                 .map_err(|e| format!("Failed to save vault metadata: {}", e))?;
             println!("[complete_setup] vault.json created with new salt");
 
-            // Khởi tạo git repository
             let git = GitSync::init(&vault_path)
                 .map_err(|e| format!("Failed to init git repository: {}", e))?;
             println!("[complete_setup] Git repository initialized");
 
-            // Thêm remote 'origin'
             git.add_remote("origin", &remote_url)
                 .map_err(|e| format!("Failed to add git remote: {}", e))?;
             println!("[complete_setup] Git remote 'origin' added: {}", remote_url);
 
-            // Tạo initial commit
             git.stage_all()
                 .map_err(|e| format!("Failed to stage files: {}", e))?;
             git.commit("Initial vault setup")
                 .map_err(|e| format!("Failed to create initial commit: {}", e))?;
             println!("[complete_setup] Initial commit created");
 
-            // Set remote cho provider
             let mut provider = state.provider.lock().map_err(|e| e.to_string())?;
             provider.set_remote(remote_url);
         }
@@ -272,7 +421,6 @@ pub async fn complete_setup(
     // Lưu passphrase nếu encryption enabled
     if request.encrypt {
         if let Some(ref passphrase) = request.passphrase {
-            // Try keyring first
             let keyring_result = keyring::Entry::new("echovault", "passphrase")
                 .and_then(|entry| entry.set_password(passphrase));
 
@@ -283,7 +431,6 @@ pub async fn complete_setup(
                 );
             }
 
-            // Always save to file as fallback (for WSL)
             save_passphrase_to_file(passphrase)
                 .map_err(|e| format!("Failed to save passphrase: {}", e))?;
             println!("[complete_setup] Passphrase saved to file fallback");
@@ -612,9 +759,9 @@ fn find_vault_session_info(
 pub async fn scan_sessions() -> Result<ScanResult, String> {
     // Move heavy I/O work to spawn_blocking để không block Tauri runtime
     tokio::task::spawn_blocking(|| {
-        use echovault_core::extractors::{
-            antigravity::AntigravityExtractor, vscode_copilot::VSCodeCopilotExtractor, Extractor,
-        };
+        use echovault_core::extractors::{vscode_copilot::VSCodeCopilotExtractor, Extractor};
+        // NOTE: Antigravity support temporarily disabled
+        // use echovault_core::extractors::antigravity::AntigravityExtractor;
         use echovault_core::Config;
         use std::collections::{HashMap, HashSet};
 
@@ -644,28 +791,28 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
             }
         }
 
-        // 2. Scan Antigravity sessions (local)
-        let antigravity_extractor = AntigravityExtractor::new();
-        if let Ok(locations) = antigravity_extractor.find_storage_locations() {
-            for location in locations {
-                if let Ok(files) = antigravity_extractor.list_session_files(&location) {
-                    for file in files {
-                        let id = file.metadata.id.clone();
-                        if seen_ids.insert(id) {
-                            sessions.push(SessionInfo {
-                                id: file.metadata.id,
-                                source: file.metadata.source,
-                                title: file.metadata.title,
-                                workspace_name: file.metadata.workspace_name,
-                                created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
-                                file_size: file.metadata.file_size,
-                                path: file.metadata.original_path.to_string_lossy().to_string(),
-                            });
-                        }
-                    }
-                }
-            }
-        }
+        // NOTE: Antigravity support temporarily disabled
+        // let antigravity_extractor = AntigravityExtractor::new();
+        // if let Ok(locations) = antigravity_extractor.find_storage_locations() {
+        //     for location in locations {
+        //         if let Ok(files) = antigravity_extractor.list_session_files(&location) {
+        //             for file in files {
+        //                 let id = file.metadata.id.clone();
+        //                 if seen_ids.insert(id) {
+        //                     sessions.push(SessionInfo {
+        //                         id: file.metadata.id,
+        //                         source: file.metadata.source,
+        //                         title: file.metadata.title,
+        //                         workspace_name: file.metadata.workspace_name,
+        //                         created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
+        //                         file_size: file.metadata.file_size,
+        //                         path: file.metadata.original_path.to_string_lossy().to_string(),
+        //                     });
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
 
         // 3. Read sessions from vault (synced from other machines)
         // The vault contains an index.json with metadata of all ingested sessions
@@ -759,13 +906,14 @@ pub async fn open_url(url: String) -> Result<(), String> {
             .map_err(|e| format!("Failed to open URL: {}", e))?;
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        Command::new("open")
-            .arg(&url)
-            .spawn()
-            .map_err(|e| format!("Failed to open URL: {}", e))?;
-    }
+    // NOTE: macOS support temporarily disabled
+    // #[cfg(target_os = "macos")]
+    // {
+    //     Command::new("open")
+    //         .arg(&url)
+    //         .spawn()
+    //         .map_err(|e| format!("Failed to open URL: {}", e))?;
+    // }
 
     Ok(())
 }
@@ -818,14 +966,15 @@ pub async fn open_file(file_path: String) -> Result<(), String> {
             .map_err(|e| format!("Failed to open file: {}", e))?;
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        // macOS - use open command
-        Command::new("open")
-            .arg(&file_path)
-            .spawn()
-            .map_err(|e| format!("Failed to open file: {}", e))?;
-    }
+    // NOTE: macOS support temporarily disabled
+    // #[cfg(target_os = "macos")]
+    // {
+    //     // macOS - use open command
+    //     Command::new("open")
+    //         .arg(&file_path)
+    //         .spawn()
+    //         .map_err(|e| format!("Failed to open file: {}", e))?;
+    // }
 
     Ok(())
 }
@@ -911,9 +1060,9 @@ fn ingest_sessions(
     encryptor: Option<&echovault_core::crypto::Encryptor>,
     _compress: bool,
 ) -> Result<bool, String> {
-    use echovault_core::extractors::{
-        antigravity::AntigravityExtractor, vscode_copilot::VSCodeCopilotExtractor, Extractor,
-    };
+    use echovault_core::extractors::{vscode_copilot::VSCodeCopilotExtractor, Extractor};
+    // NOTE: Antigravity support temporarily disabled
+    // use echovault_core::extractors::antigravity::AntigravityExtractor;
     use echovault_core::storage::chunked::compress_encrypt_chunk;
     use rayon::prelude::*;
     use std::collections::HashMap;
@@ -957,24 +1106,24 @@ fn ingest_sessions(
         }
     }
 
-    // 2. Scan Antigravity sessions
-    let antigravity_extractor = AntigravityExtractor::new();
-    if let Ok(locations) = antigravity_extractor.find_storage_locations() {
-        println!(
-            "[ingest_sessions] Antigravity: {} locations",
-            locations.len()
-        );
-        for location in &locations {
-            if let Ok(files) = antigravity_extractor.list_session_files(location) {
-                println!(
-                    "[ingest_sessions] Location {:?}: {} files",
-                    location,
-                    files.len()
-                );
-                sessions.extend(files);
-            }
-        }
-    }
+    // NOTE: Antigravity support temporarily disabled
+    // let antigravity_extractor = AntigravityExtractor::new();
+    // if let Ok(locations) = antigravity_extractor.find_storage_locations() {
+    //     println!(
+    //         "[ingest_sessions] Antigravity: {} locations",
+    //         locations.len()
+    //     );
+    //     for location in &locations {
+    //         if let Ok(files) = antigravity_extractor.list_session_files(location) {
+    //             println!(
+    //                 "[ingest_sessions] Location {:?}: {} files",
+    //                 location,
+    //                 files.len()
+    //             );
+    //             sessions.extend(files);
+    //         }
+    //     }
+    // }
 
     let total_sessions = sessions.len();
     println!(

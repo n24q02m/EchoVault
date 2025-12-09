@@ -53,10 +53,11 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                     let _ = std::process::Command::new("xdg-open")
                         .arg(&config.vault_path)
                         .spawn();
-                    #[cfg(target_os = "macos")]
-                    let _ = std::process::Command::new("open")
-                        .arg(&config.vault_path)
-                        .spawn();
+                    // NOTE: macOS support temporarily disabled
+                    // #[cfg(target_os = "macos")]
+                    // let _ = std::process::Command::new("open")
+                    //     .arg(&config.vault_path)
+                    //     .spawn();
                     #[cfg(target_os = "windows")]
                     let _ = std::process::Command::new("explorer")
                         .arg(&config.vault_path)

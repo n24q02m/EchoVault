@@ -50,9 +50,14 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
   const [step, setStep] = useState<SetupStep>("auth");
   const [authStatus, setAuthStatus] = useState<AuthStatusResponse | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [repoName, setRepoName] = useState("my-vault");
-  const [encrypt, setEncrypt] = useState(true);
-  const [compress, setCompress] = useState(true);
+  // === PROVIDER CONFIG: Set to "google_drive" or "github" ===
+  const SYNC_PROVIDER = "google_drive";
+  const IS_GOOGLE_DRIVE = SYNC_PROVIDER === "google_drive";
+  // ===========================================================
+
+  const [repoName, setRepoName] = useState(IS_GOOGLE_DRIVE ? "EchoVault" : "my-vault");
+  const [encrypt, setEncrypt] = useState(!IS_GOOGLE_DRIVE); // Disabled for Google Drive testing
+  const [compress, setCompress] = useState(!IS_GOOGLE_DRIVE); // Disabled for Google Drive testing
   const [passphrase, setPassphrase] = useState("");
   const [confirmPassphrase, setConfirmPassphrase] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -97,6 +102,13 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
   };
 
   const checkExistingVault = async () => {
+    // Google Drive không cần check existing vault vì không có repo concept
+    if (IS_GOOGLE_DRIVE) {
+      setStep("config");
+      return;
+    }
+
+    // === GitHub-specific logic (commented out for Google Drive testing) ===
     setCheckingProgress("Checking for existing vault...");
     try {
       const exists = await invoke<boolean>("check_repo_exists", { repoName });
@@ -121,7 +133,7 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
           // Không encrypted, hoàn tất
           await invoke("complete_setup", {
             request: {
-              provider: "github",
+              provider: SYNC_PROVIDER,
               repo_name: repoName,
               encrypt: metadata.encrypted,
               compress: metadata.compressed,
@@ -162,7 +174,7 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
         // Passphrase đúng, lưu vào keyring và hoàn tất
         await invoke("complete_setup", {
           request: {
-            provider: "github",
+            provider: SYNC_PROVIDER,
             repo_name: repoName,
             encrypt: true,
             compress: existingVault?.compressed ?? true,
@@ -199,7 +211,7 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
     try {
       await invoke("complete_setup", {
         request: {
-          provider: "github",
+          provider: SYNC_PROVIDER,
           repo_name: repoName,
           encrypt,
           compress,
@@ -224,7 +236,9 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
       {step === "auth" && (
         <div className="flex flex-1 flex-col">
           <div className="glass mb-4 rounded-xl p-5">
-            <h2 className="mb-3 font-semibold">1. Authenticate with GitHub</h2>
+            <h2 className="mb-3 font-semibold">
+              1. Authenticate with {IS_GOOGLE_DRIVE ? "Google Drive" : "GitHub"}
+            </h2>
 
             {!authStatus || authStatus.status === "not_authenticated" ? (
               <button
@@ -232,7 +246,9 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
                 disabled={isAuthenticating}
                 className="w-full rounded-lg bg-[var(--accent)] py-2.5 font-medium text-white disabled:opacity-50"
               >
-                {isAuthenticating ? "Processing..." : "Login with GitHub"}
+                {isAuthenticating
+                  ? "Processing..."
+                  : `Login with ${IS_GOOGLE_DRIVE ? "Google" : "GitHub"}`}
               </button>
             ) : authStatus.status === "pending" ? (
               <div className="space-y-3">
@@ -242,7 +258,7 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
                     onClick={() => invoke("open_url", { url: authStatus.verify_url })}
                     className="text-[var(--accent)] underline"
                   >
-                    Open GitHub
+                    Open {IS_GOOGLE_DRIVE ? "Google" : "GitHub"}
                   </button>{" "}
                   to authenticate
                 </p>
@@ -395,68 +411,79 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
 
             <div className="space-y-4">
               <div>
-                <label className="mb-1.5 block text-sm">Repository Name</label>
+                <label className="mb-1.5 block text-sm">
+                  {IS_GOOGLE_DRIVE ? "Folder Name" : "Repository Name"}
+                </label>
                 <input
                   type="text"
                   value={repoName}
                   onChange={(e) => setRepoName(e.target.value)}
-                  placeholder="my-vault"
+                  placeholder={IS_GOOGLE_DRIVE ? "EchoVault" : "my-vault"}
                   className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2"
                 />
                 <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                  Will create: github.com/username/{repoName}
+                  {IS_GOOGLE_DRIVE
+                    ? `Data will be stored in Google Drive folder: ${repoName}`
+                    : `Will create: github.com/username/${repoName}`}
                 </p>
               </div>
 
-              {/* Encryption - luôn bật */}
-              <div className="flex items-center justify-between py-2 opacity-80">
-                <div>
-                  <p className="font-medium">Encryption (AES-256)</p>
-                  <p className="text-xs text-[var(--text-secondary)]">
-                    Always enabled for security
-                  </p>
-                </div>
-                <div className="flex h-6 items-center rounded-full bg-[var(--success)] px-2">
-                  <svg
-                    className="h-4 w-4 text-white"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                </div>
-              </div>
+              {/* Encryption và Compression UI - chỉ hiển thị với GitHub provider */}
+              {!IS_GOOGLE_DRIVE && (
+                <>
+                  {/* Encryption - luôn bật */}
+                  <div className="flex items-center justify-between py-2 opacity-80">
+                    <div>
+                      <p className="font-medium">Encryption (AES-256)</p>
+                      <p className="text-xs text-[var(--text-secondary)]">
+                        Always enabled for security
+                      </p>
+                    </div>
+                    <div className="flex h-6 items-center rounded-full bg-[var(--success)] px-2">
+                      <svg
+                        className="h-4 w-4 text-white"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <title>Enabled</title>
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                    </div>
+                  </div>
 
-              {/* Compression - bắt buộc với GitHub provider */}
-              <div className="flex items-center justify-between py-2 opacity-80">
-                <div>
-                  <p className="font-medium">Compression</p>
-                  <p className="text-xs text-[var(--text-secondary)]">
-                    Required for GitHub storage
-                  </p>
-                </div>
-                <div className="flex h-6 items-center rounded-full bg-[var(--success)] px-2">
-                  <svg
-                    className="h-4 w-4 text-white"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                </div>
-              </div>
+                  {/* Compression - bắt buộc với GitHub provider */}
+                  <div className="flex items-center justify-between py-2 opacity-80">
+                    <div>
+                      <p className="font-medium">Compression</p>
+                      <p className="text-xs text-[var(--text-secondary)]">
+                        Required for GitHub storage
+                      </p>
+                    </div>
+                    <div className="flex h-6 items-center rounded-full bg-[var(--success)] px-2">
+                      <svg
+                        className="h-4 w-4 text-white"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <title>Enabled</title>
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Passphrase inputs when encryption enabled */}
               {encrypt && (
@@ -535,6 +562,7 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
           {error && <p className="mb-2 text-center text-sm text-red-400">{error}</p>}
 
           <button
+            type="button"
             onClick={handleFinishSetup}
             className="w-full rounded-lg bg-[var(--accent)] py-3 font-semibold text-white"
           >

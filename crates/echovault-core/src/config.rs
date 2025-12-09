@@ -14,15 +14,20 @@ use std::path::{Path, PathBuf};
 pub struct SyncConfig {
     /// URL của remote repository (GitHub)
     pub remote: Option<String>,
-    /// Tên repo (không có URL đầy đủ)
+    /// Tên repo (GitHub) hoặc folder (Google Drive)
     pub repo_name: Option<String>,
     /// Provider type: github, google_drive, s3
     #[serde(default = "default_provider")]
     pub provider: String,
+    /// Tên folder trên Google Drive (mặc định: "EchoVault")
+    #[serde(default)]
+    pub folder_name: Option<String>,
 }
 
 fn default_provider() -> String {
-    "github".to_string()
+    // NOTE: Temporarily using google_drive for testing
+    // Original: "github".to_string()
+    "google_drive".to_string()
 }
 
 /// Cấu hình encryption
@@ -42,7 +47,9 @@ pub struct CompressionConfig {
 }
 
 fn default_enabled() -> bool {
-    true
+    // NOTE: Temporarily disabled for testing
+    // Original: true
+    false
 }
 
 impl Default for EncryptionConfig {
@@ -237,7 +244,7 @@ mod tests {
         let config = Config::default();
         assert_eq!(config.version, 1);
         assert!(!config.is_initialized());
-        assert!(config.encryption.enabled);
+        assert!(!config.encryption.enabled);
     }
 
     #[test]
@@ -269,6 +276,7 @@ mod tests {
                 remote: Some("https://github.com/user/vault.git".to_string()),
                 repo_name: Some("user-vault".to_string()),
                 provider: "github".to_string(),
+                folder_name: None,
             },
             encryption: EncryptionConfig { enabled: true },
             compression: CompressionConfig { enabled: true },

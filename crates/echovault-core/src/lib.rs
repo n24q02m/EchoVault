@@ -22,5 +22,8 @@ pub use crypto::Encryptor;
 pub use extractors::Extractor;
 pub use storage::SessionIndex;
 pub use sync::GitSync;
-pub use sync::{AuthStatus, GitHubProvider, PullResult, PushResult, SyncOptions, SyncProvider};
+pub use sync::{
+    AuthStatus, GitHubProvider, GoogleDriveProvider, PullResult, PushResult, SyncOptions,
+    SyncProvider,
+};
 pub use vault::{verify_passphrase, VaultMetadata};

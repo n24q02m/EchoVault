@@ -3,7 +3,8 @@
 //! Nguyên tắc: CHỈ COPY raw files, KHÔNG format/transform data.
 //! Điều này đảm bảo không mất thông tin khi IDE thay đổi format.
 
-pub mod antigravity;
+// NOTE: Antigravity support temporarily disabled
+// pub mod antigravity;
 pub mod vscode_copilot;
 
 use anyhow::Result;
