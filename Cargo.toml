@@ -1,6 +1,6 @@
 [package]
 name = "echovault"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 publish = false
 
@@ -9,7 +9,7 @@ resolver = "2"
 members = ["crates/echovault-core", "src-tauri"]
 
 [workspace.package]
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 authors = ["n24q02m"]
 license = "MIT"

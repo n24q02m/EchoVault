@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/n24q02m/EchoVault/compare/v1.0.1...v1.0.2) (2025-12-10)
+
+
+### Bug Fixes
+
+* update Mise configuration and pre-commit commands for EchoVault ([29c623a](https://github.com/n24q02m/EchoVault/commit/29c623a7ddf9812b68d9a8f784ee5a237453cba6))
+
 ## [1.0.1](https://github.com/n24q02m/EchoVault/compare/v1.0.0...v1.0.1) (2025-12-10)
 
 
