@@ -1,6 +1,6 @@
 [package]
 name = "echovault-tauri"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["n24q02m"]
 description = "EchoVault Desktop App - Black box for your AI conversations"
