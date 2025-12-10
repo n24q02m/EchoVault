@@ -1,3 +1,9 @@
+[package]
+name = "echovault"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
 [workspace]
 resolver = "2"
 members = ["crates/echovault-core", "src-tauri"]
