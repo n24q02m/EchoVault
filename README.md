@@ -43,7 +43,6 @@ pre-commit install
 cd src-web && pnpm install && cd ..
 
 # Download Rclone binaries (xem src-tauri/binaries/README.md)
-# Hoặc sử dụng system rclone nếu đã cài đặt
 ```
 
 ## Chạy ứng dụng

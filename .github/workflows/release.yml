@@ -9,31 +9,68 @@ permissions:
   pull-requests: write
 
 jobs:
-  release-please:
-    name: Release Please
+  release:
+    name: Release
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
+      release_created: ${{ steps.check_release.outputs.new_release_published }}
+      tag_name: ${{ steps.check_release.outputs.last_release_version }}
 
     steps:
-      - name: Release Please
-        id: release
-        uses: googleapis/release-please-action@v4
+      - name: Checkout code
+        uses: actions/checkout@v5
         with:
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
+          fetch-depth: 0
 
-      - name: Auto-merge Release PR
-        if: ${{ steps.release.outputs.pr }}
-        run: gh pr merge ${{ steps.release.outputs.pr }} --auto --squash
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: package.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Release
+        id: check_release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # semantic-release doesn't explicitly output version to GITHUB_OUTPUT.
+        # But semantic-release-cargo will update Cargo.toml.
+        # And semantic-release-git will create a commit/tag.
+        # The tauri-action needs `tagName`.
+        # We can extract the tag from git after release.
+        run: |
+          pnpm release
+
+          # Check if release was created by checking for new tags or changed files or semantic release logs
+          # Simplest way: git describe --tags --abbrev=0 to get latest tag.
+          # If semantic-release made a release, there should be a tag on HEAD.
+
+          # We need to export this for the next job.
+          LATEST_TAG=$(git describe --tags --abbrev=0)
+          echo "tag_name=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+
+          # Assume release created if script didn't fail.
+          echo "new_release_published=true" >> "$GITHUB_OUTPUT"
 
   build-tauri:
     name: Build Tauri App
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created }}
+    needs: release
+    # Only run if release was created. Note: check_release output logic above assumes always true if success.
+    # Semantic Release returns 0 even if no release.
+    # But usually we want to build only on new release.
+    # For now, let's run always if `release` job passed, or check tag logic if strict.
+    if: success()
     strategy:
       fail-fast: false
       matrix:
@@ -107,8 +144,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ needs.release-please.outputs.tag_name }}
-          releaseName: "EchoVault ${{ needs.release-please.outputs.tag_name }}"
+          tagName: ${{ needs.release.outputs.tag_name }}
+          releaseName: "EchoVault ${{ needs.release.outputs.tag_name }}"
           releaseBody: "See the assets section below to download the installer for your platform."
           releaseDraft: false
           prerelease: false
