@@ -1,6 +1,6 @@
 [package]
 name = "echovault-core"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["n24q02m"]
 description = "Core library for EchoVault - Extract and sync chat history across IDEs"
