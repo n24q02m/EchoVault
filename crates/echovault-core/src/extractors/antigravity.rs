@@ -190,7 +190,7 @@ impl AntigravityExtractor {
 
             // Parse markdown artifacts
             if filename.ends_with(".md") {
-                let artifact_id = format!("{}/{}", session_id, filename);
+                let artifact_id = format!("{}_{}", session_id, filename);
 
                 // Thử đọc metadata từ JSON file
                 let metadata_path = artifact_dir.join(format!("{}.metadata.json", filename));

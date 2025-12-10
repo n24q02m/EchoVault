@@ -196,7 +196,9 @@ pub async fn complete_auth(state: State<'_, AppState>) -> Result<AuthStatusRespo
 /// Scan tất cả sessions có sẵn (local + synced từ vault)
 #[tauri::command]
 pub async fn scan_sessions() -> Result<ScanResult, String> {
-    use echovault_core::extractors::{vscode_copilot::VSCodeCopilotExtractor, Extractor};
+    use echovault_core::extractors::{
+        antigravity::AntigravityExtractor, vscode_copilot::VSCodeCopilotExtractor, Extractor,
+    };
     use std::collections::{HashMap, HashSet};
 
     let sessions = tokio::task::spawn_blocking(move || {
@@ -226,7 +228,30 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
             }
         }
 
-        // 2. Read sessions from vault index (synced từ máy khác)
+        // 2. Scan Antigravity artifacts
+        let antigravity_extractor = AntigravityExtractor::new();
+        if let Ok(locations) = antigravity_extractor.find_storage_locations() {
+            for location in locations {
+                if let Ok(files) = antigravity_extractor.list_session_files(&location) {
+                    for file in files {
+                        let id = file.metadata.id.clone();
+                        if seen_ids.insert(id) {
+                            all_sessions.push(SessionInfo {
+                                id: file.metadata.id,
+                                source: file.metadata.source,
+                                title: file.metadata.title,
+                                workspace_name: file.metadata.workspace_name,
+                                created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
+                                file_size: file.metadata.file_size,
+                                path: file.source_path.to_string_lossy().to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Read sessions from vault index (synced từ máy khác)
         if let Ok(config) = Config::load_default() {
             let vault_dir = config.vault_path;
             let index_path = vault_dir.join("index.json");
@@ -370,7 +395,9 @@ fn find_vault_session_info(
 
 /// Ingest sessions từ local extractors vào vault
 fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
-    use echovault_core::extractors::{vscode_copilot::VSCodeCopilotExtractor, Extractor};
+    use echovault_core::extractors::{
+        antigravity::AntigravityExtractor, vscode_copilot::VSCodeCopilotExtractor, Extractor,
+    };
     use rayon::prelude::*;
     use std::collections::HashMap;
     use std::fs;
@@ -406,6 +433,25 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
                 println!(
                     "[ingest_sessions] Location {:?}: {} files",
                     location,
+                    files.len()
+                );
+                sessions.extend(files);
+            }
+        }
+    }
+
+    // 2. Scan Antigravity artifacts
+    let antigravity_extractor = AntigravityExtractor::new();
+    if let Ok(locations) = antigravity_extractor.find_storage_locations() {
+        println!(
+            "[ingest_sessions] Antigravity: {} locations",
+            locations.len()
+        );
+        for location in &locations {
+            if let Ok(files) = antigravity_extractor.list_session_files(location) {
+                println!(
+                    "[ingest_sessions] Antigravity {:?}: {} files",
+                    location.file_name().unwrap_or_default(),
                     files.len()
                 );
                 sessions.extend(files);
@@ -514,7 +560,11 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
                 }
 
                 // Copy raw file (no encryption/compression)
-                let dest_path = dest_dir.join(format!("{}.json", session.metadata.id));
+                let extension = source_path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("json");
+                let dest_path = dest_dir.join(format!("{}.{}", session.metadata.id, extension));
                 if let Err(e) = fs::copy(source_path, &dest_path) {
                     errors
                         .lock()

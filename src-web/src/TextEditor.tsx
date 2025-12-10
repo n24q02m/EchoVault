@@ -1,4 +1,5 @@
 import { json } from "@codemirror/lang-json";
+import { markdown } from "@codemirror/lang-markdown";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import { invoke } from "@tauri-apps/api/core";
@@ -25,7 +26,7 @@ const foldGutterTheme = EditorView.theme({
 
 /**
  * Text Editor sử dụng CodeMirror.
- * Hỗ trợ JSON syntax highlighting, virtualized rendering sẵn.
+ * Hỗ trợ JSON/Markdown syntax highlighting, virtualized rendering sẵn.
  */
 export function TextEditor({ path, title, onClose }: TextEditorProps) {
   const [content, setContent] = useState<string>("");
@@ -51,9 +52,12 @@ export function TextEditor({ path, title, onClose }: TextEditorProps) {
 
   // Detect file type for extensions
   const isJson = path.endsWith(".json");
+  const isMd = path.endsWith(".md") || path.endsWith(".markdown");
   const extensions = [foldGutterTheme];
   if (isJson) {
     extensions.push(json());
+  } else if (isMd) {
+    extensions.push(markdown());
   }
 
   return (
