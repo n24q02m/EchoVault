@@ -117,7 +117,7 @@ pub fn run() {
             commands::scan_sessions,
             commands::sync_vault,
             commands::open_url,
-            commands::open_file,
+            commands::read_file_content,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

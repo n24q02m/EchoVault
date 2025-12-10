@@ -710,42 +710,28 @@ pub async fn open_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Mở file trong file manager
+/// Đọc nội dung file để hiển thị trong text editor
 #[tauri::command]
-pub async fn open_file(path: String) -> Result<(), String> {
+pub async fn read_file_content(path: String) -> Result<String, String> {
+    use std::fs;
+
     let path = std::path::Path::new(&path);
 
     if !path.exists() {
         return Err(format!("File not found: {}", path.display()));
     }
 
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("explorer")
-            .arg("/select,")
-            .arg(path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
+    // Giới hạn 50MB
+    const MAX_SIZE: u64 = 50 * 1024 * 1024;
+    let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
+
+    if metadata.len() > MAX_SIZE {
+        return Err(format!(
+            "File too large: {} bytes (max: {} bytes)",
+            metadata.len(),
+            MAX_SIZE
+        ));
     }
 
-    #[cfg(target_os = "linux")]
-    {
-        if let Some(parent) = path.parent() {
-            std::process::Command::new("xdg-open")
-                .arg(parent)
-                .spawn()
-                .map_err(|e| e.to_string())?;
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg("-R")
-            .arg(path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-
-    Ok(())
+    fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))
 }

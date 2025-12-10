@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
+import { TextEditor } from "./TextEditor";
 
 // Types
 interface SessionInfo {
@@ -191,8 +192,18 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--success)]">
-              <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              <svg
+                className="h-8 w-8 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
             </div>
             <p className="text-lg font-medium">Setup Complete!</p>
@@ -237,6 +248,7 @@ function MainApp() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
+  const [viewingSession, setViewingSession] = useState<SessionInfo | null>(null);
   const ITEMS_PER_PAGE = 10;
 
   const groupedSessions = sessions.reduce(
@@ -290,12 +302,8 @@ function MainApp() {
     }
   };
 
-  const handleOpenFile = async (path: string) => {
-    try {
-      await invoke("open_file", { path });
-    } catch (err) {
-      console.error("Failed to open file:", err);
-    }
+  const handleOpenFile = (session: SessionInfo) => {
+    setViewingSession(session);
   };
 
   const formatFileSize = (bytes: number): string => {
@@ -377,19 +385,21 @@ function MainApp() {
       <div className="flex border-b border-[var(--border)]">
         <button
           onClick={() => setActiveTab("sessions")}
-          className={`flex-1 py-2 text-sm font-medium ${activeTab === "sessions"
+          className={`flex-1 py-2 text-sm font-medium ${
+            activeTab === "sessions"
               ? "border-b-2 border-[var(--accent)] text-[var(--accent)]"
               : "text-[var(--text-secondary)]"
-            }`}
+          }`}
         >
           Sessions ({sessions.length})
         </button>
         <button
           onClick={() => setActiveTab("settings")}
-          className={`flex-1 py-2 text-sm font-medium ${activeTab === "settings"
+          className={`flex-1 py-2 text-sm font-medium ${
+            activeTab === "settings"
               ? "border-b-2 border-[var(--accent)] text-[var(--accent)]"
               : "text-[var(--text-secondary)]"
-            }`}
+          }`}
         >
           Settings
         </button>
@@ -408,7 +418,9 @@ function MainApp() {
             {!isScanning && sessions.length === 0 && (
               <div className="py-8 text-center text-[var(--text-secondary)]">
                 <p>No sessions found.</p>
-                <p className="mt-2 text-sm">Open VS Code with GitHub Copilot to create chat sessions.</p>
+                <p className="mt-2 text-sm">
+                  Open VS Code with GitHub Copilot to create chat sessions.
+                </p>
               </div>
             )}
 
@@ -436,7 +448,12 @@ function MainApp() {
                       stroke="currentColor"
                       viewBox="0 0 24 24"
                     >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
                     </svg>
                   </button>
 
@@ -444,8 +461,9 @@ function MainApp() {
                     <div className="border-t border-[var(--border)]">
                       {visibleSessions.map((session) => (
                         <button
+                          type="button"
                           key={session.id}
-                          onClick={() => handleOpenFile(session.path)}
+                          onClick={() => handleOpenFile(session)}
                           className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-[var(--bg-card)]"
                         >
                           <div className="min-w-0 flex-1">
@@ -456,13 +474,25 @@ function MainApp() {
                               {formatDate(session.created_at)} - {formatFileSize(session.file_size)}
                             </p>
                           </div>
-                          <svg className="h-4 w-4 text-[var(--text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          <svg
+                            className="h-4 w-4 text-[var(--text-secondary)]"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <title>Open</title>
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 5l7 7-7 7"
+                            />
                           </svg>
                         </button>
                       ))}
                       {hasMore && (
                         <button
+                          type="button"
                           onClick={() =>
                             setVisibleCounts((prev) => ({
                               ...prev,
@@ -510,6 +540,15 @@ function MainApp() {
           </div>
         )}
       </div>
+
+      {/* TextEditor Overlay */}
+      {viewingSession && (
+        <TextEditor
+          path={viewingSession.path}
+          title={viewingSession.title || viewingSession.workspace_name || viewingSession.id}
+          onClose={() => setViewingSession(null)}
+        />
+      )}
     </div>
   );
 }
