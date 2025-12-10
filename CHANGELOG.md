@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/n24q02m/EchoVault/compare/v1.0.0...v1.0.1) (2025-12-10)
+
+
+### Bug Fixes
+
+* add permissions for issues in release workflow ([e23b694](https://github.com/n24q02m/EchoVault/commit/e23b694b98885047e011c1501ce10c50df5ac5c8))
+
 # 1.0.0 (2025-12-10)
 
 
