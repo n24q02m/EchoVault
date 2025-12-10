@@ -2,7 +2,9 @@
     "name": "echovault",
     "private": true,
     "scripts": {
-        "release": "semantic-release"
+        "release": "semantic-release",
+        "dev": "pnpm --filter echovault-web dev",
+        "build": "pnpm --filter echovault-web build"
     },
     "packageManager": "pnpm@9.15.3",
     "devDependencies": {
