@@ -57,6 +57,8 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
+        with:
+          package_json_file: src-web/package.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -130,6 +132,8 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
+        with:
+          package_json_file: src-web/package.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
