@@ -221,9 +221,7 @@ impl SyncProvider for RcloneProvider {
     fn start_auth(&mut self) -> Result<AuthStatus> {
         // Kiểm tra rclone có sẵn không
         if !self.check_rclone_available()? {
-            bail!(
-                "Rclone không tìm thấy. Vui lòng đảm bảo rclone đã được cài đặt hoặc bundle."
-            );
+            bail!("Rclone không tìm thấy. Vui lòng đảm bảo rclone đã được cài đặt hoặc bundle.");
         }
 
         // Chạy rclone config create với Google Drive
@@ -267,10 +265,7 @@ impl SyncProvider for RcloneProvider {
         let remote_url = self.get_remote_url();
         let local_path = vault_dir.to_string_lossy();
 
-        println!(
-            "[Rclone] Đang pull từ {} về {}...",
-            remote_url, local_path
-        );
+        println!("[Rclone] Đang pull từ {} về {}...", remote_url, local_path);
 
         // rclone sync remote:path local_path
         // Sử dụng --verbose để có thể parse output sau
@@ -300,10 +295,7 @@ impl SyncProvider for RcloneProvider {
         let remote_url = self.get_remote_url();
         let local_path = vault_dir.to_string_lossy();
 
-        println!(
-            "[Rclone] Đang push từ {} lên {}...",
-            local_path, remote_url
-        );
+        println!("[Rclone] Đang push từ {} lên {}...", local_path, remote_url);
 
         // rclone sync local_path remote:path
         let output = self.run_rclone(&[

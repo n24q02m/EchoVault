@@ -3,7 +3,9 @@
 //! Các commands này được gọi từ frontend qua IPC.
 //! Simplified version - only Rclone provider, no encryption.
 
-use echovault_core::{AuthStatus, Config, RcloneProvider, SyncOptions, SyncProvider, VaultMetadata};
+use echovault_core::{
+    AuthStatus, Config, RcloneProvider, SyncOptions, SyncProvider, VaultMetadata,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::State;
@@ -59,7 +61,10 @@ impl From<AuthStatus> for AuthStatusResponse {
                 status: "authenticated".to_string(),
                 message: Some("Connected to cloud storage".to_string()),
             },
-            AuthStatus::Pending { user_code, verify_url } => Self {
+            AuthStatus::Pending {
+                user_code,
+                verify_url,
+            } => Self {
                 status: "pending".to_string(),
                 message: Some(format!("Enter code {} at {}", user_code, verify_url)),
             },
@@ -103,7 +108,10 @@ pub async fn complete_setup(
 ) -> Result<(), String> {
     use echovault_core::config::default_config_path;
 
-    println!("[complete_setup] Starting setup with folder: {}", request.folder_name);
+    println!(
+        "[complete_setup] Starting setup with folder: {}",
+        request.folder_name
+    );
 
     let mut config = Config::load_default().map_err(|e| e.to_string())?;
     let vault_path = config.vault_path.clone();
@@ -185,44 +193,75 @@ pub async fn complete_auth(state: State<'_, AppState>) -> Result<AuthStatusRespo
 
 // ============ SESSION COMMANDS ============
 
-/// Scan tất cả sessions có sẵn
+/// Scan tất cả sessions có sẵn (local + synced từ vault)
 #[tauri::command]
 pub async fn scan_sessions() -> Result<ScanResult, String> {
     use echovault_core::extractors::{vscode_copilot::VSCodeCopilotExtractor, Extractor};
+    use std::collections::{HashMap, HashSet};
 
     let sessions = tokio::task::spawn_blocking(move || {
         let mut all_sessions = Vec::new();
+        let mut seen_ids: HashSet<String> = HashSet::new();
 
-        // Use VSCodeCopilotExtractor
+        // 1. Scan local sessions từ VSCodeCopilotExtractor
         let extractor = VSCodeCopilotExtractor::new();
-        
-        match extractor.find_storage_locations() {
-            Ok(locations) => {
-                for location in locations {
-                    match extractor.list_session_files(&location) {
-                        Ok(files) => {
-                            for file in files {
-                                all_sessions.push(SessionInfo {
-                                    id: file.metadata.id,
-                                    source: file.metadata.source,
-                                    title: file.metadata.title,
-                                    workspace_name: file.metadata.workspace_name,
-                                    created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
-                                    file_size: file.metadata.file_size,
-                                    path: file.source_path.to_string_lossy().to_string(),
-                                });
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("Error listing sessions in {:?}: {}", location, e);
+        if let Ok(locations) = extractor.find_storage_locations() {
+            for location in locations {
+                if let Ok(files) = extractor.list_session_files(&location) {
+                    for file in files {
+                        let id = file.metadata.id.clone();
+                        if seen_ids.insert(id) {
+                            all_sessions.push(SessionInfo {
+                                id: file.metadata.id,
+                                source: file.metadata.source,
+                                title: file.metadata.title,
+                                workspace_name: file.metadata.workspace_name,
+                                created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
+                                file_size: file.metadata.file_size,
+                                path: file.source_path.to_string_lossy().to_string(),
+                            });
                         }
                     }
                 }
             }
-            Err(e) => {
-                eprintln!("Error finding storage locations: {}", e);
+        }
+
+        // 2. Read sessions from vault index (synced từ máy khác)
+        if let Ok(config) = Config::load_default() {
+            let vault_dir = config.vault_path;
+            let index_path = vault_dir.join("index.json");
+
+            if index_path.exists() {
+                if let Ok(content) = std::fs::read_to_string(&index_path) {
+                    // index.json format: { "session_id": (mtime, file_size), ... }
+                    if let Ok(index) = serde_json::from_str::<HashMap<String, (u64, u64)>>(&content)
+                    {
+                        println!(
+                            "[scan_sessions] Found {} entries in vault index",
+                            index.len()
+                        );
+
+                        // For each session in index that we don't already have locally,
+                        // add it as a "synced" session (from other machine)
+                        for (session_id, (_mtime, file_size)) in index {
+                            if seen_ids.insert(session_id.clone()) {
+                                // This session is from another machine (not in local extractors)
+                                let session_info =
+                                    find_vault_session_info(&vault_dir, &session_id, file_size);
+                                all_sessions.push(session_info);
+                            }
+                        }
+                    }
+                }
             }
         }
+
+        // Sort by created_at descending (newest first)
+        all_sessions.sort_by(|a, b| {
+            let a_time = a.created_at.as_deref().unwrap_or("");
+            let b_time = b.created_at.as_deref().unwrap_or("");
+            b_time.cmp(a_time)
+        });
 
         all_sessions
     })
@@ -235,30 +274,408 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
 
 // ============ SYNC COMMANDS ============
 
-/// Sync vault với cloud
+/// Tìm thông tin session từ vault files (cho sessions đã sync từ máy khác)
+fn find_vault_session_info(
+    vault_dir: &std::path::Path,
+    session_id: &str,
+    file_size: u64,
+) -> SessionInfo {
+    use std::fs;
+
+    let sessions_dir = vault_dir.join("sessions");
+
+    // Xử lý ID có chứa `/` (Antigravity artifact format: uuid/filename)
+    let (base_id, file_part) = if session_id.contains('/') {
+        let parts: Vec<&str> = session_id.splitn(2, '/').collect();
+        (parts[0], Some(parts.get(1).copied().unwrap_or("")))
+    } else {
+        (session_id, None)
+    };
+
+    // Thử tìm trong các source directories
+    let sources = ["vscode-copilot", "antigravity", "antigravity-artifact"];
+    let mut found_source = "vault".to_string();
+    let mut found_path = String::new();
+    let mut display_title: Option<String> = None;
+
+    for source in &sources {
+        let source_dir = sessions_dir.join(source);
+        if !source_dir.exists() {
+            continue;
+        }
+
+        // Tạo các patterns để tìm file
+        let patterns = if let Some(file_name) = file_part {
+            // Antigravity artifact: file name là phần sau `/`
+            let clean_name = file_name.replace(".md", "");
+            vec![format!("{}.json", clean_name), format!("{}.json", base_id)]
+        } else {
+            // Normal session: dùng full ID
+            vec![format!("{}.json", session_id)]
+        };
+
+        for pattern in &patterns {
+            let file_path = source_dir.join(pattern);
+            if file_path.exists() {
+                found_source = source.to_string();
+                found_path = file_path.to_string_lossy().to_string();
+
+                // Lấy title từ file name nếu là artifact
+                if file_part.is_some() {
+                    display_title = file_part.map(|f| f.replace(".md", "").replace('_', " "));
+                }
+                break;
+            }
+        }
+
+        if !found_path.is_empty() {
+            break;
+        }
+    }
+
+    // Nếu không tìm thấy path cụ thể, vẫn hiển thị session với default info
+    if found_path.is_empty() {
+        found_path = sessions_dir.to_string_lossy().to_string();
+    }
+
+    // Thử đọc file để lấy thêm thông tin
+    let title = if !found_path.is_empty() && std::path::Path::new(&found_path).exists() {
+        if let Ok(content) = fs::read_to_string(&found_path) {
+            // Parse JSON để lấy title/workspace
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                json.get("title")
+                    .or_else(|| json.get("workspace_name"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            } else {
+                display_title
+            }
+        } else {
+            display_title
+        }
+    } else {
+        display_title
+    };
+
+    SessionInfo {
+        id: session_id.to_string(),
+        source: format!("{} (synced)", found_source),
+        title,
+        workspace_name: None,
+        created_at: None, // Không có timestamp chính xác từ index
+        file_size,
+        path: found_path,
+    }
+}
+
+/// Ingest sessions từ local extractors vào vault
+fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
+    use echovault_core::extractors::{vscode_copilot::VSCodeCopilotExtractor, Extractor};
+    use rayon::prelude::*;
+    use std::collections::HashMap;
+    use std::fs;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+
+    // Configure thread pool: use num_cpus - 2 (minimum 1)
+    let num_threads = std::cmp::max(1, num_cpus::get().saturating_sub(2));
+    println!(
+        "[ingest_sessions] Using {} threads for parallel processing",
+        num_threads
+    );
+
+    // Build custom thread pool
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(num_threads)
+        .build()
+        .map_err(|e| format!("Failed to build thread pool: {}", e))?;
+
+    println!("[ingest_sessions] Starting scan...");
+
+    let mut sessions = Vec::new();
+
+    // 1. Scan VS Code Copilot sessions
+    let vscode_extractor = VSCodeCopilotExtractor::new();
+    if let Ok(locations) = vscode_extractor.find_storage_locations() {
+        println!(
+            "[ingest_sessions] VS Code Copilot: {} locations",
+            locations.len()
+        );
+        for location in &locations {
+            if let Ok(files) = vscode_extractor.list_session_files(location) {
+                println!(
+                    "[ingest_sessions] Location {:?}: {} files",
+                    location,
+                    files.len()
+                );
+                sessions.extend(files);
+            }
+        }
+    }
+
+    let total_sessions = sessions.len();
+    println!(
+        "[ingest_sessions] Total sessions to check: {}",
+        total_sessions
+    );
+
+    // 2. Load deduplication index (simple JSON)
+    let index_path = vault_dir.join("index.json");
+    let index: HashMap<String, (u64, u64)> = if index_path.exists() {
+        fs::read_to_string(&index_path)
+            .ok()
+            .and_then(|c| serde_json::from_str(&c).ok())
+            .unwrap_or_default()
+    } else {
+        HashMap::new()
+    };
+
+    let sessions_dir = vault_dir.join("sessions");
+    fs::create_dir_all(&sessions_dir).map_err(|e| e.to_string())?;
+
+    // 3. Filter sessions that need processing
+    let sessions_to_process: Vec<_> = sessions
+        .into_iter()
+        .filter_map(|session| {
+            let source_path = &session.metadata.original_path;
+            let file_size = session.metadata.file_size;
+
+            // Skip if source file doesn't exist
+            let metadata = match fs::metadata(source_path) {
+                Ok(m) => m,
+                Err(_) => return None,
+            };
+
+            let mtime = metadata
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+
+            // Check against index
+            let should_process = if let Some(&(cached_mtime, cached_size)) =
+                index.get(session.metadata.id.as_str())
+            {
+                cached_mtime != mtime || cached_size != file_size
+            } else {
+                true
+            };
+
+            if should_process {
+                Some((session, mtime, file_size))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let to_process = sessions_to_process.len();
+    let skipped = total_sessions - to_process;
+    println!(
+        "[ingest_sessions] To process: {}, Already up-to-date: {}",
+        to_process, skipped
+    );
+
+    if to_process == 0 {
+        println!("[ingest_sessions] Nothing to process, complete");
+        return Ok(false);
+    }
+
+    // 4. Process sessions in parallel
+    let processed = AtomicUsize::new(0);
+    let errors = Mutex::new(Vec::<String>::new());
+    let new_index_entries = Mutex::new(Vec::<(String, (u64, u64))>::new());
+
+    pool.install(|| {
+        sessions_to_process
+            .par_iter()
+            .for_each(|(session, mtime, file_size)| {
+                let source_path = &session.metadata.original_path;
+                let dest_dir = sessions_dir.join(&session.metadata.source);
+
+                // Create dest dir (may race but that's fine)
+                if let Err(e) = fs::create_dir_all(&dest_dir) {
+                    errors
+                        .lock()
+                        .unwrap()
+                        .push(format!("Failed to create dir {:?}: {}", dest_dir, e));
+                    return;
+                }
+
+                let current = processed.fetch_add(1, Ordering::Relaxed) + 1;
+                if current.is_multiple_of(10) || current == to_process {
+                    println!(
+                        "[ingest_sessions] Progress: {}/{} ({}%)",
+                        current,
+                        to_process,
+                        current * 100 / to_process
+                    );
+                }
+
+                // Copy raw file (no encryption/compression)
+                let dest_path = dest_dir.join(format!("{}.json", session.metadata.id));
+                if let Err(e) = fs::copy(source_path, &dest_path) {
+                    errors
+                        .lock()
+                        .unwrap()
+                        .push(format!("Failed to copy {}: {}", session.metadata.id, e));
+                    return;
+                }
+
+                // Record for index update
+                new_index_entries
+                    .lock()
+                    .unwrap()
+                    .push((session.metadata.id.clone(), (*mtime, *file_size)));
+            });
+    });
+
+    // Check for errors
+    let errs = errors.into_inner().unwrap();
+    if !errs.is_empty() {
+        println!("[ingest_sessions] {} errors occurred:", errs.len());
+        for e in &errs {
+            println!("  - {}", e);
+        }
+        // Continue anyway, just log errors
+    }
+
+    // 5. Update and save index
+    let new_entries = new_index_entries.into_inner().unwrap();
+    if !new_entries.is_empty() {
+        let mut index = index; // Take ownership
+        for (id, entry) in new_entries {
+            index.insert(id, entry);
+        }
+        let index_json = serde_json::to_string_pretty(&index).map_err(|e| e.to_string())?;
+        std::fs::write(&index_path, index_json).map_err(|e| e.to_string())?;
+        println!("[ingest_sessions] Index saved with {} entries", index.len());
+    }
+
+    println!(
+        "[ingest_sessions] Complete: {} processed, {} skipped",
+        processed.load(Ordering::Relaxed),
+        skipped
+    );
+    Ok(true)
+}
+
+/// Sync vault với cloud (Pull -> Ingest -> Push)
 #[tauri::command]
 pub async fn sync_vault(state: State<'_, AppState>) -> Result<String, String> {
-    let config = Config::load_default().map_err(|e| e.to_string())?;
-    let vault_path = config.vault_path.clone();
+    use std::sync::atomic::{AtomicBool, Ordering};
 
-    let provider = state.provider.clone();
+    // Local sync lock để prevent concurrent sync từ cùng instance
+    static SYNC_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
-    let result = tokio::task::spawn_blocking(move || {
-        let provider = provider.lock().map_err(|e| e.to_string())?;
+    // Try to acquire lock
+    if SYNC_IN_PROGRESS
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        println!("[sync_vault] Another sync is already in progress, skipping...");
+        return Ok("Sync already in progress".to_string());
+    }
 
-        // Push local changes to cloud
-        let options = SyncOptions::default();
-        let push_result = provider.push(&vault_path, &options).map_err(|e| e.to_string())?;
+    // Ensure lock is released when function returns
+    struct SyncLockGuard;
+    impl Drop for SyncLockGuard {
+        fn drop(&mut self) {
+            SYNC_IN_PROGRESS.store(false, Ordering::SeqCst);
+            println!("[sync_vault] Sync lock released");
+        }
+    }
+    let _lock_guard = SyncLockGuard;
 
-        Ok::<_, String>(format!(
-            "Synced {} files",
-            push_result.files_pushed
-        ))
+    println!("[sync_vault] Starting (lock acquired)...");
+
+    // Check auth status
+    {
+        let provider = state.provider.lock().map_err(|e| {
+            println!("[sync_vault] Failed to lock provider: {}", e);
+            e.to_string()
+        })?;
+        println!(
+            "[sync_vault] is_authenticated: {}",
+            provider.is_authenticated()
+        );
+        if !provider.is_authenticated() {
+            println!("[sync_vault] Not authenticated, returning error");
+            return Err("Not authenticated".to_string());
+        }
+    }
+
+    println!("[sync_vault] Auth check passed");
+
+    let config = Config::load_default().map_err(|e| {
+        println!("[sync_vault] Failed to load config: {}", e);
+        e.to_string()
+    })?;
+    let vault_dir = config.vault_path.clone();
+    println!("[sync_vault] vault_dir: {:?}", vault_dir);
+
+    // 1. Pull from Remote (get changes from other machines first)
+    println!("[sync_vault] Pulling from remote...");
+    let vault_dir_for_pull = vault_dir.clone();
+    let provider_for_pull = state.provider.clone();
+    let options_for_pull = SyncOptions::default();
+
+    let pull_result = tokio::task::spawn_blocking(move || {
+        let provider = provider_for_pull.lock().map_err(|e| e.to_string())?;
+        provider
+            .pull(&vault_dir_for_pull, &options_for_pull)
+            .map_err(|e| e.to_string())
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?;
 
-    Ok(result)
+    match pull_result {
+        Ok(result) => {
+            println!(
+                "[sync_vault] Pull complete: has_changes={}",
+                result.has_changes
+            );
+        }
+        Err(e) => {
+            // Pull failure is not fatal - might be first sync or network issue
+            println!("[sync_vault] Pull failed (continuing anyway): {}", e);
+        }
+    }
+
+    // 2. Ingest Sessions (local -> vault)
+    println!("[sync_vault] Ingesting sessions...");
+    let vault_dir_for_ingest = vault_dir.clone();
+    let ingest_result = tokio::task::spawn_blocking(move || ingest_sessions(&vault_dir_for_ingest))
+        .await
+        .map_err(|e| e.to_string())??;
+    println!("[sync_vault] Ingest complete: changes={}", ingest_result);
+
+    // 3. Push to Remote
+    println!("[sync_vault] Pushing to remote...");
+    let options = SyncOptions::default();
+    let vault_dir_clone = vault_dir.clone();
+    let provider_clone = state.provider.clone();
+
+    let result = tokio::task::spawn_blocking(move || {
+        let provider = provider_clone.lock().map_err(|e| e.to_string())?;
+        println!("[sync_vault] Calling provider.push...");
+        provider.push(&vault_dir_clone, &options).map_err(|e| {
+            println!("[sync_vault] Push failed: {}", e);
+            e.to_string()
+        })
+    })
+    .await
+    .map_err(|e| {
+        println!("[sync_vault] spawn_blocking failed: {}", e);
+        e.to_string()
+    })??;
+
+    println!(
+        "[sync_vault] Push complete: files_pushed={}",
+        result.files_pushed
+    );
+    Ok(format!("Synced {} files", result.files_pushed))
 }
 
 // ============ UTILITY COMMANDS ============
