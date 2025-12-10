@@ -71,7 +71,7 @@ jobs:
 
       - name: Run type checking
         working-directory: src-web
-        run: pnpm type-check
+        run: pnpm typecheck
 
       - name: Run linting
         working-directory: src-web
