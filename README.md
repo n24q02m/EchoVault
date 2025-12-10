@@ -43,6 +43,7 @@ cargo install tauri-cli
 uv venv
 uv pip install pre-commit
 uv run pre-commit install
+uv run pre-commit run --all-file
 
 # Cài đặt frontend dependencies
 cd src-web && pnpm install && cd ..

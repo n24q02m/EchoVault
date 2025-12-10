@@ -1,8 +1,7 @@
-# Mise configuration for Better Notion MCP project
+# Mise configuration for EchoVault project
 # https://mise.jdx.dev/
 
 [tools]
 node = "22"
-pnpm = "latest"
 rust = "latest"
 uv = "latest"
