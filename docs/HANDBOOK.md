@@ -502,8 +502,8 @@ cargo fmt --check               # Check format
 cd src-web
 pnpm dev              # Dev server
 pnpm build            # Production build
-pnpm lint             # ESLint
-pnpm format           # Prettier
+pnpm lint             # Biome lint
+pnpm format           # Biome format
 pnpm typecheck        # TypeScript check
 ```
 

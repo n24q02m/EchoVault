@@ -38,6 +38,26 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: src-web/package.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: src-web/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: src-web
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: src-web
+        run: pnpm build
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
@@ -91,6 +111,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Create dummy binaries (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          mkdir -p src-tauri/binaries
+          touch src-tauri/binaries/rclone-x86_64-unknown-linux-gnu
+          touch src-tauri/binaries/rclone-x86_64-pc-windows-msvc.exe
+
+      - name: Create dummy binaries (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path src-tauri/binaries
+          New-Item -ItemType File -Force -Path src-tauri/binaries/rclone-x86_64-unknown-linux-gnu
+          New-Item -ItemType File -Force -Path src-tauri/binaries/rclone-x86_64-pc-windows-msvc.exe
+
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -99,6 +134,26 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: src-web/package.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: src-web/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: src-web
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: src-web
+        run: pnpm build
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
