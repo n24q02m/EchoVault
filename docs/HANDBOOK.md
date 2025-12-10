@@ -677,7 +677,7 @@ EchoVault/
 2. Xóa file credentials và chạy lại:
    - Linux: `rm -rf ~/.config/echovault ~/.local/share/echovault`
    - macOS: `rm -rf ~/Library/Application\ Support/echovault`
-   - Windows: `del %APPDATA%\echovault`
+   - Windows: `rm -r -fo "$env:APPDATA\echovault", "$env:LOCALAPPDATA\echovault"`
 3. Kiểm tra GitHub status page
 4. Revoke token cũ trong GitHub Settings > Applications > Authorized OAuth Apps
 

@@ -9,7 +9,8 @@
         [
             "semantic-release-cargo",
             {
-                "publish": false
+                "publish": false,
+                "alwaysVerifyToken": false
             }
         ],
         "@semantic-release/github",

@@ -12,8 +12,8 @@ Download rclone từ https://rclone.org/downloads/ và đặt vào folder này v
 # Download
 curl -LO https://downloads.rclone.org/rclone-current-windows-amd64.zip
 # Extract và rename
-unzip rclone-current-windows-amd64.zip
-mv rclone-*/rclone.exe rclone-x86_64-pc-windows-msvc.exe
+Expand-Archive rclone-current-windows-amd64.zip .
+cp rclone-*/rclone.exe rclone-x86_64-pc-windows-msvc.exe
 ```
 
 ### Linux (x86_64)
