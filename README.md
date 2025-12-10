@@ -68,7 +68,7 @@ cargo fmt --all            # Format
 cd src-web
 pnpm dev                   # Dev server
 pnpm build                 # Production build
-pnpm lint                  # ESLint
+pnpm lint                  # Biome lint
 pnpm format                # Biome format
 ```
 
