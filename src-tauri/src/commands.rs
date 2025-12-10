@@ -330,13 +330,19 @@ fn find_vault_session_info(
         }
 
         // Tạo các patterns để tìm file
+        // Tạo các patterns để tìm file
         let patterns = if let Some(file_name) = file_part {
             // Antigravity artifact: file name là phần sau `/`
             let clean_name = file_name.replace(".md", "");
-            vec![format!("{}.json", clean_name), format!("{}.json", base_id)]
+            vec![
+                file_name.to_string(),          // Exact match first (e.g. readme.md)
+                format!("{}.json", clean_name), // JSON metadata
+                format!("{}.json", base_id),    // Legacy/UUID match
+                session_id.to_string(),         // Full ID match (uuid/name)
+            ]
         } else {
             // Normal session: dùng full ID
-            vec![format!("{}.json", session_id)]
+            vec![format!("{}.json", session_id), session_id.to_string()]
         };
 
         for pattern in &patterns {
@@ -540,7 +546,7 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
                 let source_path = &session.metadata.original_path;
                 let dest_dir = sessions_dir.join(&session.metadata.source);
 
-                // Create dest dir (may race but that's fine)
+                // Create dest dir
                 if let Err(e) = fs::create_dir_all(&dest_dir) {
                     errors
                         .lock()
@@ -559,12 +565,26 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
                     );
                 }
 
-                // Copy raw file (no encryption/compression)
+                // Prepare destination path
                 let extension = source_path
                     .extension()
                     .and_then(|e| e.to_str())
                     .unwrap_or("json");
-                let dest_path = dest_dir.join(format!("{}.{}", session.metadata.id, extension));
+
+                // Smart filename handling
+                let dest_path = if session.metadata.id.ends_with(extension) {
+                    dest_dir.join(&session.metadata.id)
+                } else {
+                    dest_dir.join(format!("{}.{}", session.metadata.id, extension))
+                };
+
+                // Ensure parent directory exists (for IDs with slashes)
+                if let Some(parent) = dest_path.parent() {
+                    if !parent.exists() {
+                        let _ = fs::create_dir_all(parent);
+                    }
+                }
+
                 if let Err(e) = fs::copy(source_path, &dest_path) {
                     errors
                         .lock()

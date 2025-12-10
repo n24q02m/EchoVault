@@ -33,11 +33,16 @@ sudo apt update && sudo apt install -y pkg-config libgtk-3-dev libwebkit2gtk-4.1
 # Cần Visual Studio Build Tools với C++ workload
 winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
 
+# Cài đặt rust, node, pnpm, uv
+mise install
+
 # Cài đặt Tauri CLI
 cargo install tauri-cli
 
-# Cài đặt pre-commit hooks (optional)
-pre-commit install
+# Cài đặt pre-commit
+uv venv
+uv pip install pre-commit
+uv run pre-commit install
 
 # Cài đặt frontend dependencies
 cd src-web && pnpm install && cd ..

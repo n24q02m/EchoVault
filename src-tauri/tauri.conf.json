@@ -10,10 +10,6 @@
         "frontendDist": "../src-web/dist"
     },
     "app": {
-        "trayIcon": {
-            "iconPath": "icons/icon.png",
-            "iconAsTemplate": true
-        },
         "windows": [
             {
                 "title": "EchoVault",

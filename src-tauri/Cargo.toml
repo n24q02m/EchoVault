@@ -8,7 +8,7 @@ license = "MIT"
 repository = "https://github.com/n24q02m/EchoVault"
 
 [lib]
-name = "echovault_tauri"
+name = "echovault_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]
