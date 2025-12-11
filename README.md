@@ -39,12 +39,6 @@ mise install
 # Cài đặt Tauri CLI
 cargo install tauri-cli
 
-# Cài đặt pre-commit
-uv venv
-uv pip install pre-commit
-uv run pre-commit install
-uv run pre-commit run --all-file
-
 # Cài đặt frontend dependencies
 cd src-web && pnpm install && cd ..
 
@@ -64,6 +58,12 @@ cargo tauri build
 ## Phát triển
 
 ```bash
+# Cài đặt pre-commit
+uv venv
+uv pip install pre-commit
+uv run pre-commit install
+uv run pre-commit run --all-file
+
 # Rust
 cargo build                # Debug build
 cargo test --workspace     # Run tests
