@@ -1,9 +1,6 @@
-//! SyncProvider trait - Abstraction cho các sync backends.
+//! SyncProvider trait - Abstraction cho sync backend.
 //!
-//! Trait này cho phép sử dụng nhiều providers khác nhau:
-//! - GitHub (Git-based)
-//! - Google Drive (sắp ra mắt)
-//! - S3 compatible (sắp ra mắt)
+//! Trait này cung cấp interface để sync với Google Drive thông qua Rclone.
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};

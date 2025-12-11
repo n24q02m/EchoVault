@@ -8,7 +8,7 @@ EchoVault trích xuất, mã hóa và đồng bộ lịch sử chat từ GitHub 
 
 - **Universal Extraction**: Hỗ trợ VS Code Copilot, Antigravity, Cursor, Cline
 - **Privacy First**: Mã hóa AES-256-GCM trước khi rời khỏi máy
-- **Cloud Sync via Rclone**: Hỗ trợ Google Drive, Dropbox, OneDrive, S3 và 40+ services khác
+- **Cloud Sync via Rclone**: Đồng bộ với Google Drive
 - **Desktop App**: Mini window với system tray background sync
 - **Future-Proof**: Lưu trữ raw JSON gốc, không transform/format
 
@@ -91,12 +91,11 @@ EchoVault/
 └── docs/                  # Documentation
 ```
 
-## Sync Providers
+## Sync Provider
 
-EchoVault sử dụng **Rclone** làm sync engine chính, mang lại lợi ích:
+EchoVault sử dụng **Rclone** làm sync engine để đồng bộ với **Google Drive**:
 
-- **Không cần setup OAuth phức tạp**: Rclone đã có sẵn verified credentials cho các cloud services
-- **Hỗ trợ 40+ providers**: Google Drive, Dropbox, OneDrive, S3, B2, và nhiều hơn nữa
+- **Không cần setup OAuth phức tạp**: Rclone đã có sẵn verified credentials
 - **User-friendly**: Chỉ cần click Connect và đăng nhập trong browser
 
 ## Tài liệu

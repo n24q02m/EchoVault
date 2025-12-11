@@ -109,7 +109,7 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
           <div className="glass mb-4 rounded-xl p-5">
             <h2 className="mb-3 font-semibold">1. Connect Cloud Storage</h2>
             <p className="mb-4 text-sm text-[var(--text-secondary)]">
-              Connect to Google Drive, Dropbox, OneDrive, or any other cloud service via Rclone.
+              Connect to Google Drive via Rclone.
             </p>
 
             {!authStatus || authStatus.status === "not_authenticated" ? (

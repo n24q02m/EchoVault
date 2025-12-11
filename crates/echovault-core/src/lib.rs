@@ -3,7 +3,7 @@
 //! Thư viện core cho EchoVault - "Black Box" cho lịch sử chat AI.
 //! Cung cấp các chức năng:
 //! - Trích xuất chat sessions từ các IDE (VS Code Copilot, Antigravity, etc.)
-//! - Đồng bộ với cloud storage qua Rclone (Google Drive, Dropbox, OneDrive, S3, etc.)
+//! - Đồng bộ với Google Drive qua Rclone
 //!
 //! Nguyên tắc quan trọng: Lưu trữ raw JSON gốc, không format/transform data.
 

@@ -1,16 +1,10 @@
 //! Rclone Provider - Sync vault thông qua Rclone.
 //!
-//! Provider này sử dụng Rclone làm backend để sync với nhiều cloud storage:
-//! - Google Drive
-//! - Dropbox
-//! - OneDrive
-//! - S3 compatible storage
-//! - Và nhiều hơn nữa...
+//! Provider này sử dụng Rclone làm backend để sync với Google Drive.
 //!
 //! Ưu điểm:
 //! - Không cần user setup OAuth Client ID/Secret
-//! - Rclone đã có sẵn OAuth credentials cho các providers phổ biến
-//! - Hỗ trợ 40+ cloud providers
+//! - Rclone đã có sẵn OAuth credentials cho Google Drive
 //! - Được bundle vào app, không cần user cài đặt riêng
 
 use super::provider::{AuthStatus, PullResult, PushResult, SyncOptions, SyncProvider};
