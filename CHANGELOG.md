@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/n24q02m/EchoVault/compare/v1.0.2...v1.0.3) (2025-12-11)
+
+
+### Bug Fixes
+
+* move pre-commit installation instructions to the development section in README.md ([78b9246](https://github.com/n24q02m/EchoVault/commit/78b92464fefc42244968b8a7dc52f5c412346077))
+
 ## [1.0.2](https://github.com/n24q02m/EchoVault/compare/v1.0.1...v1.0.2) (2025-12-10)
 
 
