@@ -13,6 +13,7 @@ pub mod storage;
 pub mod sync;
 pub mod utils;
 pub mod vault;
+pub mod watcher;
 
 // Re-export main types
 pub use config::Config;
@@ -20,3 +21,4 @@ pub use extractors::Extractor;
 pub use storage::SessionIndex;
 pub use sync::{AuthStatus, PullResult, PushResult, RcloneProvider, SyncOptions, SyncProvider};
 pub use vault::VaultMetadata;
+pub use watcher::FileWatcher;

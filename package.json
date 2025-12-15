@@ -3,8 +3,10 @@
     "private": true,
     "scripts": {
         "release": "semantic-release",
+        "predev": "node scripts/download-rclone.mjs",
         "dev": "pnpm --filter echovault-web dev",
-        "build": "pnpm --filter echovault-web build"
+        "build": "pnpm --filter echovault-web build",
+        "tauri": "cargo tauri"
     },
     "packageManager": "pnpm@9.15.3",
     "devDependencies": {
@@ -14,6 +16,7 @@
         "@semantic-release/github": "^12.0.2",
         "@semantic-release/release-notes-generator": "^14.1.0",
         "semantic-release": "^25.0.2",
-        "semantic-release-cargo": "^2.4.2"
+        "semantic-release-cargo": "^2.4.2",
+        "unzipper": "^0.12.3"
     }
 }

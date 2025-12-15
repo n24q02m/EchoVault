@@ -45,5 +45,8 @@ rayon = "1.10"
 # Hostname for distributed lock
 hostname = "0.4"
 
+# File system watcher (event-driven, replaces polling)
+notify = "7"
+
 [dev-dependencies]
 tempfile = "3.14"

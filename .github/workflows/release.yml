@@ -45,32 +45,16 @@ jobs:
         id: check_release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # semantic-release doesn't explicitly output version to GITHUB_OUTPUT.
-        # But semantic-release-cargo will update Cargo.toml.
-        # And semantic-release-git will create a commit/tag.
-        # The tauri-action needs `tagName`.
-        # We can extract the tag from git after release.
         run: |
           pnpm release
 
-          # Check if release was created by checking for new tags or changed files or semantic release logs
-          # Simplest way: git describe --tags --abbrev=0 to get latest tag.
-          # If semantic-release made a release, there should be a tag on HEAD.
-
-          # We need to export this for the next job.
           LATEST_TAG=$(git describe --tags --abbrev=0)
           echo "tag_name=$LATEST_TAG" >> "$GITHUB_OUTPUT"
-
-          # Assume release created if script didn't fail.
           echo "new_release_published=true" >> "$GITHUB_OUTPUT"
 
   build-tauri:
     name: Build Tauri App
     needs: release
-    # Only run if release was created. Note: check_release output logic above assumes always true if success.
-    # Semantic Release returns 0 even if no release.
-    # But usually we want to build only on new release.
-    # For now, let's run always if `release` job passed, or check tag logic if strict.
     if: success()
     strategy:
       fail-fast: false
@@ -105,17 +89,17 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          package_json_file: src-web/package.json
+          package_json_file: apps/web/package.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: "pnpm"
-          cache-dependency-path: src-web/pnpm-lock.yaml
+          cache-dependency-path: apps/web/pnpm-lock.yaml
 
       - name: Install frontend dependencies
-        working-directory: src-web
+        working-directory: apps/web
         run: pnpm install --frozen-lockfile
 
       - name: Cache cargo
@@ -130,15 +114,15 @@ jobs:
           Invoke-WebRequest -Uri "${{ matrix.rclone_url }}" -OutFile "rclone.zip"
           Expand-Archive -Path "rclone.zip" -DestinationPath "rclone-temp"
           $rcloneDir = Get-ChildItem -Path "rclone-temp" -Directory | Select-Object -First 1
-          Copy-Item -Path "$($rcloneDir.FullName)/rclone.exe" -Destination "src-tauri/binaries/${{ matrix.rclone_binary }}"
+          Copy-Item -Path "$($rcloneDir.FullName)/rclone.exe" -Destination "apps/tauri/binaries/${{ matrix.rclone_binary }}"
 
       - name: Download Rclone (Linux)
         if: matrix.platform == 'ubuntu-latest'
         run: |
           curl -LO ${{ matrix.rclone_url }}
           unzip rclone-current-linux-amd64.zip
-          cp rclone-*/rclone src-tauri/binaries/${{ matrix.rclone_binary }}
-          chmod +x src-tauri/binaries/${{ matrix.rclone_binary }}
+          cp rclone-*/rclone apps/tauri/binaries/${{ matrix.rclone_binary }}
+          chmod +x apps/tauri/binaries/${{ matrix.rclone_binary }}
 
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
@@ -150,3 +134,4 @@ jobs:
           releaseBody: "See the assets section below to download the installer for your platform."
           releaseDraft: false
           prerelease: false
+          projectPath: apps/tauri

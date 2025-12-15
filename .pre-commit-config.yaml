@@ -1,5 +1,5 @@
 # Pre-commit Hooks Configuration
-# Applies to: crates/* (Rust) and src-web (TypeScript/React)
+# Applies to: apps/* (Rust) and apps/web (TypeScript/React)
 # Installation: https://pre-commit.com/
 #
 # Quick start:
@@ -11,7 +11,7 @@
 
 repos:
   # ============================================================================
-  # Backend (Rust) - crates/* and src-tauri
+  # Backend (Rust) - apps/core and apps/tauri
   # ============================================================================
 
   # Cargo fmt: Rust formatter
@@ -45,7 +45,7 @@ repos:
         pass_filenames: false
 
   # ============================================================================
-  # Frontend (TypeScript/React) - src-web
+  # Frontend (TypeScript/React) - apps/web
   # ============================================================================
 
   # Biome: Linter + Formatter for TypeScript/React
@@ -53,10 +53,10 @@ repos:
     hooks:
       - id: biome
         name: biome check (TypeScript/React)
-        entry: pnpm -C src-web exec biome check --write
+        entry: pnpm -C apps/web exec biome check --write
         language: system
-        files: ^src-web/
-        exclude: ^src-web/(dist|node_modules)/
+        files: ^apps/web/
+        exclude: ^apps/web/(dist|node_modules)/
         types_or: [javascript, tsx, jsx, json]
         pass_filenames: false
 
@@ -65,9 +65,9 @@ repos:
     hooks:
       - id: typescript-check
         name: typescript type check (TypeScript/React)
-        entry: pnpm -C src-web run typecheck
+        entry: pnpm -C apps/web run typecheck
         language: system
-        files: ^src-web/
+        files: ^apps/web/
         pass_filenames: false
 
   # ============================================================================
@@ -76,7 +76,7 @@ repos:
 
   # Check for trailing whitespace
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v5.0.0
     hooks:
       - id: trailing-whitespace
         name: trim trailing whitespace
@@ -84,14 +84,14 @@ repos:
 
   # Check for files that would conflict in merge
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v5.0.0
     hooks:
       - id: check-merge-conflict
         name: check for merge conflicts
 
   # Check JSON files are valid
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v5.0.0
     hooks:
       - id: check-json
         name: check JSON files
@@ -99,7 +99,7 @@ repos:
 
   # Check YAML files are valid
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v5.0.0
     hooks:
       - id: check-yaml
         name: check YAML files
@@ -107,7 +107,7 @@ repos:
 
   # Check TOML files are valid
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v5.0.0
     hooks:
       - id: check-toml
         name: check TOML files
