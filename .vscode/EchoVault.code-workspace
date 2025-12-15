@@ -2,12 +2,6 @@
 	"folders": [
 		{
 			"path": ".."
-		},
-		{
-			"path": "../../better-notion-mcp"
-		},
-		{
-			"path": "../../RMarkSync"
 		}
 	],
 	"settings": {}
