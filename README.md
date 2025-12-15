@@ -1,101 +1,188 @@
 # EchoVault
 
-**Black Box cho moi cuoc hoi thoai AI cua ban.**
+**Hộp đen cho mọi cuộc hội thoại AI của bạn.**
 
-EchoVault trich xuat va dong bo lich su chat tu GitHub Copilot, Antigravity va cac cong cu AI khac - giup ban khong bao gio mat nhung insight quy gia.
+EchoVault trích xuất và đồng bộ lịch sử chat từ GitHub Copilot, Antigravity và các công cụ AI khác - giúp bạn không bao giờ mất những insight quý giá.
 
-## Tinh nang
+## Tính năng
 
-- **Universal Extraction**: Ho tro VS Code Copilot, Antigravity
-- **Cloud Sync via Rclone**: Dong bo voi Google Drive
-- **Desktop App**: Mini window voi system tray background sync
-- **Cross-Platform**: Windows, Linux, macOS
-- **Future-Proof**: Luu tru raw JSON goc, khong transform/format
+- **Trích xuất đa nguồn**: Hỗ trợ VS Code Copilot, Antigravity
+- **Đồng bộ Cloud qua Rclone**: Tự động sync với Google Drive
+- **Desktop App**: Mini window với system tray background sync
+- **Đa nền tảng**: Windows, Linux, macOS
+- **Tương lai bền vững**: Lưu trữ raw JSON gốc, không transform/format
 
-## Yeu cau
+## Cài đặt nhanh
 
-- **Rust**: 1.83+ (via mise hoac rustup)
-- **Node.js**: 20+ (cho frontend)
-- **pnpm**: Package manager
-
-## Cai dat
+Chỉ cần 2 bước:
 
 ```bash
 # Clone repository
 git clone https://github.com/n24q02m/EchoVault.git
 cd EchoVault
 
-# Cai dat Tauri dependencies (Linux)
-sudo apt update && sudo apt install -y pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
-
-# Cai dat Tauri dependencies (Windows)
-# Can Visual Studio Build Tools voi C++ workload
-winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
-
-# Cai dat rust, node, pnpm
-mise install
-
-# Cai dat Tauri CLI
-cargo install tauri-cli
-
-# Cai dat dependencies
-pnpm install
+# Chạy setup tự động - cài đặt TẤT CẢ
+pnpm setup
 ```
 
-## Chay ung dung
+Script setup sẽ **TỰ ĐỘNG** cài đặt:
+
+1. ✅ **OS packages** - Tauri dependencies (libgtk-3, webkit2gtk, etc.)
+2. ✅ **mise** - Tool version manager
+3. ✅ **Rust, Node.js, uv** - Via mise
+4. ✅ **pnpm** - Package manager
+5. ✅ **Node dependencies** - Tất cả packages cần thiết
+6. ✅ **Rclone binary** - Sync engine cho Google Drive
+7. ✅ **Pre-commit hooks** - Quality checks tự động
+
+> **Lưu ý**: Script yêu cầu sudo password trên Linux để cài system packages.
+
+## Chạy ứng dụng
 
 ```bash
-# Development mode (tu dong download Rclone binary)
-pnpm dev
+# Development mode (full app)
 cargo tauri dev
+
+# Development mode (web only)
+pnpm dev
 
 # Production build
 cargo tauri build
 ```
 
-## Phat trien
+## Phát triển
+
+### Rust
 
 ```bash
-# Cai dat pre-commit
-uv venv
-uv pip install pre-commit
-uv run pre-commit install
-uv run pre-commit run --all-files
-
-# Rust
 cargo build                # Debug build
-cargo test --workspace     # Run tests
+cargo test --workspace     # Chạy tests
 cargo clippy --workspace   # Lint
-cargo fmt --all            # Format
+cargo fmt --all            # Format code
+```
 
-# TypeScript (apps/web/)
+### TypeScript (Frontend)
+
+```bash
 cd apps/web
-pnpm dev                   # Dev server
+pnpm dev                   # Dev server với HMR
 pnpm build                 # Production build
 pnpm lint                  # Biome lint
 pnpm format                # Biome format
 ```
 
-## Cau truc du an
+### Pre-commit hooks
+
+Pre-commit hooks đã được tự động cài đặt qua setup script. Để chạy thủ công:
+
+```bash
+uv run pre-commit run --all-files
+```
+
+## Cấu trúc dự án
 
 ```text
 EchoVault/
 ├── apps/
 │   ├── core/              # Core library (extractors, sync, watcher)
+│   │   ├── extractors/    # Chat extractors cho các platforms
+│   │   ├── storage/       # Storage layer
+│   │   ├── sync/          # Rclone sync engine
+│   │   └── utils/         # Utilities
 │   ├── tauri/             # Tauri backend
 │   │   ├── binaries/      # Rclone sidecar binaries (auto-downloaded)
-│   │   └── src/           # Rust source
+│   │   ├── icons/         # App icons
+│   │   └── src/           # Rust commands
 │   └── web/               # React frontend
-└── scripts/               # Build scripts
+│       └── src/           # React components
+└── scripts/               # Development scripts
+    ├── setup-dev.mjs      # One-command setup script
+    └── download-rclone.mjs # Download Rclone binary
 ```
 
 ## Sync Provider
 
-EchoVault su dung **Rclone** lam sync engine de dong bo voi **Google Drive**:
+EchoVault sử dụng **Rclone** làm sync engine để đồng bộ với **Google Drive**:
 
-- **Khong can setup OAuth phuc tap**: Rclone da co san verified credentials
-- **User-friendly**: Chi can click Connect va dang nhap trong browser
+- **Không cần setup OAuth phức tạp**: Rclone đã có sẵn verified credentials
+- **User-friendly**: Chỉ cần click Connect và đăng nhập trong browser
+- **Tin cậy**: Rclone là công cụ sync được sử dụng rộng rãi với 40k+ stars trên GitHub
+
+## Tech Stack
+
+- **Backend**: Rust (Tauri, tokio, serde)
+- **Frontend**: React + TypeScript (Vite, TailwindCSS)
+- **Sync**: Rclone (Google Drive)
+- **Extractors**: VS Code SQLite, Antigravity API
+- **Build Tools**: Cargo, pnpm, mise
+- **Dev Tools**: uv, pre-commit, biome
+
+## Troubleshooting
+
+### Setup script bị lỗi
+
+Nếu setup script gặp lỗi, thử các bước sau:
+
+1. **Restart terminal** và chạy lại `pnpm setup`
+2. Kiểm tra log chi tiết trong output
+3. Cài thủ công các components còn thiếu (xem bên dưới)
+
+### Cài thủ công (nếu setup script thất bại)
+
+#### Linux: Tauri dependencies
+
+```bash
+# Ubuntu/Debian
+sudo apt update && sudo apt install -y \
+  pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev \
+  libayatana-appindicator3-dev librsvg2-dev
+
+# Fedora
+sudo dnf install -y pkg-config gtk3-devel webkit2gtk4.1-devel \
+  libayatana-appindicator-gtk3-devel librsvg2-devel
+
+# Arch
+sudo pacman -S --noconfirm pkg-config gtk3 webkit2gtk-4.1 \
+  libayatana-appindicator librsvg
+```
+
+#### macOS: Homebrew
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+#### Windows: Visual Studio Build Tools
+
+```bash
+winget install Microsoft.VisualStudio.2022.BuildTools \
+  --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+```
+
+#### mise
+
+```bash
+curl https://mise.run | sh
+```
+
+#### Tools từ mise
+
+```bash
+mise install
+```
+
+### Lỗi "command not found" sau khi cài
+
+Restart terminal để load PATH mới, hoặc:
+
+```bash
+# Linux/macOS
+source ~/.bashrc  # hoặc ~/.zshrc
+
+# Windows
+# Đóng và mở lại terminal
+```
 
 ## License
 
-MIT
+MIT - Xem [LICENSE](LICENSE) để biết thêm chi tiết.

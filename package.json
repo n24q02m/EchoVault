@@ -1,11 +1,13 @@
 {
     "name": "echovault",
     "private": true,
+    "type": "module",
     "scripts": {
         "release": "semantic-release",
         "predev": "node scripts/download-rclone.mjs",
         "dev": "pnpm --filter echovault-web dev",
         "build": "pnpm --filter echovault-web build",
+        "setup": "node scripts/setup-dev.mjs",
         "tauri": "cargo tauri"
     },
     "packageManager": "pnpm@9.15.3",

@@ -1,13 +1,11 @@
 #!/usr/bin/env node
 // Script download Rclone binary cho dev environment
 
-import { existsSync, mkdirSync, createWriteStream, chmodSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { chmodSync, createReadStream, createWriteStream, existsSync, mkdirSync, renameSync, rmSync, unlinkSync } from "fs";
+import { dirname, join } from "path";
 import { pipeline } from "stream/promises";
-import { execSync } from "child_process";
-import { createGunzip } from "zlib";
 import { Extract } from "unzipper";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -102,7 +100,7 @@ async function downloadRclone() {
         const extractor = Extract({ path: BINARIES_DIR });
         extractor.on("close", resolve);
         extractor.on("error", reject);
-        require("fs").createReadStream(tempZip).pipe(extractor);
+        createReadStream(tempZip).pipe(extractor);
     });
 
     // Find and rename the rclone binary
@@ -113,9 +111,9 @@ async function downloadRclone() {
     const extractedBinary = join(extractedDir, `rclone${ext}`);
 
     if (existsSync(extractedBinary)) {
-        require("fs").renameSync(extractedBinary, binaryPath);
-        require("fs").rmSync(extractedDir, { recursive: true });
-        require("fs").unlinkSync(tempZip);
+        renameSync(extractedBinary, binaryPath);
+        rmSync(extractedDir, { recursive: true });
+        unlinkSync(tempZip);
     }
 
     // Make executable on Unix
