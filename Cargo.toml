@@ -13,3 +13,8 @@ repository = "https://github.com/n24q02m/EchoVault"
 strip = true
 lto = true
 codegen-units = 1
+opt-level = "z"    # Optimize for size
+panic = "abort"    # Không unwind stack khi panic
+
+[profile.dev]
+opt-level = 1      # Tối ưu nhẹ cho dev mode

@@ -197,7 +197,8 @@ pub async fn complete_auth(state: State<'_, AppState>) -> Result<AuthStatusRespo
 #[tauri::command]
 pub async fn scan_sessions() -> Result<ScanResult, String> {
     use echovault_core::extractors::{
-        antigravity::AntigravityExtractor, vscode_copilot::VSCodeCopilotExtractor, Extractor,
+        antigravity::AntigravityExtractor, cursor::CursorExtractor,
+        vscode_copilot::VSCodeCopilotExtractor, Extractor,
     };
     use std::collections::{HashMap, HashSet};
 
@@ -251,7 +252,30 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
             }
         }
 
-        // 3. Read sessions from vault index (synced từ máy khác)
+        // 3. Scan Cursor sessions
+        let cursor_extractor = CursorExtractor::new();
+        if let Ok(locations) = cursor_extractor.find_storage_locations() {
+            for location in locations {
+                if let Ok(files) = cursor_extractor.list_session_files(&location) {
+                    for file in files {
+                        let id = file.metadata.id.clone();
+                        if seen_ids.insert(id) {
+                            all_sessions.push(SessionInfo {
+                                id: file.metadata.id,
+                                source: file.metadata.source,
+                                title: file.metadata.title,
+                                workspace_name: file.metadata.workspace_name,
+                                created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
+                                file_size: file.metadata.file_size,
+                                path: file.source_path.to_string_lossy().to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Read sessions from vault index (synced đừng máy khác)
         if let Ok(config) = Config::load_default() {
             let vault_dir = config.vault_path;
             let index_path = vault_dir.join("index.json");
@@ -318,8 +342,13 @@ fn find_vault_session_info(
     };
 
     // Thử tìm trong các source directories
-    let sources = ["vscode-copilot", "antigravity", "antigravity-artifact"];
-    let mut found_source = "vault".to_string();
+    let sources = [
+        "vscode-copilot",
+        "cursor",
+        "antigravity",
+        "antigravity-artifact",
+    ];
+    let mut found_source: Option<String> = None;
     let mut found_path = String::new();
     let mut display_title: Option<String> = None;
 
@@ -329,7 +358,6 @@ fn find_vault_session_info(
             continue;
         }
 
-        // Tạo các patterns để tìm file
         // Tạo các patterns để tìm file
         let patterns = if let Some(file_name) = file_part {
             // Antigravity artifact: file name là phần sau `/`
@@ -348,7 +376,7 @@ fn find_vault_session_info(
         for pattern in &patterns {
             let file_path = source_dir.join(pattern);
             if file_path.exists() {
-                found_source = source.to_string();
+                found_source = Some(source.to_string());
                 found_path = file_path.to_string_lossy().to_string();
 
                 // Lấy title từ file name nếu là artifact
@@ -363,6 +391,20 @@ fn find_vault_session_info(
             break;
         }
     }
+
+    // Nếu không tìm thấy trong source dirs, thử scan trực tiếp
+    // để đoán source từ session_id format
+    let final_source = found_source.unwrap_or_else(|| {
+        // Đoán source dựa trên format của session_id
+        if session_id.contains('/') || session_id.ends_with(".md") {
+            "antigravity-artifact".to_string()
+        } else if session_id.ends_with(".pb") {
+            "antigravity".to_string()
+        } else {
+            // Default: có thể là vscode-copilot hoặc cursor
+            "synced".to_string()
+        }
+    });
 
     // Nếu không tìm thấy path cụ thể, vẫn hiển thị session với default info
     if found_path.is_empty() {
@@ -388,9 +430,16 @@ fn find_vault_session_info(
         display_title
     };
 
+    // Chỉ thêm "(synced)" nếu source được tìm thấy rõ ràng
+    let source_label = if final_source == "synced" {
+        "synced".to_string()
+    } else {
+        format!("{} (synced)", final_source)
+    };
+
     SessionInfo {
         id: session_id.to_string(),
-        source: format!("{} (synced)", found_source),
+        source: source_label,
         title,
         workspace_name: None,
         created_at: None, // Không có timestamp chính xác từ index
@@ -402,7 +451,8 @@ fn find_vault_session_info(
 /// Ingest sessions từ local extractors vào vault
 fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     use echovault_core::extractors::{
-        antigravity::AntigravityExtractor, vscode_copilot::VSCodeCopilotExtractor, Extractor,
+        antigravity::AntigravityExtractor, cursor::CursorExtractor,
+        vscode_copilot::VSCodeCopilotExtractor, Extractor,
     };
     use rayon::prelude::*;
     use std::collections::HashMap;
@@ -457,6 +507,22 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
             if let Ok(files) = antigravity_extractor.list_session_files(location) {
                 println!(
                     "[ingest_sessions] Antigravity {:?}: {} files",
+                    location.file_name().unwrap_or_default(),
+                    files.len()
+                );
+                sessions.extend(files);
+            }
+        }
+    }
+
+    // 3. Scan Cursor sessions
+    let cursor_extractor = CursorExtractor::new();
+    if let Ok(locations) = cursor_extractor.find_storage_locations() {
+        println!("[ingest_sessions] Cursor: {} locations", locations.len());
+        for location in &locations {
+            if let Ok(files) = cursor_extractor.list_session_files(location) {
+                println!(
+                    "[ingest_sessions] Cursor {:?}: {} files",
                     location.file_name().unwrap_or_default(),
                     files.len()
                 );

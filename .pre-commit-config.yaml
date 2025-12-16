@@ -24,22 +24,22 @@ repos:
         files: \.rs$
         pass_filenames: false
 
-  # Cargo clippy: Rust linter
+  # Cargo clippy: Rust linter (chỉ check core, tauri cần build frontend trước)
   - repo: local
     hooks:
       - id: cargo-clippy
         name: cargo clippy (Rust)
-        entry: cargo clippy --workspace -- -D warnings
+        entry: cargo clippy -p echovault-core -- -D warnings
         language: system
         files: \.rs$
         pass_filenames: false
 
-  # Cargo test: Rust tests
+  # Cargo test: Rust tests (chỉ test core, tauri cần build frontend trước)
   - repo: local
     hooks:
       - id: cargo-test
         name: cargo test (Rust)
-        entry: cargo test --workspace
+        entry: cargo test -p echovault-core
         language: system
         files: \.rs$
         pass_filenames: false

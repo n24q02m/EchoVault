@@ -2,15 +2,27 @@
 
 **Hộp đen cho mọi cuộc hội thoại AI của bạn.**
 
-EchoVault trích xuất và đồng bộ lịch sử chat từ GitHub Copilot, Antigravity và các công cụ AI khác - giúp bạn không bao giờ mất những insight quý giá.
+EchoVault trích xuất và đồng bộ lịch sử chat từ GitHub Copilot, Cursor, Antigravity và các công cụ AI khác - giúp bạn không bao giờ mất những insight quý giá.
 
 ## Tính năng
 
-- **Trích xuất đa nguồn**: Hỗ trợ VS Code Copilot, Antigravity
+- **Trích xuất đa nguồn**: Hỗ trợ VS Code Copilot, Cursor AI, Antigravity
 - **Đồng bộ Cloud qua Rclone**: Tự động sync với Google Drive
 - **Desktop App**: Mini window với system tray background sync
 - **Đa nền tảng**: Windows, Linux, macOS
 - **Tương lai bền vững**: Lưu trữ raw JSON gốc, không transform/format
+
+## Tải xuống
+
+Tải bản cài đặt mới nhất từ [Releases](https://github.com/n24q02m/EchoVault/releases):
+
+| Platform | File |
+|----------|------|
+| Windows | `EchoVault_x.x.x_x64-setup.exe` |
+| macOS (Intel) | `EchoVault_x.x.x_x64.dmg` |
+| macOS (Apple Silicon) | `EchoVault_x.x.x_aarch64.dmg` |
+| Linux (Debian/Ubuntu) | `echovault_x.x.x_amd64.deb` |
+| Linux (AppImage) | `EchoVault_x.x.x_amd64.AppImage` |
 
 ## Cài đặt nhanh
 

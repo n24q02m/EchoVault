@@ -33,7 +33,6 @@ interface AppConfig {
 
 // Views
 type View = "setup" | "main";
-type Tab = "sessions" | "settings";
 
 // ==================== SETUP WIZARD ====================
 type SetupStep = "connect" | "config" | "done";
@@ -240,13 +239,12 @@ const saveCachedSessions = (sessions: SessionInfo[]) => {
 };
 
 function MainApp() {
-  const [activeTab, setActiveTab] = useState<Tab>("sessions");
   const [sessions, setSessions] = useState<SessionInfo[]>(loadCachedSessions());
   const [isScanning, setIsScanning] = useState(false);
-  const [config, setConfig] = useState<AppConfig | null>(null);
   const [expandedSources, setExpandedSources] = useState<Set<string>>(new Set());
   const [isSyncing, setIsSyncing] = useState(false);
-  const [syncError, setSyncError] = useState<string | null>(null);
+  // syncError được giữ lại để có thể hiển thị toast notification trong tương lai
+  const [, setSyncError] = useState<string | null>(null);
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
   const [viewingSession, setViewingSession] = useState<SessionInfo | null>(null);
   const ITEMS_PER_PAGE = 10;
@@ -264,8 +262,8 @@ function MainApp() {
   useEffect(() => {
     const initialize = async () => {
       try {
-        const cfg = await invoke<AppConfig>("get_config");
-        setConfig(cfg);
+        // Config vẫn được load để kiểm tra setup, nhưng không lưu state vì UI đã bỏ Settings
+        await invoke<AppConfig>("get_config");
         await loadSessions();
       } catch (err) {
         console.error("Initialization failed:", err);
@@ -381,164 +379,110 @@ function MainApp() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-[var(--border)]">
-        <button
-          onClick={() => setActiveTab("sessions")}
-          className={`flex-1 py-2 text-sm font-medium ${
-            activeTab === "sessions"
-              ? "border-b-2 border-[var(--accent)] text-[var(--accent)]"
-              : "text-[var(--text-secondary)]"
-          }`}
-        >
-          Sessions ({sessions.length})
-        </button>
-        <button
-          onClick={() => setActiveTab("settings")}
-          className={`flex-1 py-2 text-sm font-medium ${
-            activeTab === "settings"
-              ? "border-b-2 border-[var(--accent)] text-[var(--accent)]"
-              : "text-[var(--text-secondary)]"
-          }`}
-        >
-          Settings
-        </button>
-      </div>
-
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
-        {activeTab === "sessions" && (
-          <div className="space-y-4">
-            {isScanning && sessions.length === 0 && (
-              <div className="flex items-center justify-center py-8">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
-              </div>
-            )}
-
-            {!isScanning && sessions.length === 0 && (
-              <div className="py-8 text-center text-[var(--text-secondary)]">
-                <p>No sessions found.</p>
-                <p className="mt-2 text-sm">
-                  Open VS Code with GitHub Copilot to create chat sessions.
-                </p>
-              </div>
-            )}
-
-            {Object.entries(groupedSessions).map(([source, sourceSessions]) => {
-              const isExpanded = expandedSources.has(source);
-              const visibleCount = visibleCounts[source] || ITEMS_PER_PAGE;
-              const visibleSessions = sourceSessions.slice(0, visibleCount);
-              const hasMore = sourceSessions.length > visibleCount;
-
-              return (
-                <div key={source} className="glass rounded-xl">
-                  <button
-                    onClick={() => toggleSource(source)}
-                    className="flex w-full items-center justify-between px-4 py-3"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{source}</span>
-                      <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs text-white">
-                        {sourceSessions.length}
-                      </span>
-                    </div>
-                    <svg
-                      className={`h-5 w-5 transition-transform ${isExpanded ? "rotate-180" : ""}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 9l-7 7-7-7"
-                      />
-                    </svg>
-                  </button>
-
-                  {isExpanded && (
-                    <div className="border-t border-[var(--border)]">
-                      {visibleSessions.map((session) => (
-                        <button
-                          type="button"
-                          key={session.id}
-                          onClick={() => handleOpenFile(session)}
-                          className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-[var(--bg-card)]"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium">
-                              {session.title || session.workspace_name || session.id}
-                            </p>
-                            <p className="text-xs text-[var(--text-secondary)]">
-                              {formatDate(session.created_at)} - {formatFileSize(session.file_size)}
-                            </p>
-                          </div>
-                          <svg
-                            className="h-4 w-4 text-[var(--text-secondary)]"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <title>Open</title>
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M9 5l7 7-7 7"
-                            />
-                          </svg>
-                        </button>
-                      ))}
-                      {hasMore && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setVisibleCounts((prev) => ({
-                              ...prev,
-                              [source]: visibleCount + ITEMS_PER_PAGE,
-                            }))
-                          }
-                          className="block w-full py-2 text-center text-sm text-[var(--accent)]"
-                        >
-                          Show more ({sourceSessions.length - visibleCount} remaining)
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {activeTab === "settings" && config && (
-          <div className="space-y-4">
-            <div className="glass rounded-xl p-4">
-              <h3 className="mb-3 font-semibold">Vault Settings</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-[var(--text-secondary)]">Vault Path</span>
-                  <span className="truncate max-w-[200px]">{config.vault_path}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--text-secondary)]">Cloud Folder</span>
-                  <span>{config.folder_name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--text-secondary)]">Remote</span>
-                  <span>{config.remote_name || "Not connected"}</span>
-                </div>
-              </div>
+        <div className="space-y-4">
+          {isScanning && sessions.length === 0 && (
+            <div className="flex items-center justify-center py-8">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
             </div>
+          )}
 
-            {syncError && (
-              <div className="rounded-xl bg-red-500/10 p-4">
-                <p className="text-sm text-red-400">{syncError}</p>
+          {!isScanning && sessions.length === 0 && (
+            <div className="py-8 text-center text-[var(--text-secondary)]">
+              <p>No sessions found.</p>
+              <p className="mt-2 text-sm">
+                Open VS Code with GitHub Copilot to create chat sessions.
+              </p>
+            </div>
+          )}
+
+          {Object.entries(groupedSessions).map(([source, sourceSessions]) => {
+            const isExpanded = expandedSources.has(source);
+            const visibleCount = visibleCounts[source] || ITEMS_PER_PAGE;
+            const visibleSessions = sourceSessions.slice(0, visibleCount);
+            const hasMore = sourceSessions.length > visibleCount;
+
+            return (
+              <div key={source} className="glass rounded-xl">
+                <button
+                  onClick={() => toggleSource(source)}
+                  className="flex w-full items-center justify-between px-4 py-3"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{source}</span>
+                    <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs text-white">
+                      {sourceSessions.length}
+                    </span>
+                  </div>
+                  <svg
+                    className={`h-5 w-5 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </button>
+
+                {isExpanded && (
+                  <div className="border-t border-[var(--border)]">
+                    {visibleSessions.map((session) => (
+                      <button
+                        type="button"
+                        key={session.id}
+                        onClick={() => handleOpenFile(session)}
+                        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-[var(--bg-card)]"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">
+                            {session.title || session.workspace_name || session.id}
+                          </p>
+                          <p className="text-xs text-[var(--text-secondary)]">
+                            {formatDate(session.created_at)} - {formatFileSize(session.file_size)}
+                          </p>
+                        </div>
+                        <svg
+                          className="h-4 w-4 text-[var(--text-secondary)]"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <title>Open</title>
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
+                      </button>
+                    ))}
+                    {hasMore && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setVisibleCounts((prev) => ({
+                            ...prev,
+                            [source]: visibleCount + ITEMS_PER_PAGE,
+                          }))
+                        }
+                        className="block w-full py-2 text-center text-sm text-[var(--accent)]"
+                      >
+                        Show more ({sourceSessions.length - visibleCount} remaining)
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        )}
+            );
+          })}
+        </div>
       </div>
 
       {/* TextEditor Overlay */}

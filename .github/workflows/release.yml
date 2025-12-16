@@ -68,6 +68,14 @@ jobs:
             target: x86_64-pc-windows-msvc
             rclone_url: https://downloads.rclone.org/rclone-current-windows-amd64.zip
             rclone_binary: rclone-x86_64-pc-windows-msvc.exe
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            rclone_url: https://downloads.rclone.org/rclone-current-osx-amd64.zip
+            rclone_binary: rclone-x86_64-apple-darwin
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            rclone_url: https://downloads.rclone.org/rclone-current-osx-arm64.zip
+            rclone_binary: rclone-aarch64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
 
@@ -105,7 +113,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.platform }}-release
+          key: ${{ matrix.platform }}-${{ matrix.target }}-release
 
       - name: Download Rclone (Windows)
         if: matrix.platform == 'windows-latest'
@@ -124,6 +132,14 @@ jobs:
           cp rclone-*/rclone apps/tauri/binaries/${{ matrix.rclone_binary }}
           chmod +x apps/tauri/binaries/${{ matrix.rclone_binary }}
 
+      - name: Download Rclone (macOS)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          curl -LO ${{ matrix.rclone_url }}
+          unzip rclone-*.zip
+          cp rclone-*/rclone apps/tauri/binaries/${{ matrix.rclone_binary }}
+          chmod +x apps/tauri/binaries/${{ matrix.rclone_binary }}
+
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
@@ -135,3 +151,5 @@ jobs:
           releaseDraft: false
           prerelease: false
           projectPath: apps/tauri
+          args: --target ${{ matrix.target }}
+

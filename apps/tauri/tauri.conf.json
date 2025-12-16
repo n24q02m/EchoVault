@@ -32,7 +32,9 @@
             "rpm",
             "appimage",
             "msi",
-            "nsis"
+            "nsis",
+            "dmg",
+            "app"
         ],
         "externalBin": [
             "binaries/rclone"
