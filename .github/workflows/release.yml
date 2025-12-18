@@ -43,6 +43,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Create dummy binaries
+        run: |
+          mkdir -p apps/tauri/binaries
+          touch apps/tauri/binaries/rclone-x86_64-unknown-linux-gnu
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -135,6 +140,7 @@ jobs:
       - name: Download Rclone (Linux)
         if: matrix.platform == 'ubuntu-latest'
         run: |
+          mkdir -p apps/tauri/binaries
           curl -LO ${{ matrix.rclone_url }}
           unzip rclone-current-linux-amd64.zip
           cp rclone-*/rclone apps/tauri/binaries/${{ matrix.rclone_binary }}
@@ -143,6 +149,7 @@ jobs:
       - name: Download Rclone (macOS)
         if: matrix.platform == 'macos-latest'
         run: |
+          mkdir -p apps/tauri/binaries
           curl -LO ${{ matrix.rclone_url }}
           unzip rclone-*.zip
           cp rclone-*/rclone apps/tauri/binaries/${{ matrix.rclone_binary }}
