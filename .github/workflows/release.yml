@@ -132,6 +132,7 @@ jobs:
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force -Path apps/tauri/binaries
           Invoke-WebRequest -Uri "${{ matrix.rclone_url }}" -OutFile "rclone.zip"
           Expand-Archive -Path "rclone.zip" -DestinationPath "rclone-temp"
           $rcloneDir = Get-ChildItem -Path "rclone-temp" -Directory | Select-Object -First 1
