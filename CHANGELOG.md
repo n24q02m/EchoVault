@@ -1,3 +1,14 @@
+# [1.1.0](https://github.com/n24q02m/EchoVault/compare/v1.0.3...v1.1.0) (2025-12-18)
+
+
+### Features
+
+* Add macOS to CI and release workflows, including Rclone binary setup. ([2a41029](https://github.com/n24q02m/EchoVault/commit/2a41029b325f51b714fe78326c743cb8ad5a4cf5))
+* Implement CI/CD workflows, refactor project structure, and add core watcher module with automated Rclone download. ([b920727](https://github.com/n24q02m/EchoVault/commit/b920727b41d54ec9068aec64aedf0a45f143b9cc))
+* implement Cline (Claude Dev) VS Code extension extractor and enhance release workflow with new build steps and dependencies ([054dd12](https://github.com/n24q02m/EchoVault/commit/054dd12ac381c4615bc965c2e22c844a28753d20))
+* Implement cursor extractor and simplify web UI by removing the settings tab. ([01f1a9e](https://github.com/n24q02m/EchoVault/commit/01f1a9e2e89cd52610674c32997463fc40d21548))
+* Update README for clarity, add setup script, and remove logo processing script ([b02f077](https://github.com/n24q02m/EchoVault/commit/b02f077332e255ee1323ea93fd27fb48298e4c51))
+
 ## [1.0.3](https://github.com/n24q02m/EchoVault/compare/v1.0.2...v1.0.3) (2025-12-11)
 
 
