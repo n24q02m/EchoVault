@@ -197,7 +197,7 @@ pub async fn complete_auth(state: State<'_, AppState>) -> Result<AuthStatusRespo
 #[tauri::command]
 pub async fn scan_sessions() -> Result<ScanResult, String> {
     use echovault_core::extractors::{
-        antigravity::AntigravityExtractor, cursor::CursorExtractor,
+        antigravity::AntigravityExtractor, cline::ClineExtractor, cursor::CursorExtractor,
         vscode_copilot::VSCodeCopilotExtractor, Extractor,
     };
     use std::collections::{HashMap, HashSet};
@@ -275,7 +275,30 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
             }
         }
 
-        // 4. Read sessions from vault index (synced đừng máy khác)
+        // 4. Scan Cline sessions
+        let cline_extractor = ClineExtractor::new();
+        if let Ok(locations) = cline_extractor.find_storage_locations() {
+            for location in locations {
+                if let Ok(files) = cline_extractor.list_session_files(&location) {
+                    for file in files {
+                        let id = file.metadata.id.clone();
+                        if seen_ids.insert(id) {
+                            all_sessions.push(SessionInfo {
+                                id: file.metadata.id,
+                                source: file.metadata.source,
+                                title: file.metadata.title,
+                                workspace_name: file.metadata.workspace_name,
+                                created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
+                                file_size: file.metadata.file_size,
+                                path: file.source_path.to_string_lossy().to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. Read sessions from vault index (synced từ máy khác)
         if let Ok(config) = Config::load_default() {
             let vault_dir = config.vault_path;
             let index_path = vault_dir.join("index.json");
@@ -402,7 +425,7 @@ fn find_vault_session_info(
             "antigravity".to_string()
         } else {
             // Default: có thể là vscode-copilot hoặc cursor
-            "synced".to_string()
+            "Unknown".to_string()
         }
     });
 
@@ -451,7 +474,7 @@ fn find_vault_session_info(
 /// Ingest sessions từ local extractors vào vault
 fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     use echovault_core::extractors::{
-        antigravity::AntigravityExtractor, cursor::CursorExtractor,
+        antigravity::AntigravityExtractor, cline::ClineExtractor, cursor::CursorExtractor,
         vscode_copilot::VSCodeCopilotExtractor, Extractor,
     };
     use rayon::prelude::*;
@@ -523,6 +546,22 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
             if let Ok(files) = cursor_extractor.list_session_files(location) {
                 println!(
                     "[ingest_sessions] Cursor {:?}: {} files",
+                    location.file_name().unwrap_or_default(),
+                    files.len()
+                );
+                sessions.extend(files);
+            }
+        }
+    }
+
+    // 4. Scan Cline sessions
+    let cline_extractor = ClineExtractor::new();
+    if let Ok(locations) = cline_extractor.find_storage_locations() {
+        println!("[ingest_sessions] Cline: {} locations", locations.len());
+        for location in &locations {
+            if let Ok(files) = cline_extractor.list_session_files(location) {
+                println!(
+                    "[ingest_sessions] Cline {:?}: {} files",
                     location.file_name().unwrap_or_default(),
                     files.len()
                 );

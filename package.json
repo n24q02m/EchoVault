@@ -7,7 +7,8 @@
         "predev": "node scripts/download-rclone.mjs",
         "dev": "pnpm --filter echovault-web dev",
         "build": "pnpm --filter echovault-web build",
-        "setup": "node scripts/setup-dev.mjs",
+        "setup": "node scripts/setup-dev.mjs && pnpm build",
+        "reset": "node scripts/reset-app.mjs",
         "tauri": "cargo tauri"
     },
     "packageManager": "pnpm@9.15.3",

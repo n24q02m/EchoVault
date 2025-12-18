@@ -5,6 +5,7 @@
 
 // NOTE: Antigravity artifacts now supported (conversations still encrypted)
 pub mod antigravity;
+pub mod cline;
 pub mod cursor;
 pub mod vscode_copilot;
 

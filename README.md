@@ -6,7 +6,7 @@ EchoVault trích xuất và đồng bộ lịch sử chat từ GitHub Copilot, C
 
 ## Tính năng
 
-- **Trích xuất đa nguồn**: Hỗ trợ VS Code Copilot, Cursor AI, Antigravity
+- **Trích xuất đa nguồn**: Hỗ trợ VS Code Copilot, Cursor AI, Cline, Antigravity
 - **Đồng bộ Cloud qua Rclone**: Tự động sync với Google Drive
 - **Desktop App**: Mini window với system tray background sync
 - **Đa nền tảng**: Windows, Linux, macOS
@@ -60,6 +60,10 @@ pnpm dev
 
 # Production build
 cargo tauri build
+
+# Reset app (xóa config để setup lại)
+pnpm reset
+pnpm reset --all
 ```
 
 ## Phát triển
@@ -125,7 +129,7 @@ EchoVault sử dụng **Rclone** làm sync engine để đồng bộ với **Goo
 - **Backend**: Rust (Tauri, tokio, serde)
 - **Frontend**: React + TypeScript (Vite, TailwindCSS)
 - **Sync**: Rclone (Google Drive)
-- **Extractors**: VS Code SQLite, Antigravity API
+- **Extractors**: VS Code SQLite, Cursor, Cline, Antigravity
 - **Build Tools**: Cargo, pnpm, mise
 - **Dev Tools**: uv, pre-commit, biome
 
