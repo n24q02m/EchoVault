@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/n24q02m/EchoVault/compare/v1.1.0...v1.1.1) (2025-12-18)
+
+
+### Bug Fixes
+
+* Add directory creation for rclone binaries on Windows release workflow. ([5cbd781](https://github.com/n24q02m/EchoVault/commit/5cbd781d61b89b01d41bfb7b99b3fd8518bfdfe7))
+
 # [1.1.0](https://github.com/n24q02m/EchoVault/compare/v1.0.3...v1.1.0) (2025-12-18)
 
 
