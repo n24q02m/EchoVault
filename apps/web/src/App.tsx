@@ -251,7 +251,8 @@ function MainApp() {
 
   const groupedSessions = sessions.reduce(
     (acc, session) => {
-      const source = session.source || "unknown";
+      const source = session.source;
+      if (!source) return acc; // Skip sessions without source
       if (!acc[source]) acc[source] = [];
       acc[source].push(session);
       return acc;
@@ -335,7 +336,7 @@ function MainApp() {
 
   useEffect(() => {
     if (sessions.length > 0) {
-      const sources = [...new Set(sessions.map((s) => s.source || "unknown"))];
+      const sources = [...new Set(sessions.map((s) => s.source).filter(Boolean))] as string[];
       setExpandedSources(new Set(sources));
     }
   }, [sessions]);

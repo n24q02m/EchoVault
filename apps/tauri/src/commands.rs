@@ -305,8 +305,9 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
 
             if index_path.exists() {
                 if let Ok(content) = std::fs::read_to_string(&index_path) {
-                    // index.json format: { "session_id": (mtime, file_size), ... }
-                    if let Ok(index) = serde_json::from_str::<HashMap<String, (u64, u64)>>(&content)
+                    // index.json format: { "session_id": (mtime, file_size, source), ... }
+                    if let Ok(index) =
+                        serde_json::from_str::<HashMap<String, (u64, u64, String)>>(&content)
                     {
                         println!(
                             "[scan_sessions] Found {} entries in vault index",
@@ -314,12 +315,15 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
                         );
 
                         // For each session in index that we don't already have locally,
-                        // add it as a "synced" session (from other machine)
-                        for (session_id, (_mtime, file_size)) in index {
+                        // add it from vault (synced from other machine)
+                        for (session_id, (_mtime, file_size, source)) in index {
                             if seen_ids.insert(session_id.clone()) {
-                                // This session is from another machine (not in local extractors)
-                                let session_info =
-                                    find_vault_session_info(&vault_dir, &session_id, file_size);
+                                let session_info = find_vault_session_info(
+                                    &vault_dir,
+                                    &session_id,
+                                    file_size,
+                                    &source,
+                                );
                                 all_sessions.push(session_info);
                             }
                         }
@@ -351,85 +355,55 @@ fn find_vault_session_info(
     vault_dir: &std::path::Path,
     session_id: &str,
     file_size: u64,
+    source: &str,
 ) -> SessionInfo {
     use std::fs;
 
     let sessions_dir = vault_dir.join("sessions");
 
     // Xử lý ID có chứa `/` (Antigravity artifact format: uuid/filename)
-    let (base_id, file_part) = if session_id.contains('/') {
+    let file_part = if session_id.contains('/') {
         let parts: Vec<&str> = session_id.splitn(2, '/').collect();
-        (parts[0], Some(parts.get(1).copied().unwrap_or("")))
+        parts.get(1).copied()
     } else {
-        (session_id, None)
+        None
     };
 
-    // Thử tìm trong các source directories
-    let sources = [
-        "vscode-copilot",
-        "cursor",
-        "antigravity",
-        "antigravity-artifact",
-    ];
-    let mut found_source: Option<String> = None;
+    // Tìm file path dựa vào source đã biết từ index
+    let source_dir = sessions_dir.join(source);
     let mut found_path = String::new();
     let mut display_title: Option<String> = None;
 
-    for source in &sources {
-        let source_dir = sessions_dir.join(source);
-        if !source_dir.exists() {
-            continue;
-        }
-
+    if source_dir.exists() {
         // Tạo các patterns để tìm file
         let patterns = if let Some(file_name) = file_part {
             // Antigravity artifact: file name là phần sau `/`
             let clean_name = file_name.replace(".md", "");
-            vec![
-                file_name.to_string(),          // Exact match first (e.g. readme.md)
-                format!("{}.json", clean_name), // JSON metadata
-                format!("{}.json", base_id),    // Legacy/UUID match
-                session_id.to_string(),         // Full ID match (uuid/name)
-            ]
+            display_title = Some(clean_name.replace('_', " "));
+            vec![format!("{}.md", clean_name), file_name.to_string()]
         } else {
-            // Normal session: dùng full ID
-            vec![format!("{}.json", session_id), session_id.to_string()]
+            // Normal session
+            let extension = if source == "antigravity" {
+                "pb"
+            } else {
+                "json"
+            };
+            vec![
+                format!("{}.{}", session_id, extension),
+                session_id.to_string(),
+            ]
         };
 
         for pattern in &patterns {
             let file_path = source_dir.join(pattern);
             if file_path.exists() {
-                found_source = Some(source.to_string());
                 found_path = file_path.to_string_lossy().to_string();
-
-                // Lấy title từ file name nếu là artifact
-                if file_part.is_some() {
-                    display_title = file_part.map(|f| f.replace(".md", "").replace('_', " "));
-                }
                 break;
             }
         }
-
-        if !found_path.is_empty() {
-            break;
-        }
     }
 
-    // Nếu không tìm thấy trong source dirs, thử scan trực tiếp
-    // để đoán source từ session_id format
-    let final_source = found_source.unwrap_or_else(|| {
-        // Đoán source dựa trên format của session_id
-        if session_id.contains('/') || session_id.ends_with(".md") {
-            "antigravity-artifact".to_string()
-        } else if session_id.ends_with(".pb") {
-            "antigravity".to_string()
-        } else {
-            // Default: có thể là vscode-copilot hoặc cursor
-            "Unknown".to_string()
-        }
-    });
-
-    // Nếu không tìm thấy path cụ thể, vẫn hiển thị session với default info
+    // Nếu không tìm thấy path cụ thể, dùng đường dẫn sessions
     if found_path.is_empty() {
         found_path = sessions_dir.to_string_lossy().to_string();
     }
@@ -453,16 +427,9 @@ fn find_vault_session_info(
         display_title
     };
 
-    // Chỉ thêm "(synced)" nếu source được tìm thấy rõ ràng
-    let source_label = if final_source == "synced" {
-        "synced".to_string()
-    } else {
-        format!("{} (synced)", final_source)
-    };
-
     SessionInfo {
         id: session_id.to_string(),
-        source: source_label,
+        source: source.to_string(),
         title,
         workspace_name: None,
         created_at: None, // Không có timestamp chính xác từ index
@@ -578,7 +545,7 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
 
     // 2. Load deduplication index (simple JSON)
     let index_path = vault_dir.join("index.json");
-    let index: HashMap<String, (u64, u64)> = if index_path.exists() {
+    let index: HashMap<String, (u64, u64, String)> = if index_path.exists() {
         fs::read_to_string(&index_path)
             .ok()
             .and_then(|c| serde_json::from_str(&c).ok())
@@ -611,10 +578,10 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
                 .unwrap_or(0);
 
             // Check against index
-            let should_process = if let Some(&(cached_mtime, cached_size)) =
+            let should_process = if let Some((cached_mtime, cached_size, _)) =
                 index.get(session.metadata.id.as_str())
             {
-                cached_mtime != mtime || cached_size != file_size
+                *cached_mtime != mtime || *cached_size != file_size
             } else {
                 true
             };
@@ -642,7 +609,7 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     // 4. Process sessions in parallel
     let processed = AtomicUsize::new(0);
     let errors = Mutex::new(Vec::<String>::new());
-    let new_index_entries = Mutex::new(Vec::<(String, (u64, u64))>::new());
+    let new_index_entries = Mutex::new(Vec::<(String, (u64, u64, String))>::new());
 
     pool.install(|| {
         sessions_to_process
@@ -698,11 +665,11 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
                     return;
                 }
 
-                // Record for index update
-                new_index_entries
-                    .lock()
-                    .unwrap()
-                    .push((session.metadata.id.clone(), (*mtime, *file_size)));
+                // Record for index update with source
+                new_index_entries.lock().unwrap().push((
+                    session.metadata.id.clone(),
+                    (*mtime, *file_size, session.metadata.source.clone()),
+                ));
             });
     });
 
