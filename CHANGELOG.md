@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/n24q02m/EchoVault/compare/v1.1.1...v1.2.0) (2025-12-19)
+
+
+### Features
+
+* include source in vault session index and use it for session identification and grouping ([d20e18c](https://github.com/n24q02m/EchoVault/commit/d20e18c1367bed52babe58e76adf70f5519047ae))
+
 ## [1.1.1](https://github.com/n24q02m/EchoVault/compare/v1.1.0...v1.1.1) (2025-12-18)
 
 
