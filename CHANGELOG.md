@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/n24q02m/EchoVault/compare/v1.2.0...v1.3.0) (2025-12-24)
+
+
+### Features
+
+* prepare for public release ([ec13b3e](https://github.com/n24q02m/EchoVault/commit/ec13b3e701d465f939bd85b6bae580b1f319a9ae))
+
 # [1.2.0](https://github.com/n24q02m/EchoVault/compare/v1.1.1...v1.2.0) (2025-12-19)
 
 
