@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/n24q02m/EchoVault/compare/v1.3.0...v1.4.0) (2025-12-24)
+
+
+### Features
+
+* improve concurrency and error handling ([18bcc0e](https://github.com/n24q02m/EchoVault/commit/18bcc0e230e7b9c4975dca5b82b4d60c92886275))
+
 # [1.3.0](https://github.com/n24q02m/EchoVault/compare/v1.2.0...v1.3.0) (2025-12-24)
 
 
