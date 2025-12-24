@@ -67,6 +67,12 @@ jobs:
       - name: Run clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Security audit
+        run: cargo audit
+
   lint-frontend:
     name: Frontend Lint & Type Check
     runs-on: ubuntu-latest

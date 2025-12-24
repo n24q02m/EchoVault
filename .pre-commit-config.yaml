@@ -24,7 +24,7 @@ repos:
         files: \.rs$
         pass_filenames: false
 
-  # Cargo clippy: Rust linter (chỉ check core, tauri cần build frontend trước)
+  # Cargo clippy: Rust linter (only check core, tauri need to build frontend first)
   - repo: local
     hooks:
       - id: cargo-clippy
@@ -34,7 +34,7 @@ repos:
         files: \.rs$
         pass_filenames: false
 
-  # Cargo test: Rust tests (chỉ test core, tauri cần build frontend trước)
+  # Cargo test: Rust tests (only test core, tauri need to build frontend first)
   - repo: local
     hooks:
       - id: cargo-test

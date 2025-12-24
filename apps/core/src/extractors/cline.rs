@@ -1,7 +1,7 @@
 //! Cline (Claude Dev) VS Code Extension Extractor
 //!
-//! Trích xuất task history từ Cline extension.
-//! CHỈ COPY raw JSON files, KHÔNG parse/transform nội dung.
+//! Extracts task history from Cline extension.
+//! ONLY COPY raw JSON files, DO NOT parse/transform content.
 //!
 //! Storage locations:
 //! - Windows: %APPDATA%/Code/User/globalStorage/saoudrizwan.claude-dev/tasks
@@ -16,16 +16,16 @@ use std::path::{Path, PathBuf};
 
 /// Cline VS Code Extension Extractor
 pub struct ClineExtractor {
-    /// Các đường dẫn có thể chứa globalStorage
+    /// Paths that may contain globalStorage
     storage_paths: Vec<PathBuf>,
 }
 
 impl ClineExtractor {
-    /// Tạo extractor mới với các đường dẫn mặc định theo platform
+    /// Create new extractor with default paths per platform.
     pub fn new() -> Self {
         let mut storage_paths = Vec::new();
 
-        // Ưu tiên đọc từ HOME env variable
+        // Prefer reading from HOME env variable
         if let Ok(home) = std::env::var("HOME") {
             let home_path = PathBuf::from(home);
             // Linux: ~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks
@@ -40,7 +40,7 @@ impl ClineExtractor {
             );
         }
 
-        // Fallback: Lấy đường dẫn theo platform qua dirs crate
+        // Fallback: Get path per platform via dirs crate
         if let Some(config_dir) = dirs::config_dir() {
             // macOS: ~/Library/Application Support/Code/User/globalStorage/...
             let cline_path =
@@ -69,20 +69,20 @@ impl ClineExtractor {
         Self { storage_paths }
     }
 
-    /// Extract metadata từ task folder
+    /// Extract metadata from task folder.
     fn extract_task_metadata(&self, task_dir: &Path) -> Option<SessionMetadata> {
-        // Cline lưu mỗi task trong một folder riêng với các files:
+        // Cline stores each task in a separate folder with files:
         // - api_conversation_history.json (conversation)
         // - ui_messages.json (UI state)
         let api_history = task_dir.join("api_conversation_history.json");
 
-        // Lấy task ID từ folder name
+        // Get task ID from folder name
         let task_id = task_dir
             .file_name()
             .and_then(|n| n.to_str())
             .map(|s| s.to_string())?;
 
-        // Đọc file để lấy metadata
+        // Read file to get metadata
         let (title, _created_at) = if api_history.exists() {
             if let Ok(content) = std::fs::read_to_string(&api_history) {
                 if let Ok(json) = serde_json::from_str::<Value>(&content) {
@@ -113,7 +113,7 @@ impl ClineExtractor {
             (None, None)
         };
 
-        // Lấy file size tổng của folder
+        // Get total file size of folder
         let file_size = std::fs::read_dir(task_dir)
             .ok()?
             .flatten()
@@ -121,7 +121,7 @@ impl ClineExtractor {
             .map(|m| m.len())
             .sum();
 
-        // Lấy created_at từ folder metadata
+        // Get created_at from folder metadata
         let created_at = std::fs::metadata(task_dir)
             .ok()
             .and_then(|m| m.created().ok())
@@ -157,12 +157,12 @@ impl Extractor for ClineExtractor {
 
         for storage_path in &self.storage_paths {
             if storage_path.exists() && storage_path.is_dir() {
-                // Mỗi task là một subdirectory
+                // Each task is a subdirectory
                 if let Ok(entries) = std::fs::read_dir(storage_path) {
                     for entry in entries.flatten() {
                         let path = entry.path();
                         if path.is_dir() {
-                            // Kiểm tra có file api_conversation_history.json
+                            // Check if api_conversation_history.json exists
                             if path.join("api_conversation_history.json").exists() {
                                 locations.push(path);
                             }
@@ -180,7 +180,7 @@ impl Extractor for ClineExtractor {
     }
 
     fn list_session_files(&self, location: &Path) -> Result<Vec<SessionFile>> {
-        // location là task folder
+        // location is task folder
         if let Some(metadata) = self.extract_task_metadata(location) {
             Ok(vec![SessionFile {
                 source_path: location.join("api_conversation_history.json"),
@@ -192,7 +192,7 @@ impl Extractor for ClineExtractor {
     }
 
     fn count_sessions(&self, location: &Path) -> Result<usize> {
-        // Mỗi location là một task, nên count = 1
+        // Each location is a task, so count = 1
         if location.join("api_conversation_history.json").exists() {
             Ok(1)
         } else {

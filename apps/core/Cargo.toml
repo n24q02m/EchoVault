@@ -12,7 +12,7 @@ name = "echovault_core"
 path = "src/lib.rs"
 
 [dependencies]
-# SQLite để đọc IDE databases và index
+# SQLite for reading IDE databases and index
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 # JSON serialization

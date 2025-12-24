@@ -1,7 +1,7 @@
 //! File System Watcher
 //!
-//! Module cung cấp khả năng theo dõi thay đổi file system theo event-driven.
-//! Thay thế polling để giảm RAM và CPU usage.
+//! This module provides event-driven file system monitoring.
+//! Replaces polling with native OS notifications for reduced RAM and CPU usage.
 
 use anyhow::Result;
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
@@ -9,14 +9,14 @@ use std::path::Path;
 use std::sync::mpsc::{channel, Receiver};
 use std::time::Duration;
 
-/// Watcher cho file system events
+/// File system event watcher.
 pub struct FileWatcher {
     watcher: RecommendedWatcher,
     rx: Receiver<Result<Event, notify::Error>>,
 }
 
 impl FileWatcher {
-    /// Tạo watcher mới
+    /// Create a new file watcher.
     pub fn new() -> Result<Self> {
         let (tx, rx) = channel();
 
@@ -30,19 +30,19 @@ impl FileWatcher {
         Ok(Self { watcher, rx })
     }
 
-    /// Bắt đầu theo dõi một thư mục
+    /// Start watching a directory recursively.
     pub fn watch(&mut self, path: &Path) -> Result<()> {
         self.watcher.watch(path, RecursiveMode::Recursive)?;
         Ok(())
     }
 
-    /// Dừng theo dõi một thư mục
+    /// Stop watching a directory.
     pub fn unwatch(&mut self, path: &Path) -> Result<()> {
         self.watcher.unwatch(path)?;
         Ok(())
     }
 
-    /// Lấy event tiếp theo (blocking)
+    /// Get the next event (blocking).
     pub fn next_event(&self) -> Option<Event> {
         match self.rx.recv() {
             Ok(Ok(event)) => Some(event),
@@ -50,7 +50,7 @@ impl FileWatcher {
         }
     }
 
-    /// Lấy event với timeout
+    /// Get the next event with timeout.
     pub fn next_event_timeout(&self, timeout: Duration) -> Option<Event> {
         match self.rx.recv_timeout(timeout) {
             Ok(Ok(event)) => Some(event),
@@ -58,7 +58,7 @@ impl FileWatcher {
         }
     }
 
-    /// Kiểm tra có event pending không (non-blocking)
+    /// Check for pending events (non-blocking).
     pub fn try_next_event(&self) -> Option<Event> {
         match self.rx.try_recv() {
             Ok(Ok(event)) => Some(event),
@@ -68,7 +68,12 @@ impl FileWatcher {
 }
 
 impl Default for FileWatcher {
+    /// Create a default FileWatcher.
+    ///
+    /// # Panics
+    /// Panics if the watcher cannot be created. Use `FileWatcher::new()` for
+    /// fallible construction.
     fn default() -> Self {
-        Self::new().expect("Failed to create FileWatcher")
+        Self::new().expect("Failed to create FileWatcher - check OS support for file watching")
     }
 }

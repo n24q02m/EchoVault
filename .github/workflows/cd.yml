@@ -1,4 +1,4 @@
-name: Release
+name: CD
 
 on:
   push:
@@ -11,11 +11,11 @@ permissions:
 
 jobs:
   release:
-    name: Release
+    name: Semantic Release
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.check_release.outputs.new_release_published }}
-      tag_name: ${{ steps.check_release.outputs.last_release_version }}
+      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
+      new_release_version: ${{ steps.semantic.outputs.new_release_version }}
 
     steps:
       - name: Checkout code
@@ -54,21 +54,29 @@ jobs:
       - name: Build frontend
         run: pnpm build
 
-      - name: Release
-        id: check_release
+      - name: Semantic Release
+        id: semantic
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          pnpm release
-
-          LATEST_TAG=$(git describe --tags --abbrev=0)
-          echo "tag_name=$LATEST_TAG" >> "$GITHUB_OUTPUT"
-          echo "new_release_published=true" >> "$GITHUB_OUTPUT"
+          npx semantic-release --dry-run > release-output.txt 2>&1 || true
+          if grep -q "Published release" release-output.txt || grep -q "Release notes" release-output.txt; then
+            pnpm release
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -n "$LATEST_TAG" ]; then
+              echo "new_release_published=true" >> "$GITHUB_OUTPUT"
+              echo "new_release_version=${LATEST_TAG#v}" >> "$GITHUB_OUTPUT"
+            else
+              echo "new_release_published=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "new_release_published=false" >> "$GITHUB_OUTPUT"
+          fi
 
   build-tauri:
-    name: Build Tauri App
+    name: Build Tauri (${{ matrix.target }})
     needs: release
-    if: success()
+    if: needs.release.outputs.new_release_published == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -161,10 +169,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ needs.release.outputs.tag_name }}
-          releaseName: "EchoVault ${{ needs.release.outputs.tag_name }}"
+          tagName: v${{ needs.release.outputs.new_release_version }}
+          releaseName: "EchoVault v${{ needs.release.outputs.new_release_version }}"
           releaseBody: "See the assets section below to download the installer for your platform."
           releaseDraft: false
           prerelease: false
           projectPath: apps/tauri
           args: --target ${{ matrix.target }}
+          # Update existing release created by semantic-release
+          tauriScript: pnpm tauri

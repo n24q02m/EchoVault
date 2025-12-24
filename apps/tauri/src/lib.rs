@@ -1,11 +1,11 @@
 //! EchoVault Tauri Desktop App
 //!
-//! Mini window app giống Google Drive Desktop.
+//! Mini window app similar to Google Drive Desktop.
 //! Features:
-//! - System tray với menu
-//! - Background sync định kỳ
-//! - Notifications khi sync xong
-//! - Autostart khi login
+//! - System tray with menu
+//! - Periodic background sync
+//! - Notifications when sync completes
+//! - Autostart on login
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -15,9 +15,9 @@ use tauri::{
 
 mod commands;
 
-/// Tạo system tray với menu (chỉ có nút Thoát)
+/// Setup system tray with menu (only Exit button).
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
-    let quit = MenuItem::with_id(app, "quit", "Thoát", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Exit", true, None::<&str>)?;
 
     let menu = Menu::with_items(app, &[&quit])?;
 
@@ -68,9 +68,9 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Minimize to tray thay vì đóng hoàn toàn
+            // Minimize to tray instead of closing completely
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                // Ẩn window thay vì đóng
+                // Hide window instead of closing
                 let _ = window.hide();
                 api.prevent_close();
             }

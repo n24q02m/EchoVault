@@ -1,8 +1,8 @@
-//! Sync module - Đồng bộ vault với cloud storage.
+//! Sync module - Synchronize vault with cloud storage.
 //!
-//! Module này chứa:
-//! - SyncProvider trait cho abstraction
-//! - Rclone provider (hỗ trợ 40+ cloud services)
+//! This module contains:
+//! - SyncProvider trait for abstraction
+//! - Rclone provider (supports 40+ cloud services)
 
 pub mod provider;
 pub mod rclone;

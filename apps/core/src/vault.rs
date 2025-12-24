@@ -1,23 +1,23 @@
-//! Vault management - Metadata và operations cho vault.
+//! Vault management - Metadata and operations for vault.
 //!
-//! Module này quản lý vault metadata và operations.
+//! This module manages vault metadata and operations.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
-/// Vault metadata được lưu trong vault.json
+/// Vault metadata stored in vault.json.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VaultMetadata {
-    /// Version của metadata format
+    /// Metadata format version
     pub version: u32,
-    /// Thời gian tạo vault
+    /// Vault creation timestamp
     pub created_at: String,
 }
 
 impl VaultMetadata {
-    /// Tạo metadata mới cho vault
+    /// Create new vault metadata.
     pub fn new() -> Self {
         use chrono::Utc;
 
@@ -27,7 +27,7 @@ impl VaultMetadata {
         }
     }
 
-    /// Đọc metadata từ file
+    /// Load metadata from file.
     pub fn load(vault_dir: &Path) -> Result<Self> {
         let path = vault_dir.join("vault.json");
         let content = fs::read_to_string(&path)
@@ -37,7 +37,7 @@ impl VaultMetadata {
         Ok(metadata)
     }
 
-    /// Lưu metadata vào file
+    /// Save metadata to file.
     pub fn save(&self, vault_dir: &Path) -> Result<()> {
         let path = vault_dir.join("vault.json");
         let content =
@@ -46,7 +46,7 @@ impl VaultMetadata {
         Ok(())
     }
 
-    /// Check xem vault.json có tồn tại không
+    /// Check if vault.json exists.
     pub fn exists(vault_dir: &Path) -> bool {
         vault_dir.join("vault.json").exists()
     }

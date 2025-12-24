@@ -1,16 +1,13 @@
 #!/usr/bin/env node
-/**
- * Script setup môi trường development cho EchoVault
- *
- * Thứ tự setup:
- * 1. OS packages (Tauri dependencies)
- * 2. mise
- * 3. mise tools (Rust, Node.js, uv)
- * 4. pnpm
- * 5. Node.js dependencies
- * 6. Rclone binary
- * 7. Pre-commit hooks
- */
+// Setup development environment for EchoVault
+// Step order:
+// 1. OS packages (Tauri dependencies)
+// 2. mise
+// 3. mise tools (Rust, Node.js, uv)
+// 4. pnpm
+// 5. Node.js dependencies
+// 6. Rclone binary
+// 7. Pre-commit hooks
 
 import { execSync } from "child_process";
 import { existsSync } from "fs";
@@ -21,7 +18,7 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Colors cho terminal output
+// Colors for terminal output
 const colors = {
   reset: "\x1b[0m",
   green: "\x1b[32m",
@@ -75,7 +72,7 @@ function checkCommandExists(cmd) {
 
 function installTauriDepsLinux() {
   if (!checkCommandExists("pkg-config")) {
-    printWarning("Tauri dependencies chưa có, đang cài đặt...");
+    printWarning("Tauri dependencies not found, installing...");
 
     const deps = [
       "pkg-config",
@@ -107,19 +104,19 @@ function installTauriDepsLinux() {
       ];
       installCmd = `sudo pacman -S --noconfirm ${depsArch.join(" ")}`;
     } else {
-      printError("Không tìm thấy package manager");
+      printError("Package manager not found");
       return false;
     }
 
     const result = runCommand(installCmd);
     if (!result.success) {
-      printError(`Không thể cài Tauri dependencies: ${result.error}`);
+      printError(`Failed to install Tauri dependencies: ${result.error}`);
       return false;
     }
 
-    printSuccess("Đã cài Tauri dependencies");
+    printSuccess("Tauri dependencies installed");
   } else {
-    printSuccess("Tauri dependencies đã có");
+    printSuccess("Tauri dependencies already installed");
   }
 
   return true;
@@ -127,23 +124,23 @@ function installTauriDepsLinux() {
 
 function installTauriDepsMacOS() {
   if (!checkCommandExists("brew")) {
-    printWarning("Homebrew chưa có, đang cài đặt...");
+    printWarning("Homebrew not found, installing...");
 
     const installCmd = '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"';
-    console.log("Đang cài Homebrew (có thể cần password và mất vài phút)...");
+    console.log("Installing Homebrew (may need password and take a few minutes)...");
 
     const result = runCommand(installCmd);
     if (!result.success) {
-      printError("Không thể cài Homebrew");
+      printError("Failed to install Homebrew");
       return false;
     }
 
-    printSuccess("Đã cài Homebrew");
+    printSuccess("Homebrew installed");
   } else {
-    printSuccess("Homebrew đã có");
+    printSuccess("Homebrew already installed");
   }
 
-  printSuccess("Tauri dependencies sẵn sàng (macOS built-in)");
+  printSuccess("Tauri dependencies ready (macOS built-in)");
   return true;
 }
 
@@ -158,18 +155,18 @@ function installTauriDepsWindows() {
   const vsFound = vsPaths.some((path) => existsSync(path));
 
   if (!vsFound) {
-    printError("Visual Studio Build Tools chưa có");
-    console.log("\nCài thủ công:");
+    printError("Visual Studio Build Tools not found");
+    console.log("\nManually install:");
     console.log('winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"');
     return false;
   }
 
-  printSuccess("Visual Studio Build Tools đã có");
+  printSuccess("Visual Studio Build Tools already installed");
   return true;
 }
 
 function installTauriDependencies() {
-  printStep("Step 1: Cài đặt OS packages (Tauri dependencies)");
+  printStep("Step 1: Install OS packages (Tauri dependencies)");
 
   const platformName = platform();
 
@@ -180,7 +177,7 @@ function installTauriDependencies() {
   } else if (platformName === "win32") {
     return installTauriDepsWindows();
   } else {
-    printError(`Platform không hỗ trợ: ${platformName}`);
+    printError(`Platform not supported: ${platformName}`);
     return false;
   }
 }
@@ -190,14 +187,14 @@ function installTauriDependencies() {
 // ============================================================================
 
 function installMise() {
-  printStep("Step 2: Cài đặt mise");
+  printStep("Step 2: Install mise");
 
   if (checkCommandExists("mise")) {
-    printSuccess("mise đã có");
+    printSuccess("mise already installed");
     return true;
   }
 
-  printWarning("mise chưa có, đang cài đặt...");
+  printWarning("mise not found, installing...");
 
   const platformName = platform();
   let installCmd;
@@ -208,11 +205,11 @@ function installMise() {
     installCmd = 'curl https://mise.run | sh';
   }
 
-  console.log("Đang cài mise...");
+  console.log("Installing mise...");
   const result = runCommand(installCmd);
 
   if (!result.success) {
-    printError("Không thể cài mise");
+    printError("Failed to install mise");
     return false;
   }
 
@@ -221,7 +218,7 @@ function installMise() {
     process.env.PATH = `${process.env.HOME}/.local/bin:${process.env.PATH}`;
   }
 
-  printSuccess("Đã cài mise");
+  printSuccess("mise installed");
   return true;
 }
 
@@ -230,15 +227,15 @@ function installMise() {
 // ============================================================================
 
 function installMiseTools() {
-  printStep("Step 3: Cài đặt mise tools (Rust, Node.js, uv)");
+  printStep("Step 3: Install mise tools (Rust, Node.js, uv)");
 
   const projectRoot = join(__dirname, "..");
-  console.log("Đang chạy 'mise install' (có thể mất vài phút)...");
+  console.log("Running 'mise install'...");
 
   const result = runCommand("mise install", { cwd: projectRoot });
 
   if (!result.success) {
-    printError("Không thể cài mise tools");
+    printError("Failed to install mise tools");
     return false;
   }
 
@@ -247,7 +244,7 @@ function installMiseTools() {
     process.env.PATH = `${process.env.HOME}/.local/share/mise/shims:${process.env.PATH}`;
   }
 
-  printSuccess("Đã cài mise tools");
+  printSuccess("mise tools installed");
 
   // Verify Rust
   if (checkCommandExists("cargo")) {
@@ -265,20 +262,20 @@ function installMiseTools() {
 // ============================================================================
 
 function installPnpm() {
-  printStep("Step 4: Cài đặt pnpm");
+  printStep("Step 4: Install pnpm");
 
   if (checkCommandExists("pnpm")) {
-    printSuccess("pnpm đã có");
+    printSuccess("pnpm already installed");
     return true;
   }
 
-  printWarning("pnpm chưa có, đang cài đặt...");
+  printWarning("pnpm not found, installing...");
 
   // Try npm first
   if (checkCommandExists("npm")) {
     const result = runCommand("npm install -g pnpm", { silent: true });
     if (result.success) {
-      printSuccess("Đã cài pnpm via npm");
+      printSuccess("pnpm installed via npm");
       return true;
     }
   }
@@ -295,11 +292,11 @@ function installPnpm() {
 
   const result = runCommand(installCmd);
   if (!result.success) {
-    printError("Không thể cài pnpm");
+    printError("Failed to install pnpm");
     return false;
   }
 
-  printSuccess("Đã cài pnpm");
+  printSuccess("pnpm installed");
   return true;
 }
 
@@ -308,17 +305,17 @@ function installPnpm() {
 // ============================================================================
 
 function installNodeDependencies() {
-  printStep("Step 5: Cài đặt Node.js dependencies");
+  printStep("Step 5: Install Node.js dependencies");
 
   const projectRoot = join(__dirname, "..");
   const result = runCommand("pnpm install", { cwd: projectRoot });
 
   if (!result.success) {
-    printError("Không thể cài Node dependencies");
+    printError("Failed to install Node dependencies");
     return false;
   }
 
-  printSuccess("Đã cài Node dependencies");
+  printSuccess("Node dependencies installed");
   return true;
 }
 
@@ -332,18 +329,18 @@ function downloadRclone() {
   const downloadScript = join(__dirname, "download-rclone.mjs");
 
   if (!existsSync(downloadScript)) {
-    printError("Không tìm thấy download-rclone.mjs");
+    printError("download-rclone.mjs not found");
     return false;
   }
 
   const result = runCommand(`node "${downloadScript}"`);
 
   if (!result.success) {
-    printError("Không thể download Rclone");
+    printError("Failed to download Rclone");
     return false;
   }
 
-  printSuccess("Rclone binary đã sẵn sàng");
+  printSuccess("Rclone binary downloaded");
   return true;
 }
 
@@ -358,37 +355,37 @@ function setupPreCommit() {
   const venvPath = join(projectRoot, ".venv");
 
   if (!checkCommandExists("uv")) {
-    printWarning("uv chưa có, bỏ qua pre-commit");
+    printWarning("uv not found, skipping pre-commit");
     return false;
   }
 
   // Create venv
   if (!existsSync(venvPath)) {
-    console.log("Tạo Python venv...");
+    console.log("Creating Python venv...");
     const venvResult = runCommand("uv venv", { cwd: projectRoot, silent: true });
     if (!venvResult.success) {
-      printWarning("Không thể tạo venv, bỏ qua pre-commit");
+      printWarning("Failed to create venv, skipping pre-commit");
       return false;
     }
   }
 
   // Install pre-commit
-  console.log("Cài pre-commit...");
+  console.log("Installing pre-commit...");
   const installResult = runCommand("uv pip install pre-commit", { cwd: projectRoot, silent: true });
   if (!installResult.success) {
-    printWarning("Không thể cài pre-commit");
+    printWarning("Failed to install pre-commit");
     return false;
   }
 
   // Install hooks
-  console.log("Cài hooks...");
+  console.log("Installing hooks...");
   const hooksResult = runCommand("uv run pre-commit install", { cwd: projectRoot, silent: true });
   if (!hooksResult.success) {
-    printWarning("Không thể cài hooks");
+    printWarning("Failed to install hooks");
     return false;
   }
 
-  printSuccess("Pre-commit hooks đã sẵn sàng");
+  printSuccess("Pre-commit hooks installed");
   return true;
 }
 
@@ -416,7 +413,7 @@ async function main() {
     successSteps.push("mise");
   } else {
     failedSteps.push("mise");
-    printError("Không thể tiếp tục mà không có mise");
+    printError("Failed to install mise");
     process.exit(1);
   }
 
@@ -425,7 +422,7 @@ async function main() {
     successSteps.push("mise tools (Rust, Node, uv)");
   } else {
     failedSteps.push("mise tools");
-    printError("Không thể tiếp tục mà không có Rust/Node");
+    printError("Failed to install mise tools");
     process.exit(1);
   }
 
@@ -463,14 +460,14 @@ async function main() {
   console.log(`${colors.blue}${"=".repeat(60)}${colors.reset}\n`);
 
   if (successSteps.length > 0) {
-    console.log(`${colors.green}Thành công:${colors.reset}`);
+    console.log(`${colors.green}Success:${colors.reset}`);
     successSteps.forEach((step) => {
       console.log(`  ${colors.green}✓${colors.reset} ${step}`);
     });
   }
 
   if (failedSteps.length > 0) {
-    console.log(`\n${colors.red}Thất bại:${colors.reset}`);
+    console.log(`\n${colors.red}Failed:${colors.reset}`);
     failedSteps.forEach((step) => {
       console.log(`  ${colors.red}✗${colors.reset} ${step}`);
     });
@@ -483,14 +480,14 @@ async function main() {
   );
 
   if (criticalFailed.length === 0) {
-    console.log(`\n${colors.green}✓ Setup hoàn tất!${colors.reset}`);
-    console.log("\nBây giờ bạn có thể chạy:");
+    console.log(`\n${colors.green}✓ Setup complete!${colors.reset}`);
+    console.log("\nYou can now run:");
     console.log(`  ${colors.cyan}pnpm dev${colors.reset}          - Dev mode (web only)`);
     console.log(`  ${colors.cyan}cargo tauri dev${colors.reset}   - Dev mode (full app)`);
     console.log(`  ${colors.cyan}cargo tauri build${colors.reset} - Production build`);
     process.exit(0);
   } else {
-    console.log(`\n${colors.red}✗ Setup chưa hoàn tất${colors.reset}`);
+    console.log(`\n${colors.red}✗ Setup incomplete${colors.reset}`);
     process.exit(1);
   }
 }

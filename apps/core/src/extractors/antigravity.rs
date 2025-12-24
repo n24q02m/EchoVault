@@ -1,7 +1,7 @@
 //! Antigravity Extractor
 //!
-//! Trích xuất chat history và artifacts từ Google Antigravity.
-//! CHỈ COPY raw files, KHÔNG parse/transform nội dung.
+//! Extracts chat history and artifacts from Google Antigravity.
+//! ONLY COPY raw files, DO NOT parse/transform content.
 //!
 //! Storage locations:
 //! - Chat history: ~/.gemini/antigravity/conversations/{uuid}.pb
@@ -16,11 +16,11 @@ use std::path::{Path, PathBuf};
 
 /// Antigravity Extractor
 pub struct AntigravityExtractor {
-    /// Đường dẫn có thể chứa Antigravity data
+    /// Paths that may contain Antigravity data
     storage_paths: Vec<PathBuf>,
 }
 
-/// Metadata JSON của artifact
+/// Artifact metadata JSON
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ArtifactMetadata {
@@ -30,17 +30,17 @@ struct ArtifactMetadata {
 }
 
 impl AntigravityExtractor {
-    /// Tạo extractor mới với các đường dẫn mặc định theo platform
+    /// Create new extractor with default paths per platform.
     pub fn new() -> Self {
         let mut storage_paths = Vec::new();
 
-        // Ưu tiên đọc từ HOME env variable (để hỗ trợ testing với HOME override)
+        // Prefer reading from HOME env variable (for testing with HOME override)
         if let Ok(home) = std::env::var("HOME") {
             let home_path = Path::new(&home);
             storage_paths.push(home_path.join(".gemini/antigravity"));
         }
 
-        // Fallback: ~/.gemini/antigravity/ qua dirs crate
+        // Fallback: ~/.gemini/antigravity/ via dirs crate
         if let Some(home) = dirs::home_dir() {
             let path = home.join(".gemini/antigravity");
             if !storage_paths.contains(&path) {
@@ -57,16 +57,16 @@ impl AntigravityExtractor {
             }
         }
 
-        // Windows: Thêm hỗ trợ đọc từ WSL (\\wsl$\<distro>\home\<user>\.gemini\antigravity\)
+        // Windows: Add WSL support (\\wsl$\<distro>\home\<user>\.gemini\antigravity\)
         #[cfg(target_os = "windows")]
         {
-            // Lấy username từ Windows để tạo đường dẫn WSL
-            // Trong WSL, username thường giống Windows hoặc cần scan home directories
+            // Get Windows username to create WSL path
+            // In WSL, username is usually same as Windows or needs to scan home directories
             if let Ok(wsl_path) = std::fs::read_dir(r"\\wsl$") {
                 for entry in wsl_path.flatten() {
                     let distro_path = entry.path();
                     if distro_path.is_dir() {
-                        // Scan tất cả home directories trong WSL distro
+                        // Scan all home directories in WSL distro
                         let wsl_home = distro_path.join("home");
                         if wsl_home.exists() && wsl_home.is_dir() {
                             if let Ok(home_entries) = std::fs::read_dir(&wsl_home) {
@@ -92,7 +92,7 @@ impl AntigravityExtractor {
         Self { storage_paths }
     }
 
-    /// Tìm thư mục conversations
+    /// Find conversations directory.
     fn find_conversations_dir(&self) -> Option<PathBuf> {
         for base_path in &self.storage_paths {
             let conversations_dir = base_path.join("conversations");
@@ -103,7 +103,7 @@ impl AntigravityExtractor {
         None
     }
 
-    /// Tìm thư mục brain (artifacts)
+    /// Find brain (artifacts) directory.
     fn find_brain_dir(&self) -> Option<PathBuf> {
         for base_path in &self.storage_paths {
             let brain_dir = base_path.join("brain");
@@ -114,19 +114,19 @@ impl AntigravityExtractor {
         None
     }
 
-    /// Extract metadata từ conversation (.pb file)
+    /// Extract metadata from conversation (.pb file).
     fn extract_conversation_metadata(&self, path: &PathBuf) -> Option<SessionMetadata> {
-        // Lấy UUID từ filename (ví dụ: 9fc44156-3c5c-45fa-b245-514c9a86e09d.pb)
+        // Get UUID from filename (e.g., 9fc44156-3c5c-45fa-b245-514c9a86e09d.pb)
         let session_id = path
             .file_stem()
             .and_then(|s| s.to_str())
             .map(|s| s.to_string())?;
 
-        // Lấy file size và modified time
+        // Get file size and modified time
         let metadata = std::fs::metadata(path).ok()?;
         let file_size = metadata.len();
 
-        // Lấy modified time làm created_at (gần đúng)
+        // Use modified time as created_at (approximation)
         let created_at = metadata
             .modified()
             .ok()
@@ -136,20 +136,20 @@ impl AntigravityExtractor {
         Some(SessionMetadata {
             id: session_id,
             source: "antigravity".to_string(),
-            title: Some("Chat Conversation".to_string()), // Protobuf không dễ parse title
+            title: Some("Chat Conversation".to_string()), // Protobuf is not easy to parse for title
             created_at,
             vault_path: PathBuf::new(),
             original_path: path.clone(),
             file_size,
-            workspace_name: None, // Antigravity không gắn với workspace cụ thể
+            workspace_name: None, // Antigravity is not tied to specific workspace
         })
     }
 
-    /// Extract metadata từ artifact folder
+    /// Extract metadata from artifact folder.
     fn extract_artifact_metadata(&self, artifact_dir: &Path) -> Vec<SessionMetadata> {
         let mut sessions = Vec::new();
 
-        // Lấy UUID từ folder name
+        // Get UUID from folder name
         let session_id = match artifact_dir
             .file_name()
             .and_then(|s| s.to_str())
@@ -159,7 +159,7 @@ impl AntigravityExtractor {
             None => return sessions,
         };
 
-        // Tìm các artifact files (.md) trong folder
+        // Find artifact files (.md) in folder
         let entries = match std::fs::read_dir(artifact_dir) {
             Ok(e) => e,
             Err(_) => return sessions,
@@ -168,7 +168,7 @@ impl AntigravityExtractor {
         for entry in entries.flatten() {
             let path = entry.path();
 
-            // Chỉ xử lý .md files (không phải .metadata.json hay .resolved)
+            // Only process .md files (not .metadata.json or .resolved)
             if !path.is_file() {
                 continue;
             }
@@ -178,7 +178,7 @@ impl AntigravityExtractor {
                 None => continue,
             };
 
-            // Bỏ qua metadata và resolved files
+            // Skip metadata and resolved files
             if filename.contains(".metadata.json")
                 || filename.contains(".resolved")
                 || filename.ends_with(".png")
@@ -192,7 +192,7 @@ impl AntigravityExtractor {
             if filename.ends_with(".md") {
                 let artifact_id = format!("{}_{}", session_id, filename);
 
-                // Thử đọc metadata từ JSON file
+                // Try to read metadata from JSON file
                 let metadata_path = artifact_dir.join(format!("{}.metadata.json", filename));
                 let (title, created_at) = if metadata_path.exists() {
                     match std::fs::read_to_string(&metadata_path) {
@@ -248,9 +248,9 @@ impl Extractor for AntigravityExtractor {
     fn find_storage_locations(&self) -> Result<Vec<PathBuf>> {
         let mut locations = Vec::new();
 
-        // Thêm conversations directory nếu tồn tại và có files
+        // Add conversations directory if exists and has files
         if let Some(conversations_dir) = self.find_conversations_dir() {
-            // Kiểm tra có .pb files không
+            // Check if there are .pb files
             if let Ok(entries) = std::fs::read_dir(&conversations_dir) {
                 let has_pb = entries
                     .flatten()
@@ -261,7 +261,7 @@ impl Extractor for AntigravityExtractor {
             }
         }
 
-        // Thêm brain directory nếu tồn tại và có subdirectories
+        // Add brain directory if exists and has subdirectories
         if let Some(brain_dir) = self.find_brain_dir() {
             if let Ok(entries) = std::fs::read_dir(&brain_dir) {
                 let has_subdirs = entries.flatten().any(|e| e.path().is_dir());
@@ -275,18 +275,18 @@ impl Extractor for AntigravityExtractor {
     }
 
     fn get_workspace_name(&self, _location: &Path) -> String {
-        // Antigravity không gắn với workspace cụ thể
+        // Antigravity is not tied to specific workspace
         "Global".to_string()
     }
 
     fn list_session_files(&self, location: &Path) -> Result<Vec<SessionFile>> {
         let mut sessions = Vec::new();
 
-        // Kiểm tra loại location
+        // Check location type
         let location_name = location.file_name().and_then(|s| s.to_str()).unwrap_or("");
 
         if location_name == "conversations" {
-            // Xử lý conversations (.pb files)
+            // Process conversations (.pb files)
             let pb_files: Vec<PathBuf> = std::fs::read_dir(location)?
                 .flatten()
                 .map(|e| e.path())
@@ -306,7 +306,7 @@ impl Extractor for AntigravityExtractor {
 
             sessions.extend(conversation_sessions);
         } else if location_name == "brain" {
-            // Xử lý brain (artifact directories)
+            // Process brain (artifact directories)
             let artifact_dirs: Vec<PathBuf> = std::fs::read_dir(location)?
                 .flatten()
                 .map(|e| e.path())
@@ -326,7 +326,7 @@ impl Extractor for AntigravityExtractor {
             }
         }
 
-        // Sắp xếp theo thời gian tạo (mới nhất trước)
+        // Sort by creation time (newest first)
         sessions.sort_by(|a, b| b.metadata.created_at.cmp(&a.metadata.created_at));
 
         Ok(sessions)
@@ -336,14 +336,14 @@ impl Extractor for AntigravityExtractor {
         let location_name = location.file_name().and_then(|s| s.to_str()).unwrap_or("");
 
         if location_name == "conversations" {
-            // Đếm .pb files
+            // Count .pb files
             let count = std::fs::read_dir(location)?
                 .flatten()
                 .filter(|e| e.path().extension().is_some_and(|ext| ext == "pb"))
                 .count();
             Ok(count)
         } else if location_name == "brain" {
-            // Đếm subdirectories
+            // Count subdirectories
             let count = std::fs::read_dir(location)?
                 .flatten()
                 .filter(|e| e.path().is_dir())
@@ -355,13 +355,13 @@ impl Extractor for AntigravityExtractor {
     }
 
     fn copy_to_vault(&self, session: &SessionFile, vault_dir: &Path) -> Result<Option<PathBuf>> {
-        // Tạo thư mục con theo source
+        // Create subdirectory by source
         let source_dir = vault_dir.join(&session.metadata.source);
         std::fs::create_dir_all(&source_dir)?;
 
-        // Xử lý path khác nhau cho conversations và artifacts
+        // Handle different paths for conversations and artifacts
         let dest_path = if session.metadata.source == "antigravity-artifact" {
-            // Artifacts: giữ cấu trúc {uuid}/{filename}
+            // Artifacts: keep structure {uuid}/{filename}
             let parts: Vec<&str> = session.metadata.id.split('/').collect();
             if parts.len() == 2 {
                 let subfolder = source_dir.join(parts[0]);
@@ -371,7 +371,7 @@ impl Extractor for AntigravityExtractor {
                 source_dir.join(&session.metadata.id)
             }
         } else {
-            // Conversations: giữ nguyên filename gốc
+            // Conversations: keep original filename
             let filename = session
                 .source_path
                 .file_name()
@@ -381,7 +381,7 @@ impl Extractor for AntigravityExtractor {
             source_dir.join(&filename)
         };
 
-        // Incremental: chỉ copy nếu file mới hoặc đã thay đổi
+        // Incremental: only copy if file is new or changed
         let should_copy = if dest_path.exists() {
             let src_meta = session.source_path.metadata()?;
             let dest_meta = dest_path.metadata()?;

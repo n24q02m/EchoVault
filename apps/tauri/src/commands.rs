@@ -200,7 +200,7 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
         antigravity::AntigravityExtractor, cline::ClineExtractor, cursor::CursorExtractor,
         vscode_copilot::VSCodeCopilotExtractor, Extractor,
     };
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashSet;
 
     let sessions = tokio::task::spawn_blocking(move || {
         let mut all_sessions = Vec::new();
@@ -298,34 +298,28 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
             }
         }
 
-        // 5. Read sessions from vault index (synced từ máy khác)
+        // 5. Read sessions from vault.db (synced from other machines)
         if let Ok(config) = Config::load_default() {
             let vault_dir = config.vault_path;
-            let index_path = vault_dir.join("index.json");
 
-            if index_path.exists() {
-                if let Ok(content) = std::fs::read_to_string(&index_path) {
-                    // index.json format: { "session_id": (mtime, file_size, source), ... }
-                    if let Ok(index) =
-                        serde_json::from_str::<HashMap<String, (u64, u64, String)>>(&content)
-                    {
-                        println!(
-                            "[scan_sessions] Found {} entries in vault index",
-                            index.len()
-                        );
+            if let Ok(vault_db) = echovault_core::storage::VaultDb::open(&vault_dir) {
+                if let Ok(db_sessions) = vault_db.get_all_sessions() {
+                    println!(
+                        "[scan_sessions] Found {} entries in vault.db",
+                        db_sessions.len()
+                    );
 
-                        // For each session in index that we don't already have locally,
-                        // add it from vault (synced from other machine)
-                        for (session_id, (_mtime, file_size, source)) in index {
-                            if seen_ids.insert(session_id.clone()) {
-                                let session_info = find_vault_session_info(
-                                    &vault_dir,
-                                    &session_id,
-                                    file_size,
-                                    &source,
-                                );
-                                all_sessions.push(session_info);
-                            }
+                    // For each session in vault.db that we don't already have locally,
+                    // add it from vault (synced from other machine)
+                    for db_session in db_sessions {
+                        if seen_ids.insert(db_session.id.clone()) {
+                            let session_info = find_vault_session_info(
+                                &vault_dir,
+                                &db_session.id,
+                                db_session.file_size,
+                                &db_session.source,
+                            );
+                            all_sessions.push(session_info);
                         }
                     }
                 }
@@ -445,7 +439,7 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
         vscode_copilot::VSCodeCopilotExtractor, Extractor,
     };
     use rayon::prelude::*;
-    use std::collections::HashMap;
+
     use std::fs;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
@@ -543,16 +537,9 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
         total_sessions
     );
 
-    // 2. Load deduplication index (simple JSON)
-    let index_path = vault_dir.join("index.json");
-    let index: HashMap<String, (u64, u64, String)> = if index_path.exists() {
-        fs::read_to_string(&index_path)
-            .ok()
-            .and_then(|c| serde_json::from_str(&c).ok())
-            .unwrap_or_default()
-    } else {
-        HashMap::new()
-    };
+    // 2. Open VaultDb for deduplication
+    let vault_db = echovault_core::storage::VaultDb::open(vault_dir)
+        .map_err(|e| format!("Failed to open vault.db: {}", e))?;
 
     let sessions_dir = vault_dir.join("sessions");
     fs::create_dir_all(&sessions_dir).map_err(|e| e.to_string())?;
@@ -577,13 +564,11 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
 
-            // Check against index
-            let should_process = if let Some((cached_mtime, cached_size, _)) =
-                index.get(session.metadata.id.as_str())
-            {
-                *cached_mtime != mtime || *cached_size != file_size
-            } else {
-                true
+            // Check against vault.db
+            let should_process = match vault_db.get_session_mtime(&session.metadata.id) {
+                Ok(Some(cached_mtime)) => mtime > cached_mtime,
+                Ok(None) => true,
+                Err(_) => true, // Process if we can't check
             };
 
             if should_process {
@@ -609,7 +594,7 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     // 4. Process sessions in parallel
     let processed = AtomicUsize::new(0);
     let errors = Mutex::new(Vec::<String>::new());
-    let new_index_entries = Mutex::new(Vec::<(String, (u64, u64, String))>::new());
+    let new_entries = Mutex::new(Vec::<echovault_core::storage::SessionEntry>::new());
 
     pool.install(|| {
         sessions_to_process
@@ -665,11 +650,21 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
                     return;
                 }
 
-                // Record for index update with source
-                new_index_entries.lock().unwrap().push((
-                    session.metadata.id.clone(),
-                    (*mtime, *file_size, session.metadata.source.clone()),
-                ));
+                // Record for vault.db update
+                new_entries
+                    .lock()
+                    .unwrap()
+                    .push(echovault_core::storage::SessionEntry {
+                        id: session.metadata.id.clone(),
+                        source: session.metadata.source.clone(),
+                        mtime: *mtime,
+                        file_size: *file_size,
+                        title: session.metadata.title.clone(),
+                        workspace_name: session.metadata.workspace_name.clone(),
+                        created_at: session.metadata.created_at.map(|d| d.to_rfc3339()),
+                        vault_path: dest_path.to_string_lossy().to_string(),
+                        original_path: source_path.to_string_lossy().to_string(),
+                    });
             });
     });
 
@@ -683,16 +678,21 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
         // Continue anyway, just log errors
     }
 
-    // 5. Update and save index
-    let new_entries = new_index_entries.into_inner().unwrap();
-    if !new_entries.is_empty() {
-        let mut index = index; // Take ownership
-        for (id, entry) in new_entries {
-            index.insert(id, entry);
+    // 5. Update vault.db
+    let entries = new_entries.into_inner().unwrap();
+    if !entries.is_empty() {
+        for entry in &entries {
+            if let Err(e) = vault_db.upsert_session(entry) {
+                println!("[ingest_sessions] Failed to upsert {}: {}", entry.id, e);
+            }
         }
-        let index_json = serde_json::to_string_pretty(&index).map_err(|e| e.to_string())?;
-        std::fs::write(&index_path, index_json).map_err(|e| e.to_string())?;
-        println!("[ingest_sessions] Index saved with {} entries", index.len());
+        if let Err(e) = vault_db.log_sync("ingest", Some(&format!("{} sessions", entries.len()))) {
+            println!("[ingest_sessions] Failed to log sync: {}", e);
+        }
+        println!(
+            "[ingest_sessions] vault.db updated with {} entries",
+            entries.len()
+        );
     }
 
     println!(

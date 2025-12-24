@@ -1,20 +1,20 @@
-//! Config module - Quản lý cấu hình EchoVault (echovault.toml).
+//! Config module - Manages EchoVault configuration (echovault.toml).
 //!
-//! File cấu hình chứa:
-//! - Thông tin sync với Rclone
-//! - Đường dẫn vault
-//! - Các settings khác
+//! Configuration file contains:
+//! - Rclone sync settings
+//! - Vault path
+//! - Other settings
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-/// Cấu hình sync với cloud via Rclone
+/// Cloud sync configuration via Rclone.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SyncConfig {
-    /// Tên remote trong rclone config (e.g., "echovault")
+    /// Remote name in rclone config (e.g., "echovault")
     pub remote_name: Option<String>,
-    /// Tên folder trên cloud (mặc định: "EchoVault")
+    /// Folder name on cloud (default: "EchoVault")
     #[serde(default = "default_folder_name")]
     pub folder_name: String,
 }
@@ -23,33 +23,33 @@ fn default_folder_name() -> String {
     "EchoVault".to_string()
 }
 
-/// Cấu hình extractors
+/// Extractors configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ExtractorsConfig {
-    /// Các sources được bật (mặc định: tất cả)
+    /// Enabled sources (default: all)
     #[serde(default)]
     pub enabled_sources: Vec<String>,
 }
 
-/// Cấu hình chính của EchoVault
+/// Main EchoVault configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// Phiên bản config (để migrate trong tương lai)
+    /// Config version (for future migrations)
     #[serde(default = "default_version")]
     pub version: u32,
 
-    /// Đã hoàn thành setup chưa
+    /// Whether setup is complete
     #[serde(default)]
     pub setup_complete: bool,
 
-    /// Đường dẫn đến vault directory
+    /// Path to vault directory
     pub vault_path: PathBuf,
 
-    /// Cấu hình sync
+    /// Sync configuration
     #[serde(default)]
     pub sync: SyncConfig,
 
-    /// Cấu hình extractors
+    /// Extractors configuration
     #[serde(default)]
     pub extractors: ExtractorsConfig,
 }
@@ -70,33 +70,33 @@ impl Default for Config {
     }
 }
 
-/// Lấy đường dẫn vault mặc định
+/// Get default vault path.
 pub fn default_vault_path() -> PathBuf {
     dirs::data_dir()
         .map(|d| d.join("echovault").join("vault"))
         .unwrap_or_else(|| PathBuf::from("./vault"))
 }
 
-/// Lấy đường dẫn config directory mặc định (~/.config/echovault/)
+/// Get default config directory (~/.config/echovault/).
 pub fn default_config_dir() -> PathBuf {
     dirs::config_dir()
         .map(|d| d.join("echovault"))
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
-/// Lấy đường dẫn config file mặc định
+/// Get default config file path.
 pub fn default_config_path() -> PathBuf {
     default_config_dir().join("echovault.toml")
 }
 
 #[allow(dead_code)]
 impl Config {
-    /// Tạo config mới với các giá trị mặc định
+    /// Create new config with default values.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Tạo config với vault path cụ thể
+    /// Create config with specific vault path.
     pub fn with_vault_path(vault_path: PathBuf) -> Self {
         Self {
             vault_path,
@@ -104,7 +104,7 @@ impl Config {
         }
     }
 
-    /// Load config từ file
+    /// Load config from file.
     pub fn load(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("Cannot read config file: {}", path.display()))?;
@@ -115,7 +115,7 @@ impl Config {
         Ok(config)
     }
 
-    /// Load config từ đường dẫn mặc định
+    /// Load config from default path.
     pub fn load_default() -> Result<Self> {
         let path = default_config_path();
         if path.exists() {
@@ -125,9 +125,9 @@ impl Config {
         }
     }
 
-    /// Lưu config ra file
+    /// Save config to file.
     pub fn save(&self, path: &Path) -> Result<()> {
-        // Tạo thư mục cha nếu chưa tồn tại
+        // Create parent directory if it doesn't exist
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -141,24 +141,24 @@ impl Config {
         Ok(())
     }
 
-    /// Lưu config ra đường dẫn mặc định
+    /// Save config to default path.
     pub fn save_default(&self) -> Result<PathBuf> {
         let path = default_config_path();
         self.save(&path)?;
         Ok(path)
     }
 
-    /// Kiểm tra config đã được khởi tạo chưa (đã có remote)
+    /// Check if config is initialized (has a remote).
     pub fn is_initialized(&self) -> bool {
         self.sync.remote_name.is_some()
     }
 
-    /// Lấy đường dẫn đến vault directory
+    /// Get vault directory path.
     pub fn vault_dir(&self) -> &Path {
         &self.vault_path
     }
 
-    /// Lấy đường dẫn đến index database
+    /// Get index database path.
     pub fn index_db_path(&self) -> PathBuf {
         self.vault_path.join("index.db")
     }

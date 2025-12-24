@@ -1,13 +1,12 @@
 #!/usr/bin/env node
-/**
- * Script reset app - xóa config để setup lại từ đầu
- */
+// Reset app - remove config to setup again
+
 
 import { existsSync, rmSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 
-// Config file path (echovault.toml, không phải config.toml)
+// Config file path (echovault.toml, not config.toml)
 const configDir = join(homedir(), ".config", "echovault");
 const configPath = join(configDir, "echovault.toml");
 
@@ -16,7 +15,7 @@ const vaultPath = join(homedir(), ".local", "share", "echovault", "vault");
 
 console.log("EchoVault Reset\n");
 
-// 1. Xóa config file
+// 1. Remove config file
 if (existsSync(configPath)) {
     rmSync(configPath);
     console.log("✓ Config removed:", configPath);
@@ -24,7 +23,7 @@ if (existsSync(configPath)) {
     console.log("✗ No config found at:", configPath);
 }
 
-// 2. Hỏi có muốn xóa vault data không
+// 2. Ask to remove vault data
 const args = process.argv.slice(2);
 if (args.includes("--all") || args.includes("-a")) {
     if (existsSync(vaultPath)) {

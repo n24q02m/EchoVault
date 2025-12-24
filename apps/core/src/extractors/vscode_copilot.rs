@@ -1,7 +1,7 @@
 //! VS Code Copilot Extractor
 //!
-//! Trích xuất chat history từ GitHub Copilot trong VS Code.
-//! CHỈ COPY raw JSON files, KHÔNG parse/transform nội dung.
+//! Extracts chat history from GitHub Copilot in VS Code.
+//! ONLY COPY raw JSON files, DO NOT parse/transform content.
 
 use super::{Extractor, SessionFile, SessionMetadata};
 use anyhow::Result;
@@ -12,16 +12,16 @@ use std::path::{Path, PathBuf};
 
 /// VS Code Copilot Extractor
 pub struct VSCodeCopilotExtractor {
-    /// Các đường dẫn có thể chứa workspaceStorage
+    /// Paths that may contain workspaceStorage
     storage_paths: Vec<PathBuf>,
 }
 
 impl VSCodeCopilotExtractor {
-    /// Tạo extractor mới với các đường dẫn mặc định theo platform
+    /// Create new extractor with default paths per platform.
     pub fn new() -> Self {
         let mut storage_paths = Vec::new();
 
-        // Ưu tiên đọc từ HOME env variable (để hỗ trợ testing với HOME override)
+        // Prefer reading from HOME env variable (for testing with HOME override)
         if let Ok(home) = std::env::var("HOME") {
             let home_path = PathBuf::from(home);
             // Linux: $HOME/.config/Code/User/workspaceStorage
@@ -29,7 +29,7 @@ impl VSCodeCopilotExtractor {
             storage_paths.push(home_path.join(".config/Code - Insiders/User/workspaceStorage"));
         }
 
-        // Fallback: Lấy đường dẫn theo platform qua dirs crate
+        // Fallback: Get path per platform via dirs crate
         if let Some(config_dir) = dirs::config_dir() {
             // Linux: ~/.config/Code/User/workspaceStorage
             // macOS: ~/Library/Application Support/Code/User/workspaceStorage
@@ -53,7 +53,7 @@ impl VSCodeCopilotExtractor {
         Self { storage_paths }
     }
 
-    /// Extract metadata nhanh từ JSON file (chỉ đọc fields cần thiết)
+    /// Quick metadata extraction from JSON file (only read required fields).
     fn extract_quick_metadata(
         &self,
         path: &PathBuf,
@@ -62,7 +62,7 @@ impl VSCodeCopilotExtractor {
         let content = std::fs::read_to_string(path).ok()?;
         let json: Value = serde_json::from_str(&content).ok()?;
 
-        // Lấy session ID từ filename hoặc JSON
+        // Get session ID from filename or JSON
         let session_id = json
             .get("sessionId")
             .and_then(|v| v.as_str())
@@ -74,13 +74,13 @@ impl VSCodeCopilotExtractor {
                     .unwrap_or_default()
             });
 
-        // Lấy title nếu có
+        // Get title if available
         let title = json
             .get("customTitle")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .or_else(|| {
-                // Fallback: lấy text từ request đầu tiên
+                // Fallback: get text from first request
                 json.get("requests")
                     .and_then(|r| r.as_array())
                     .and_then(|arr| arr.first())
@@ -98,13 +98,13 @@ impl VSCodeCopilotExtractor {
                     })
             });
 
-        // Lấy timestamp
+        // Get timestamp
         let created_at = json
             .get("creationDate")
             .and_then(|v| v.as_i64())
             .and_then(|ts| Utc.timestamp_millis_opt(ts).single());
 
-        // Lấy file size
+        // Get file size
         let file_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
 
         Some(SessionMetadata {
@@ -112,7 +112,7 @@ impl VSCodeCopilotExtractor {
             source: "vscode-copilot".to_string(),
             title,
             created_at,
-            vault_path: PathBuf::new(), // Sẽ được set sau khi copy
+            vault_path: PathBuf::new(), // Will be set after copy
             original_path: path.clone(),
             file_size,
             workspace_name: Some(workspace_name.to_string()),
@@ -139,12 +139,12 @@ impl Extractor for VSCodeCopilotExtractor {
                 continue;
             }
 
-            // Duyệt qua tất cả workspace hash directories
+            // Iterate through all workspace hash directories
             if let Ok(entries) = std::fs::read_dir(storage_path) {
                 for entry in entries.flatten() {
                     let chat_sessions_dir = entry.path().join("chatSessions");
                     if chat_sessions_dir.exists() && chat_sessions_dir.is_dir() {
-                        // Kiểm tra có file JSON nào không
+                        // Check if there are any JSON files
                         if let Ok(sessions) = std::fs::read_dir(&chat_sessions_dir) {
                             let has_json = sessions
                                 .flatten()
@@ -170,7 +170,7 @@ impl Extractor for VSCodeCopilotExtractor {
                         .get("folder")
                         .and_then(|v| v.as_str())
                         .map(|s| {
-                            // Lấy tên folder cuối cùng từ URI
+                            // Get last folder name from URI
                             s.rsplit('/').next().unwrap_or(s).to_string()
                         })
                         .unwrap_or_else(|| "Unknown".to_string());
@@ -188,14 +188,14 @@ impl Extractor for VSCodeCopilotExtractor {
 
         let workspace_name = self.get_workspace_name(location);
 
-        // Thu thập tất cả JSON paths trước
+        // Collect all JSON paths first
         let json_paths: Vec<PathBuf> = std::fs::read_dir(&chat_sessions_dir)?
             .flatten()
             .map(|e| e.path())
             .filter(|p| p.extension().is_some_and(|ext| ext == "json"))
             .collect();
 
-        // Extract metadata song song với rayon
+        // Extract metadata in parallel with rayon
         let mut sessions: Vec<SessionFile> = json_paths
             .par_iter()
             .filter_map(|path| {
@@ -207,7 +207,7 @@ impl Extractor for VSCodeCopilotExtractor {
             })
             .collect();
 
-        // Sắp xếp theo thời gian tạo (mới nhất trước)
+        // Sort by creation time (newest first)
         sessions.sort_by(|a, b| b.metadata.created_at.cmp(&a.metadata.created_at));
 
         Ok(sessions)
@@ -219,7 +219,7 @@ impl Extractor for VSCodeCopilotExtractor {
             return Ok(0);
         }
 
-        // Chỉ đếm số file JSON, không parse metadata
+        // Only count JSON files, don't parse metadata
         let count = std::fs::read_dir(&chat_sessions_dir)?
             .flatten()
             .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))

@@ -12,7 +12,7 @@ interface TextEditorProps {
   onClose: () => void;
 }
 
-// Custom theme để làm to fold gutter
+// Custom theme to make fold gutter
 const foldGutterTheme = EditorView.theme({
   ".cm-foldGutter": {
     width: "16px",
@@ -25,8 +25,8 @@ const foldGutterTheme = EditorView.theme({
 });
 
 /**
- * Text Editor sử dụng CodeMirror.
- * Hỗ trợ JSON/Markdown syntax highlighting, virtualized rendering sẵn.
+ * Text Editor using CodeMirror.
+ * Supports JSON/Markdown syntax highlighting, virtualized rendering.
  */
 export function TextEditor({ path, title, onClose }: TextEditorProps) {
   const [content, setContent] = useState<string>("");

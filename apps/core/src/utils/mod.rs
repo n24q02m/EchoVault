@@ -1,4 +1,4 @@
-//! Utility functions cho EchoVault.
+//! Utility functions for EchoVault.
 
 pub mod browser;
 

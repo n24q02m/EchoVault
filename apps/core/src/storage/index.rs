@@ -1,11 +1,11 @@
-//! SQLite index cho metadata - Tìm kiếm và lọc sessions nhanh chóng.
+//! SQLite index for metadata - Fast search and filtering of sessions.
 //!
-//! Index chứa metadata cơ bản của mỗi session, cho phép:
-//! - Full-text search trong titles
-//! - Lọc theo source, workspace, date range
-//! - Phân trang kết quả
+//! Index contains basic metadata of each session, allowing:
+//! - Full-text search in titles
+//! - Filtering by source, workspace, date range
+//! - Pagination of results
 //!
-//! Raw JSON files vẫn được lưu riêng, index chỉ chứa metadata.
+//! Raw JSON files are still stored separately, index only contains metadata.
 
 use crate::extractors::SessionMetadata;
 use anyhow::{Context, Result};
@@ -13,18 +13,18 @@ use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection};
 use std::path::{Path, PathBuf};
 
-/// SQLite index để quản lý metadata của sessions
+/// SQLite index for managing session metadata
 pub struct SessionIndex {
     conn: Connection,
 }
 
 #[allow(dead_code)]
 impl SessionIndex {
-    /// Tạo hoặc mở index database
+    /// Open or create index database
     pub fn open(vault_dir: &Path) -> Result<Self> {
         let db_path = vault_dir.join("index.db");
 
-        // Tạo thư mục nếu chưa tồn tại
+        // Create directory if it doesn't exist
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -38,7 +38,7 @@ impl SessionIndex {
         Ok(index)
     }
 
-    /// Mở index database trong memory (cho testing)
+    /// Open index database in memory (for testing)
     #[allow(dead_code)]
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
@@ -47,9 +47,9 @@ impl SessionIndex {
         Ok(index)
     }
 
-    /// Khởi tạo schema cho database
+    /// Initialize database schema
     fn init_schema(&self) -> Result<()> {
-        // Bảng chính chứa metadata
+        // Main table for metadata
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY,
@@ -65,7 +65,7 @@ impl SessionIndex {
             [],
         )?;
 
-        // Index để tìm kiếm nhanh
+        // Index for fast searching
         self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_sessions_source ON sessions(source)",
             [],
@@ -91,7 +91,7 @@ impl SessionIndex {
             [],
         )?;
 
-        // Trigger để tự động cập nhật FTS index
+        // Trigger to automatically update FTS index
         self.conn.execute(
             "CREATE TRIGGER IF NOT EXISTS sessions_ai AFTER INSERT ON sessions BEGIN
                 INSERT INTO sessions_fts(rowid, id, title, workspace_name)
@@ -121,7 +121,7 @@ impl SessionIndex {
         Ok(())
     }
 
-    /// Thêm hoặc cập nhật một session vào index
+    /// Add or update a session in the index
     pub fn upsert(&self, metadata: &SessionMetadata) -> Result<()> {
         let created_at = metadata.created_at.map(|dt| dt.to_rfc3339());
 
@@ -152,7 +152,7 @@ impl SessionIndex {
         Ok(())
     }
 
-    /// Thêm nhiều sessions vào index (batch insert)
+    /// Add multiple sessions to the index (batch insert)
     pub fn upsert_batch(&mut self, sessions: &[SessionMetadata]) -> Result<usize> {
         let tx = self.conn.transaction()?;
         let mut count = 0;
@@ -190,7 +190,7 @@ impl SessionIndex {
         Ok(count)
     }
 
-    /// Lấy tất cả sessions (với phân trang)
+    /// Get all sessions (with pagination)
     pub fn list(&self, limit: usize, offset: usize) -> Result<Vec<SessionMetadata>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, source, title, created_at, vault_path, original_path, file_size, workspace_name
@@ -220,7 +220,7 @@ impl SessionIndex {
         Ok(sessions)
     }
 
-    /// Tìm kiếm full-text trong titles và workspace names
+    /// Full-text search in titles and workspace names
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SessionMetadata>> {
         let mut stmt = self.conn.prepare(
             "SELECT s.id, s.source, s.title, s.created_at, s.vault_path, s.original_path, s.file_size, s.workspace_name
@@ -252,7 +252,7 @@ impl SessionIndex {
         Ok(sessions)
     }
 
-    /// Lọc sessions theo source (vscode-copilot, cursor, etc.)
+    /// Filter sessions by source (vscode-copilot, cursor, etc.)
     pub fn filter_by_source(&self, source: &str, limit: usize) -> Result<Vec<SessionMetadata>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, source, title, created_at, vault_path, original_path, file_size, workspace_name
@@ -283,7 +283,7 @@ impl SessionIndex {
         Ok(sessions)
     }
 
-    /// Lọc sessions theo workspace name
+    /// Filter sessions by workspace name
     pub fn filter_by_workspace(
         &self,
         workspace: &str,
@@ -318,7 +318,7 @@ impl SessionIndex {
         Ok(sessions)
     }
 
-    /// Lấy session theo ID
+    /// Get session by ID
     pub fn get(&self, id: &str) -> Result<Option<SessionMetadata>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, source, title, created_at, vault_path, original_path, file_size, workspace_name
@@ -345,7 +345,7 @@ impl SessionIndex {
         }
     }
 
-    /// Xóa session khỏi index
+    /// Delete session from index
     pub fn delete(&self, id: &str) -> Result<bool> {
         let affected = self
             .conn
@@ -353,7 +353,7 @@ impl SessionIndex {
         Ok(affected > 0)
     }
 
-    /// Đếm tổng số sessions
+    /// Count total number of sessions
     pub fn count(&self) -> Result<usize> {
         let count: i64 = self
             .conn
@@ -361,7 +361,7 @@ impl SessionIndex {
         Ok(count as usize)
     }
 
-    /// Đếm số sessions theo source
+    /// Count number of sessions by source
     pub fn count_by_source(&self, source: &str) -> Result<usize> {
         let count: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM sessions WHERE source = ?1",
@@ -371,7 +371,7 @@ impl SessionIndex {
         Ok(count as usize)
     }
 
-    /// Lấy danh sách tất cả workspaces
+    /// Get list of all workspaces
     pub fn list_workspaces(&self) -> Result<Vec<String>> {
         let mut stmt = self.conn.prepare(
             "SELECT DISTINCT workspace_name FROM sessions WHERE workspace_name IS NOT NULL ORDER BY workspace_name",
@@ -390,7 +390,7 @@ impl SessionIndex {
         Ok(workspaces)
     }
 
-    /// Lấy danh sách tất cả sources
+    /// Get list of all sources
     pub fn list_sources(&self) -> Result<Vec<String>> {
         let mut stmt = self
             .conn
@@ -409,7 +409,7 @@ impl SessionIndex {
         Ok(sources)
     }
 
-    /// Kiểm tra session đã tồn tại trong index chưa
+    /// Check if a session exists in the index
     pub fn exists(&self, id: &str) -> Result<bool> {
         let count: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM sessions WHERE id = ?1",
@@ -420,7 +420,7 @@ impl SessionIndex {
     }
 }
 
-/// Struct trung gian để map từ SQLite row
+/// Intermediate struct to map from SQLite row
 struct SessionMetadataRow {
     id: String,
     source: String,

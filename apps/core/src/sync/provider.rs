@@ -1,17 +1,17 @@
-//! SyncProvider trait - Abstraction cho sync backend.
+//! SyncProvider trait - Abstraction for sync backend.
 //!
-//! Trait này cung cấp interface để sync với Google Drive thông qua Rclone.
+//! This trait provides an interface for syncing with Google Drive via Rclone.
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Các tuỳ chọn cho sync operations
+/// Options for sync operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncOptions {
-    /// Có mã hoá dữ liệu trước khi sync không
+    /// Whether to encrypt data before sync
     pub encrypt: bool,
-    /// Có nén dữ liệu trước khi sync không
+    /// Whether to compress data before sync
     pub compress: bool,
 }
 
@@ -24,74 +24,74 @@ impl Default for SyncOptions {
     }
 }
 
-/// Kết quả của pull operation
+/// Result of a pull operation.
 #[derive(Debug, Clone)]
 pub struct PullResult {
-    /// Có thay đổi được pull không
+    /// Whether changes were pulled
     pub has_changes: bool,
-    /// Số files mới
+    /// Number of new files
     pub new_files: usize,
-    /// Số files được cập nhật
+    /// Number of updated files
     pub updated_files: usize,
 }
 
-/// Kết quả của push operation
+/// Result of a push operation.
 #[derive(Debug, Clone)]
 pub struct PushResult {
-    /// Push thành công không
+    /// Whether push was successful
     pub success: bool,
-    /// Số files được push
+    /// Number of files pushed
     pub files_pushed: usize,
-    /// Message (nếu có)
+    /// Message (if any)
     pub message: Option<String>,
 }
 
-/// Trạng thái xác thực
+/// Authentication status.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AuthStatus {
-    /// Chưa xác thực
+    /// Not authenticated
     NotAuthenticated,
-    /// Đang xác thực (chờ user action)
+    /// Authentication pending (waiting for user action)
     Pending {
         user_code: String,
         verify_url: String,
     },
-    /// Đã xác thực
+    /// Authenticated
     Authenticated,
-    /// Lỗi xác thực
+    /// Authentication error
     Error(String),
 }
 
-/// Trait cho tất cả sync providers
+/// Trait for all sync providers.
 ///
-/// Mỗi provider implement trait này để cung cấp khả năng
-/// đồng bộ vault với một backend cụ thể.
+/// Each provider implements this trait to provide
+/// sync capability with a specific backend.
 pub trait SyncProvider: Send + Sync {
-    /// Tên của provider (github, google_drive, s3)
+    /// Provider name (github, google_drive, s3)
     fn name(&self) -> &'static str;
 
-    /// Kiểm tra xem đã xác thực chưa
+    /// Check if authenticated
     fn is_authenticated(&self) -> bool;
 
-    /// Lấy trạng thái xác thực hiện tại
+    /// Get current auth status
     fn auth_status(&self) -> AuthStatus;
 
-    /// Bắt đầu quá trình xác thực
-    /// Trả về AuthStatus::Pending nếu cần user action
+    /// Start authentication process.
+    /// Returns AuthStatus::Pending if user action is needed.
     fn start_auth(&mut self) -> Result<AuthStatus>;
 
-    /// Hoàn tất xác thực (poll cho OAuth device flow)
+    /// Complete authentication (poll for OAuth device flow)
     fn complete_auth(&mut self) -> Result<AuthStatus>;
 
-    /// Pull dữ liệu từ remote về vault
+    /// Pull data from remote to vault
     fn pull(&self, vault_dir: &Path, options: &SyncOptions) -> Result<PullResult>;
 
-    /// Push dữ liệu từ vault lên remote
+    /// Push data from vault to remote
     fn push(&self, vault_dir: &Path, options: &SyncOptions) -> Result<PushResult>;
 
-    /// Kiểm tra xem có thay đổi cần sync không
+    /// Check if there are local changes to sync
     fn has_local_changes(&self, vault_dir: &Path) -> Result<bool>;
 
-    /// Kiểm tra xem remote có thay đổi mới không
+    /// Check if remote has new changes
     fn has_remote_changes(&self, vault_dir: &Path) -> Result<bool>;
 }

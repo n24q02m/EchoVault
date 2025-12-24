@@ -1,37 +1,37 @@
-//! Rclone Provider - Sync vault thông qua Rclone.
+//! Rclone Provider - Sync vault via Rclone.
 //!
-//! Provider này sử dụng Rclone làm backend để sync với Google Drive.
+//! This provider uses Rclone as backend for syncing with Google Drive.
 //!
-//! Ưu điểm:
-//! - Không cần user setup OAuth Client ID/Secret
-//! - Rclone đã có sẵn OAuth credentials cho Google Drive
-//! - Được bundle vào app, không cần user cài đặt riêng
+//! Advantages:
+//! - No user setup of OAuth Client ID/Secret required
+//! - Rclone comes with built-in OAuth credentials for Google Drive
+//! - Bundled into app, no separate installation needed
 
 use super::provider::{AuthStatus, PullResult, PushResult, SyncOptions, SyncProvider};
 use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-/// Remote name mặc định cho Google Drive
+/// Default remote name for Google Drive
 const DEFAULT_REMOTE_NAME: &str = "echovault-gdrive";
 
-/// Remote path trên cloud storage
+/// Remote path on cloud storage
 const DEFAULT_REMOTE_PATH: &str = "EchoVault";
 
 /// Rclone sync provider
 pub struct RcloneProvider {
-    /// Đường dẫn đến rclone binary
+    /// Path to rclone binary
     rclone_path: PathBuf,
-    /// Tên remote đã cấu hình (e.g., "echovault-gdrive")
+    /// Configured remote name (e.g., "echovault-gdrive")
     remote_name: String,
-    /// Đường dẫn trên remote (e.g., "EchoVault")
+    /// Path on remote (e.g., "EchoVault")
     remote_path: String,
-    /// Remote đã được cấu hình chưa
+    /// Whether remote is configured
     is_configured: bool,
 }
 
 impl RcloneProvider {
-    /// Tạo provider mới với bundled rclone binary
+    /// Create new provider with bundled rclone binary.
     pub fn new() -> Self {
         let rclone_path = Self::find_rclone_binary();
         let mut provider = Self {
@@ -46,7 +46,7 @@ impl RcloneProvider {
         provider
     }
 
-    /// Tạo provider với custom remote name
+    /// Create provider with custom remote name.
     pub fn with_remote(remote_name: &str, remote_path: &str) -> Self {
         let rclone_path = Self::find_rclone_binary();
         let mut provider = Self {
@@ -60,9 +60,9 @@ impl RcloneProvider {
         provider
     }
 
-    /// Tìm rclone binary - ưu tiên bundled, fallback system
+    /// Find rclone binary - prefer bundled, fallback to system.
     fn find_rclone_binary() -> PathBuf {
-        // Thử tìm bundled rclone trước (Tauri sidecar)
+        // Try to find bundled rclone first (Tauri sidecar)
         if let Ok(exe_path) = std::env::current_exe() {
             if let Some(exe_dir) = exe_path.parent() {
                 let bundled = if cfg!(windows) {
@@ -74,7 +74,7 @@ impl RcloneProvider {
                     return bundled;
                 }
 
-                // Thử trong thư mục binaries (development mode)
+                // Try in binaries directory (development mode)
                 let dev_bundled = if cfg!(windows) {
                     exe_dir.join("binaries").join("rclone.exe")
                 } else {
@@ -86,7 +86,7 @@ impl RcloneProvider {
             }
         }
 
-        // Fallback: sử dụng system rclone
+        // Fallback: use system rclone
         if cfg!(windows) {
             PathBuf::from("rclone.exe")
         } else {
@@ -94,7 +94,7 @@ impl RcloneProvider {
         }
     }
 
-    /// Chạy rclone command và trả về output
+    /// Run rclone command and return output.
     fn run_rclone(&self, args: &[&str]) -> Result<String> {
         let output = Command::new(&self.rclone_path)
             .args(args)
@@ -111,7 +111,7 @@ impl RcloneProvider {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
-    /// Chạy rclone command với output trực tiếp (cho interactive commands)
+    /// Run rclone command with direct output (for interactive commands).
     fn run_rclone_interactive(&self, args: &[&str]) -> Result<()> {
         let status = Command::new(&self.rclone_path)
             .args(args)
@@ -128,7 +128,7 @@ impl RcloneProvider {
         Ok(())
     }
 
-    /// Liệt kê các remotes đã cấu hình
+    /// List configured remotes.
     pub fn list_remotes(&self) -> Result<Vec<String>> {
         let output = self.run_rclone(&["listremotes"])?;
         let remotes: Vec<String> = output
@@ -139,30 +139,30 @@ impl RcloneProvider {
         Ok(remotes)
     }
 
-    /// Kiểm tra remote đã tồn tại chưa
+    /// Check if remote exists.
     pub fn check_remote_exists(&self) -> Result<bool> {
         let remotes = self.list_remotes()?;
         Ok(remotes.contains(&self.remote_name))
     }
 
-    /// Cấu hình remote mới (interactive)
+    /// Configure new remote (interactive).
     pub fn configure_remote(&self, remote_type: &str) -> Result<()> {
-        println!("[Rclone] Đang cấu hình remote '{}'...", self.remote_name);
-        println!("[Rclone] Browser sẽ mở để bạn đăng nhập.");
+        println!("[Rclone] Configuring remote '{}'...", self.remote_name);
+        println!("[Rclone] Browser will open for you to login.");
 
         // rclone config create <name> <type> --config
-        // Với Google Drive: rclone config create echovault-gdrive drive
+        // For Google Drive: rclone config create echovault-gdrive drive
         self.run_rclone_interactive(&["config", "create", &self.remote_name, remote_type])?;
 
         Ok(())
     }
 
-    /// Lấy remote URL đầy đủ (remote:path)
+    /// Get full remote URL (remote:path).
     fn get_remote_url(&self) -> String {
         format!("{}:{}", self.remote_name, self.remote_path)
     }
 
-    /// Kiểm tra rclone có sẵn không
+    /// Check if rclone is available.
     pub fn check_rclone_available(&self) -> Result<bool> {
         match self.run_rclone(&["version"]) {
             Ok(_) => Ok(true),
@@ -170,20 +170,20 @@ impl RcloneProvider {
         }
     }
 
-    /// Lấy phiên bản rclone
+    /// Get rclone version.
     pub fn get_version(&self) -> Result<String> {
         let output = self.run_rclone(&["version"])?;
-        // Lấy dòng đầu tiên chứa version
+        // Get first line containing version
         let version = output.lines().next().unwrap_or("Unknown").to_string();
         Ok(version)
     }
 
-    /// Lấy remote name hiện tại
+    /// Get current remote name.
     pub fn remote_name(&self) -> &str {
         &self.remote_name
     }
 
-    /// Lấy remote path hiện tại
+    /// Get current remote path.
     pub fn remote_path(&self) -> &str {
         &self.remote_path
     }
@@ -213,17 +213,17 @@ impl SyncProvider for RcloneProvider {
     }
 
     fn start_auth(&mut self) -> Result<AuthStatus> {
-        // Kiểm tra rclone có sẵn không
+        // Check if rclone is available
         if !self.check_rclone_available()? {
-            bail!("Rclone không tìm thấy. Vui lòng đảm bảo rclone đã được cài đặt hoặc bundle.");
+            bail!("Rclone not found. Please ensure rclone is installed or bundled.");
         }
 
-        // Chạy rclone config create với Google Drive
-        // rclone sẽ tự mở browser để OAuth
-        println!("[Rclone] Bắt đầu cấu hình Google Drive...");
-        println!("[Rclone] Browser sẽ tự động mở để đăng nhập Google.");
+        // Run rclone config create with Google Drive
+        // rclone will automatically open browser for OAuth
+        println!("[Rclone] Starting Google Drive configuration...");
+        println!("[Rclone] Browser will automatically open for Google login.");
 
-        // Tạo remote với Google Drive
+        // Create remote with Google Drive
         let result = self.configure_remote("drive");
 
         if result.is_ok() {
@@ -233,15 +233,15 @@ impl SyncProvider for RcloneProvider {
             }
         }
 
-        // Trả về pending để frontend có thể retry checking
+        // Return pending so frontend can retry checking
         Ok(AuthStatus::Pending {
-            user_code: "Đang cấu hình...".to_string(),
-            verify_url: "Vui lòng hoàn tất trong browser".to_string(),
+            user_code: "Configuring...".to_string(),
+            verify_url: "Please complete in browser".to_string(),
         })
     }
 
     fn complete_auth(&mut self) -> Result<AuthStatus> {
-        // Kiểm tra lại xem remote đã được cấu hình chưa
+        // Recheck if remote has been configured
         self.is_configured = self.check_remote_exists()?;
 
         if self.is_configured {
@@ -253,16 +253,16 @@ impl SyncProvider for RcloneProvider {
 
     fn pull(&self, vault_dir: &Path, _options: &SyncOptions) -> Result<PullResult> {
         if !self.is_configured {
-            bail!("Remote chưa được cấu hình. Vui lòng chạy start_auth trước.");
+            bail!("Remote not configured. Please run start_auth first.");
         }
 
         let remote_url = self.get_remote_url();
         let local_path = vault_dir.to_string_lossy();
 
-        println!("[Rclone] Đang pull từ {} về {}...", remote_url, local_path);
+        println!("[Rclone] Pulling from {} to {}...", remote_url, local_path);
 
         // rclone sync remote:path local_path
-        // Sử dụng --verbose để có thể parse output sau
+        // Use --verbose to be able to parse output later
         let output = self.run_rclone(&[
             "sync",
             &remote_url,
@@ -271,7 +271,7 @@ impl SyncProvider for RcloneProvider {
             "--stats-one-line",
         ])?;
 
-        // Parse output để đếm files (simplified)
+        // Parse output to count files (simplified)
         let new_files = output.matches("Transferred:").count();
 
         Ok(PullResult {
@@ -283,13 +283,13 @@ impl SyncProvider for RcloneProvider {
 
     fn push(&self, vault_dir: &Path, _options: &SyncOptions) -> Result<PushResult> {
         if !self.is_configured {
-            bail!("Remote chưa được cấu hình. Vui lòng chạy start_auth trước.");
+            bail!("Remote not configured. Please run start_auth first.");
         }
 
         let remote_url = self.get_remote_url();
         let local_path = vault_dir.to_string_lossy();
 
-        println!("[Rclone] Đang push từ {} lên {}...", local_path, remote_url);
+        println!("[Rclone] Pushing from {} to {}...", local_path, remote_url);
 
         // rclone sync local_path remote:path
         let output = self.run_rclone(&[
@@ -300,7 +300,7 @@ impl SyncProvider for RcloneProvider {
             "--stats-one-line",
         ])?;
 
-        // Parse output để đếm files (simplified)
+        // Parse output to count files (simplified)
         let files_pushed = output.matches("Transferred:").count();
 
         Ok(PushResult {
@@ -328,10 +328,10 @@ impl SyncProvider for RcloneProvider {
             "-q",
         ]);
 
-        // Nếu có output = có khác biệt
+        // If there's output = there are differences
         match output {
             Ok(out) => Ok(!out.trim().is_empty()),
-            Err(_) => Ok(true), // Assume có changes nếu check fail
+            Err(_) => Ok(true), // Assume there are changes if check fails
         }
     }
 

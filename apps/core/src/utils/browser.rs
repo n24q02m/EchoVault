@@ -1,25 +1,25 @@
-//! Utility để mở URL trong browser mặc định.
+//! Utility to open URL in default browser.
 //!
-//! Hỗ trợ cross-platform: Windows, macOS, Linux.
-//! Chỉ hỗ trợ OS local (native), không hỗ trợ WSL hoặc remote environments.
+//! Supports cross-platform: Windows, macOS, Linux.
+//! Only supports local OS (native), not WSL or remote environments.
 
 use std::process::Command;
 
-/// Mở URL trong browser mặc định.
+/// Open URL in default browser.
 ///
-/// Trả về `true` nếu mở thành công, `false` nếu thất bại.
-/// Hỗ trợ:
-/// - **Linux**: Sử dụng `xdg-open`
-/// - **macOS**: Sử dụng `open`
-/// - **Windows**: Sử dụng `cmd /c start`
+/// Returns `true` if opened successfully, `false` if failed.
+/// Supports:
+/// - **Linux**: Uses `xdg-open`
+/// - **macOS**: Uses `open`
+/// - **Windows**: Uses `cmd /c start`
 ///
 /// # Arguments
 ///
-/// * `url` - URL cần mở trong browser
+/// * `url` - URL to open in browser
 ///
 /// # Returns
 ///
-/// `true` nếu command được chạy thành công, `false` nếu thất bại
+/// `true` if command was executed successfully, `false` if failed
 pub fn open_browser(url: &str) -> bool {
     #[cfg(target_os = "windows")]
     {
@@ -38,13 +38,13 @@ pub fn open_browser(url: &str) -> bool {
 
     #[cfg(target_os = "linux")]
     {
-        // Linux native - dùng xdg-open
+        // Linux native - use xdg-open
         Command::new("xdg-open").arg(url).spawn().is_ok()
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
-        // Platform không được hỗ trợ
+        // Unsupported platform
         false
     }
 }
@@ -55,7 +55,7 @@ mod tests {
 
     #[test]
     fn test_open_browser_doesnt_crash() {
-        // Test function signature, không thực sự mở browser
+        // Test function signature, don't actually open browser
         let _ = open_browser;
     }
 }

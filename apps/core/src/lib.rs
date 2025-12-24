@@ -1,11 +1,11 @@
 //! EchoVault Core Library
 //!
-//! Thư viện core cho EchoVault - "Black Box" cho lịch sử chat AI.
-//! Cung cấp các chức năng:
-//! - Trích xuất chat sessions từ các IDE (VS Code Copilot, Antigravity, etc.)
-//! - Đồng bộ với Google Drive qua Rclone
+//! Core library for EchoVault - "Black Box" for AI chat history.
+//! Provides the following capabilities:
+//! - Extract chat sessions from various IDEs (VS Code Copilot, Cursor, Cline, Antigravity)
+//! - Sync with Google Drive via Rclone
 //!
-//! Nguyên tắc quan trọng: Lưu trữ raw JSON gốc, không format/transform data.
+//! Important principle: Store raw JSON files without transformation.
 
 pub mod config;
 pub mod extractors;

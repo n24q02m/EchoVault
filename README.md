@@ -1,55 +1,67 @@
 # EchoVault
 
-**Hộp đen cho mọi cuộc hội thoại AI của bạn.**
+**Black box for all your AI conversations.**
 
-EchoVault trích xuất và đồng bộ lịch sử chat từ GitHub Copilot, Cursor, Antigravity và các công cụ AI khác - giúp bạn không bao giờ mất những insight quý giá.
+EchoVault extracts and syncs chat history from GitHub Copilot, Cursor, Antigravity, and other AI tools - ensuring you never lose valuable insights.
 
-## Tính năng
+## Features
 
-- **Trích xuất đa nguồn**: Hỗ trợ VS Code Copilot, Cursor AI, Cline, Antigravity
-- **Đồng bộ Cloud qua Rclone**: Tự động sync với Google Drive
-- **Desktop App**: Mini window với system tray background sync
-- **Đa nền tảng**: Windows, Linux, macOS
-- **Tương lai bền vững**: Lưu trữ raw JSON gốc, không transform/format
+- **Multi-source Extraction**: Supports VS Code Copilot, Cursor AI, Cline, Antigravity
+- **Cloud Sync via Rclone**: Auto-sync with Google Drive
+- **Desktop App**: Mini window with system tray background sync
+- **Cross-platform**: Windows, Linux, macOS
+- **Future-proof**: Stores raw JSON files without transformation
 
-## Tải xuống
+## Privacy Notice
 
-Tải bản cài đặt mới nhất từ [Releases](https://github.com/n24q02m/EchoVault/releases):
+> [!WARNING]
+> EchoVault syncs your AI chat history to cloud storage. This data may contain:
+>
+> - Code snippets and file paths
+> - API keys or secrets mentioned in conversations
+> - Personal information
+>
+> **Please review your chat history for sensitive data before enabling sync.**
+> See [SECURITY.md](SECURITY.md) for details.
 
-| Platform | File |
-|----------|------|
-| Windows | `EchoVault_x.x.x_x64-setup.exe` |
-| macOS (Intel) | `EchoVault_x.x.x_x64.dmg` |
-| macOS (Apple Silicon) | `EchoVault_x.x.x_aarch64.dmg` |
-| Linux (Debian/Ubuntu) | `echovault_x.x.x_amd64.deb` |
-| Linux (AppImage) | `EchoVault_x.x.x_amd64.AppImage` |
+## Download
 
-## Cài đặt nhanh
+Download the latest installer from [Releases](https://github.com/n24q02m/EchoVault/releases):
 
-Chỉ cần 2 bước:
+| Platform              | File                              |
+| --------------------- | --------------------------------- |
+| Windows               | `EchoVault_x.x.x_x64-setup.exe`   |
+| macOS (Intel)         | `EchoVault_x.x.x_x64.dmg`         |
+| macOS (Apple Silicon) | `EchoVault_x.x.x_aarch64.dmg`     |
+| Linux (Debian/Ubuntu) | `echovault_x.x.x_amd64.deb`       |
+| Linux (AppImage)      | `EchoVault_x.x.x_amd64.AppImage`  |
+
+## Quick Setup
+
+Just 2 steps:
 
 ```bash
 # Clone repository
 git clone https://github.com/n24q02m/EchoVault.git
 cd EchoVault
 
-# Chạy setup tự động - cài đặt TẤT CẢ
+# Run auto setup - installs EVERYTHING
 pnpm setup
 ```
 
-Script setup sẽ **TỰ ĐỘNG** cài đặt:
+The setup script will **AUTOMATICALLY** install:
 
-1. ✅ **OS packages** - Tauri dependencies (libgtk-3, webkit2gtk, etc.)
-2. ✅ **mise** - Tool version manager
-3. ✅ **Rust, Node.js, uv** - Via mise
-4. ✅ **pnpm** - Package manager
-5. ✅ **Node dependencies** - Tất cả packages cần thiết
-6. ✅ **Rclone binary** - Sync engine cho Google Drive
-7. ✅ **Pre-commit hooks** - Quality checks tự động
+1. **OS packages** - Tauri dependencies (libgtk-3, webkit2gtk, etc.)
+2. **mise** - Tool version manager
+3. **Rust, Node.js, uv** - Via mise
+4. **pnpm** - Package manager
+5. **Node dependencies** - All required packages
+6. **Rclone binary** - Sync engine for Google Drive
+7. **Pre-commit hooks** - Automatic quality checks
 
-> **Lưu ý**: Script yêu cầu sudo password trên Linux để cài system packages.
+> **Note**: Script requires sudo password on Linux to install system packages.
 
-## Chạy ứng dụng
+## Running the App
 
 ```bash
 # Development mode (full app)
@@ -61,18 +73,18 @@ pnpm dev
 # Production build
 cargo tauri build
 
-# Reset app (xóa config để setup lại)
+# Reset app (delete config to re-setup)
 pnpm reset
 pnpm reset --all
 ```
 
-## Phát triển
+## Development
 
 ### Rust
 
 ```bash
 cargo build                # Debug build
-cargo test --workspace     # Chạy tests
+cargo test --workspace     # Run tests
 cargo clippy --workspace   # Lint
 cargo fmt --all            # Format code
 ```
@@ -81,7 +93,7 @@ cargo fmt --all            # Format code
 
 ```bash
 cd apps/web
-pnpm dev                   # Dev server với HMR
+pnpm dev                   # Dev server with HMR
 pnpm build                 # Production build
 pnpm lint                  # Biome lint
 pnpm format                # Biome format
@@ -89,19 +101,19 @@ pnpm format                # Biome format
 
 ### Pre-commit hooks
 
-Pre-commit hooks đã được tự động cài đặt qua setup script. Để chạy thủ công:
+Pre-commit hooks are automatically installed via setup script. To run manually:
 
 ```bash
 uv run pre-commit run --all-files
 ```
 
-## Cấu trúc dự án
+## Project Structure
 
 ```text
 EchoVault/
 ├── apps/
 │   ├── core/              # Core library (extractors, sync, watcher)
-│   │   ├── extractors/    # Chat extractors cho các platforms
+│   │   ├── extractors/    # Chat extractors for platforms
 │   │   ├── storage/       # Storage layer
 │   │   ├── sync/          # Rclone sync engine
 │   │   └── utils/         # Utilities
@@ -118,11 +130,11 @@ EchoVault/
 
 ## Sync Provider
 
-EchoVault sử dụng **Rclone** làm sync engine để đồng bộ với **Google Drive**:
+EchoVault uses **Rclone** as sync engine to sync with **Google Drive**:
 
-- **Không cần setup OAuth phức tạp**: Rclone đã có sẵn verified credentials
-- **User-friendly**: Chỉ cần click Connect và đăng nhập trong browser
-- **Tin cậy**: Rclone là công cụ sync được sử dụng rộng rãi với 40k+ stars trên GitHub
+- **No complex OAuth setup**: Rclone comes with verified credentials
+- **User-friendly**: Just click Connect and login in browser
+- **Reliable**: Rclone is a widely-used sync tool with 40k+ stars on GitHub
 
 ## Tech Stack
 
@@ -135,15 +147,15 @@ EchoVault sử dụng **Rclone** làm sync engine để đồng bộ với **Goo
 
 ## Troubleshooting
 
-### Setup script bị lỗi
+### Setup script fails
 
-Nếu setup script gặp lỗi, thử các bước sau:
+If setup script fails, try:
 
-1. **Restart terminal** và chạy lại `pnpm setup`
-2. Kiểm tra log chi tiết trong output
-3. Cài thủ công các components còn thiếu (xem bên dưới)
+1. **Restart terminal** and run `pnpm setup` again
+2. Check detailed log in output
+3. Manually install missing components (see below)
 
-### Cài thủ công (nếu setup script thất bại)
+### Manual installation (if setup script fails)
 
 #### Linux: Tauri dependencies
 
@@ -181,24 +193,28 @@ winget install Microsoft.VisualStudio.2022.BuildTools \
 curl https://mise.run | sh
 ```
 
-#### Tools từ mise
+#### Tools from mise
 
 ```bash
 mise install
 ```
 
-### Lỗi "command not found" sau khi cài
+### "command not found" error after installation
 
-Restart terminal để load PATH mới, hoặc:
+Restart terminal to load new PATH, or:
 
 ```bash
 # Linux/macOS
-source ~/.bashrc  # hoặc ~/.zshrc
+source ~/.bashrc  # or ~/.zshrc
 
 # Windows
-# Đóng và mở lại terminal
+# Close and reopen terminal
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
 
 ## License
 
-MIT - Xem [LICENSE](LICENSE) để biết thêm chi tiết.
+MIT - See [LICENSE](LICENSE) for details.

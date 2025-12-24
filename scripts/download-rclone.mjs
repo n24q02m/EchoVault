@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Script download Rclone binary cho dev environment
+// Download Rclone binary for dev environment
 
 import { chmodSync, createReadStream, createWriteStream, existsSync, mkdirSync, renameSync, rmSync, unlinkSync } from "fs";
 import { dirname, join } from "path";

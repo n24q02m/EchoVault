@@ -14,7 +14,7 @@ strip = true
 lto = true
 codegen-units = 1
 opt-level = "z"    # Optimize for size
-panic = "abort"    # Không unwind stack khi panic
+panic = "abort"    # Do not unwind stack when panic
 
 [profile.dev]
-opt-level = 1      # Tối ưu nhẹ cho dev mode
+opt-level = 1      # Optimize for dev mode

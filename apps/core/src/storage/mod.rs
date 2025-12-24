@@ -1,9 +1,12 @@
-//! Storage module - Quản lý việc lưu trữ raw JSON files và index metadata.
+//! Storage module - Manages raw JSON file storage and index metadata.
 //!
-//! Module này chứa:
-//! - SQLite index để tìm kiếm và lọc sessions nhanh chóng
-//! - Các hàm tiện ích để quản lý vault directory
+//! This module contains:
+//! - SQLite index for fast session search and filtering
+//! - VaultDb for multi-machine sync with conflict resolution
+//! - Utilities for vault directory management
 
 pub mod index;
+pub mod vault_db;
 
 pub use index::SessionIndex;
+pub use vault_db::{BatchResult, SessionEntry, UpsertResult, VaultDb};

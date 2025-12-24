@@ -243,7 +243,7 @@ function MainApp() {
   const [isScanning, setIsScanning] = useState(false);
   const [expandedSources, setExpandedSources] = useState<Set<string>>(new Set());
   const [isSyncing, setIsSyncing] = useState(false);
-  // syncError được giữ lại để có thể hiển thị toast notification trong tương lai
+  // syncError is kept to be able to display toast notification in the future
   const [, setSyncError] = useState<string | null>(null);
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
   const [viewingSession, setViewingSession] = useState<SessionInfo | null>(null);
@@ -263,7 +263,7 @@ function MainApp() {
   useEffect(() => {
     const initialize = async () => {
       try {
-        // Config vẫn được load để kiểm tra setup, nhưng không lưu state vì UI đã bỏ Settings
+        // Config is still loaded to check setup, but not saved to state because UI has removed Settings
         await invoke<AppConfig>("get_config");
         await loadSessions();
       } catch (err) {
