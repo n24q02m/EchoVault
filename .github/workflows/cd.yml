@@ -136,6 +136,9 @@ jobs:
         with:
           key: ${{ matrix.platform }}-${{ matrix.target }}-release
 
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked
+
       - name: Download Rclone (Windows)
         if: matrix.platform == 'windows-latest'
         shell: pwsh
