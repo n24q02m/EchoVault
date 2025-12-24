@@ -440,9 +440,9 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     };
     use rayon::prelude::*;
 
+    use parking_lot::Mutex;
     use std::fs;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Mutex;
 
     // Configure thread pool: use num_cpus - 2 (minimum 1)
     let num_threads = std::cmp::max(1, num_cpus::get().saturating_sub(2));
@@ -607,7 +607,6 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
                 if let Err(e) = fs::create_dir_all(&dest_dir) {
                     errors
                         .lock()
-                        .unwrap()
                         .push(format!("Failed to create dir {:?}: {}", dest_dir, e));
                     return;
                 }
@@ -645,7 +644,6 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
                 if let Err(e) = fs::copy(source_path, &dest_path) {
                     errors
                         .lock()
-                        .unwrap()
                         .push(format!("Failed to copy {}: {}", session.metadata.id, e));
                     return;
                 }
@@ -653,7 +651,6 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
                 // Record for vault.db update
                 new_entries
                     .lock()
-                    .unwrap()
                     .push(echovault_core::storage::SessionEntry {
                         id: session.metadata.id.clone(),
                         source: session.metadata.source.clone(),
@@ -669,7 +666,7 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     });
 
     // Check for errors
-    let errs = errors.into_inner().unwrap();
+    let errs = errors.into_inner();
     if !errs.is_empty() {
         println!("[ingest_sessions] {} errors occurred:", errs.len());
         for e in &errs {
@@ -679,7 +676,7 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     }
 
     // 5. Update vault.db
-    let entries = new_entries.into_inner().unwrap();
+    let entries = new_entries.into_inner();
     if !entries.is_empty() {
         for entry in &entries {
             if let Err(e) = vault_db.upsert_session(entry) {
