@@ -55,6 +55,19 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize tracing subscriber for structured logging
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("echovault=info".parse().unwrap())
+                .add_directive("echovault_core=info".parse().unwrap())
+                .add_directive("echovault_lib=info".parse().unwrap()),
+        )
+        .with_target(true)
+        .init();
+
+    tracing::info!("EchoVault starting...");
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())

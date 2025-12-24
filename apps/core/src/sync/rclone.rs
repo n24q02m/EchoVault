@@ -11,6 +11,7 @@ use super::provider::{AuthStatus, PullResult, PushResult, SyncOptions, SyncProvi
 use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use tracing::info;
 
 /// Default remote name for Google Drive
 const DEFAULT_REMOTE_NAME: &str = "echovault-gdrive";
@@ -147,8 +148,8 @@ impl RcloneProvider {
 
     /// Configure new remote (interactive).
     pub fn configure_remote(&self, remote_type: &str) -> Result<()> {
-        println!("[Rclone] Configuring remote '{}'...", self.remote_name);
-        println!("[Rclone] Browser will open for you to login.");
+        info!("[Rclone] Configuring remote '{}'...", self.remote_name);
+        info!("[Rclone] Browser will open for you to login.");
 
         // rclone config create <name> <type> --config
         // For Google Drive: rclone config create echovault-gdrive drive
@@ -220,8 +221,8 @@ impl SyncProvider for RcloneProvider {
 
         // Run rclone config create with Google Drive
         // rclone will automatically open browser for OAuth
-        println!("[Rclone] Starting Google Drive configuration...");
-        println!("[Rclone] Browser will automatically open for Google login.");
+        info!("[Rclone] Starting Google Drive configuration...");
+        info!("[Rclone] Browser will automatically open for Google login.");
 
         // Create remote with Google Drive
         let result = self.configure_remote("drive");
@@ -259,7 +260,7 @@ impl SyncProvider for RcloneProvider {
         let remote_url = self.get_remote_url();
         let local_path = vault_dir.to_string_lossy();
 
-        println!("[Rclone] Pulling from {} to {}...", remote_url, local_path);
+        info!("[Rclone] Pulling from {} to {}...", remote_url, local_path);
 
         // rclone sync remote:path local_path
         // Use --verbose to be able to parse output later
@@ -289,7 +290,7 @@ impl SyncProvider for RcloneProvider {
         let remote_url = self.get_remote_url();
         let local_path = vault_dir.to_string_lossy();
 
-        println!("[Rclone] Pushing from {} to {}...", local_path, remote_url);
+        info!("[Rclone] Pushing from {} to {}...", local_path, remote_url);
 
         // rclone sync local_path remote:path
         let output = self.run_rclone(&[

@@ -9,6 +9,7 @@ use echovault_core::{
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::State;
+use tracing::{error, info, warn};
 
 /// State chứa RcloneProvider
 #[derive(Clone)]
@@ -108,7 +109,7 @@ pub async fn complete_setup(
 ) -> Result<(), String> {
     use echovault_core::config::default_config_path;
 
-    println!(
+    info!(
         "[complete_setup] Starting setup with folder: {}",
         request.folder_name
     );
@@ -136,7 +137,7 @@ pub async fn complete_setup(
     if !vault_path.exists() {
         std::fs::create_dir_all(&vault_path)
             .map_err(|e| format!("Failed to create vault directory: {}", e))?;
-        println!("[complete_setup] Vault directory created: {:?}", vault_path);
+        info!("[complete_setup] Vault directory created: {:?}", vault_path);
     }
 
     // Create vault metadata
@@ -145,10 +146,10 @@ pub async fn complete_setup(
         metadata
             .save(&vault_path)
             .map_err(|e| format!("Failed to save vault metadata: {}", e))?;
-        println!("[complete_setup] vault.json created");
+        info!("[complete_setup] vault.json created");
     }
 
-    println!("[complete_setup] Setup complete!");
+    info!("[complete_setup] Setup complete!");
     Ok(())
 }
 
@@ -304,7 +305,7 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
 
             if let Ok(vault_db) = echovault_core::storage::VaultDb::open(&vault_dir) {
                 if let Ok(db_sessions) = vault_db.get_all_sessions() {
-                    println!(
+                    info!(
                         "[scan_sessions] Found {} entries in vault.db",
                         db_sessions.len()
                     );
@@ -446,7 +447,7 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
 
     // Configure thread pool: use num_cpus - 2 (minimum 1)
     let num_threads = std::cmp::max(1, num_cpus::get().saturating_sub(2));
-    println!(
+    info!(
         "[ingest_sessions] Using {} threads for parallel processing",
         num_threads
     );
@@ -457,20 +458,20 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
         .build()
         .map_err(|e| format!("Failed to build thread pool: {}", e))?;
 
-    println!("[ingest_sessions] Starting scan...");
+    info!("[ingest_sessions] Starting scan...");
 
     let mut sessions = Vec::new();
 
     // 1. Scan VS Code Copilot sessions
     let vscode_extractor = VSCodeCopilotExtractor::new();
     if let Ok(locations) = vscode_extractor.find_storage_locations() {
-        println!(
+        info!(
             "[ingest_sessions] VS Code Copilot: {} locations",
             locations.len()
         );
         for location in &locations {
             if let Ok(files) = vscode_extractor.list_session_files(location) {
-                println!(
+                info!(
                     "[ingest_sessions] Location {:?}: {} files",
                     location,
                     files.len()
@@ -483,13 +484,13 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     // 2. Scan Antigravity artifacts
     let antigravity_extractor = AntigravityExtractor::new();
     if let Ok(locations) = antigravity_extractor.find_storage_locations() {
-        println!(
+        info!(
             "[ingest_sessions] Antigravity: {} locations",
             locations.len()
         );
         for location in &locations {
             if let Ok(files) = antigravity_extractor.list_session_files(location) {
-                println!(
+                info!(
                     "[ingest_sessions] Antigravity {:?}: {} files",
                     location.file_name().unwrap_or_default(),
                     files.len()
@@ -502,10 +503,10 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     // 3. Scan Cursor sessions
     let cursor_extractor = CursorExtractor::new();
     if let Ok(locations) = cursor_extractor.find_storage_locations() {
-        println!("[ingest_sessions] Cursor: {} locations", locations.len());
+        info!("[ingest_sessions] Cursor: {} locations", locations.len());
         for location in &locations {
             if let Ok(files) = cursor_extractor.list_session_files(location) {
-                println!(
+                info!(
                     "[ingest_sessions] Cursor {:?}: {} files",
                     location.file_name().unwrap_or_default(),
                     files.len()
@@ -518,10 +519,10 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     // 4. Scan Cline sessions
     let cline_extractor = ClineExtractor::new();
     if let Ok(locations) = cline_extractor.find_storage_locations() {
-        println!("[ingest_sessions] Cline: {} locations", locations.len());
+        info!("[ingest_sessions] Cline: {} locations", locations.len());
         for location in &locations {
             if let Ok(files) = cline_extractor.list_session_files(location) {
-                println!(
+                info!(
                     "[ingest_sessions] Cline {:?}: {} files",
                     location.file_name().unwrap_or_default(),
                     files.len()
@@ -532,7 +533,7 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     }
 
     let total_sessions = sessions.len();
-    println!(
+    info!(
         "[ingest_sessions] Total sessions to check: {}",
         total_sessions
     );
@@ -581,13 +582,13 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
 
     let to_process = sessions_to_process.len();
     let skipped = total_sessions - to_process;
-    println!(
+    info!(
         "[ingest_sessions] To process: {}, Already up-to-date: {}",
         to_process, skipped
     );
 
     if to_process == 0 {
-        println!("[ingest_sessions] Nothing to process, complete");
+        info!("[ingest_sessions] Nothing to process, complete");
         return Ok(false);
     }
 
@@ -613,7 +614,7 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
 
                 let current = processed.fetch_add(1, Ordering::Relaxed) + 1;
                 if current.is_multiple_of(10) || current == to_process {
-                    println!(
+                    info!(
                         "[ingest_sessions] Progress: {}/{} ({}%)",
                         current,
                         to_process,
@@ -668,9 +669,9 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     // Check for errors
     let errs = errors.into_inner();
     if !errs.is_empty() {
-        println!("[ingest_sessions] {} errors occurred:", errs.len());
+        info!("[ingest_sessions] {} errors occurred:", errs.len());
         for e in &errs {
-            println!("  - {}", e);
+            warn!("{}", e);
         }
         // Continue anyway, just log errors
     }
@@ -680,19 +681,19 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     if !entries.is_empty() {
         for entry in &entries {
             if let Err(e) = vault_db.upsert_session(entry) {
-                println!("[ingest_sessions] Failed to upsert {}: {}", entry.id, e);
+                warn!("[ingest_sessions] Failed to upsert {}: {}", entry.id, e);
             }
         }
         if let Err(e) = vault_db.log_sync("ingest", Some(&format!("{} sessions", entries.len()))) {
-            println!("[ingest_sessions] Failed to log sync: {}", e);
+            warn!("[ingest_sessions] Failed to log sync: {}", e);
         }
-        println!(
+        info!(
             "[ingest_sessions] vault.db updated with {} entries",
             entries.len()
         );
     }
 
-    println!(
+    info!(
         "[ingest_sessions] Complete: {} processed, {} skipped",
         processed.load(Ordering::Relaxed),
         skipped
@@ -713,7 +714,7 @@ pub async fn sync_vault(state: State<'_, AppState>) -> Result<String, String> {
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
     {
-        println!("[sync_vault] Another sync is already in progress, skipping...");
+        info!("[sync_vault] Another sync is already in progress, skipping...");
         return Ok("Sync already in progress".to_string());
     }
 
@@ -722,40 +723,40 @@ pub async fn sync_vault(state: State<'_, AppState>) -> Result<String, String> {
     impl Drop for SyncLockGuard {
         fn drop(&mut self) {
             SYNC_IN_PROGRESS.store(false, Ordering::SeqCst);
-            println!("[sync_vault] Sync lock released");
+            info!("[sync_vault] Sync lock released");
         }
     }
     let _lock_guard = SyncLockGuard;
 
-    println!("[sync_vault] Starting (lock acquired)...");
+    info!("[sync_vault] Starting (lock acquired)...");
 
     // Check auth status
     {
         let provider = state.provider.lock().map_err(|e| {
-            println!("[sync_vault] Failed to lock provider: {}", e);
+            error!("[sync_vault] Failed to lock provider: {}", e);
             e.to_string()
         })?;
-        println!(
+        info!(
             "[sync_vault] is_authenticated: {}",
             provider.is_authenticated()
         );
         if !provider.is_authenticated() {
-            println!("[sync_vault] Not authenticated, returning error");
+            info!("[sync_vault] Not authenticated, returning error");
             return Err("Not authenticated".to_string());
         }
     }
 
-    println!("[sync_vault] Auth check passed");
+    info!("[sync_vault] Auth check passed");
 
     let config = Config::load_default().map_err(|e| {
-        println!("[sync_vault] Failed to load config: {}", e);
+        error!("[sync_vault] Failed to load config: {}", e);
         e.to_string()
     })?;
     let vault_dir = config.vault_path.clone();
-    println!("[sync_vault] vault_dir: {:?}", vault_dir);
+    info!("[sync_vault] vault_dir: {:?}", vault_dir);
 
     // 1. Pull from Remote (get changes from other machines first)
-    println!("[sync_vault] Pulling from remote...");
+    info!("[sync_vault] Pulling from remote...");
     let vault_dir_for_pull = vault_dir.clone();
     let provider_for_pull = state.provider.clone();
     let options_for_pull = SyncOptions::default();
@@ -771,46 +772,46 @@ pub async fn sync_vault(state: State<'_, AppState>) -> Result<String, String> {
 
     match pull_result {
         Ok(result) => {
-            println!(
+            info!(
                 "[sync_vault] Pull complete: has_changes={}",
                 result.has_changes
             );
         }
         Err(e) => {
             // Pull failure is not fatal - might be first sync or network issue
-            println!("[sync_vault] Pull failed (continuing anyway): {}", e);
+            warn!("[sync_vault] Pull failed (continuing anyway): {}", e);
         }
     }
 
     // 2. Ingest Sessions (local -> vault)
-    println!("[sync_vault] Ingesting sessions...");
+    info!("[sync_vault] Ingesting sessions...");
     let vault_dir_for_ingest = vault_dir.clone();
     let ingest_result = tokio::task::spawn_blocking(move || ingest_sessions(&vault_dir_for_ingest))
         .await
         .map_err(|e| e.to_string())??;
-    println!("[sync_vault] Ingest complete: changes={}", ingest_result);
+    info!("[sync_vault] Ingest complete: changes={}", ingest_result);
 
     // 3. Push to Remote
-    println!("[sync_vault] Pushing to remote...");
+    info!("[sync_vault] Pushing to remote...");
     let options = SyncOptions::default();
     let vault_dir_clone = vault_dir.clone();
     let provider_clone = state.provider.clone();
 
     let result = tokio::task::spawn_blocking(move || {
         let provider = provider_clone.lock().map_err(|e| e.to_string())?;
-        println!("[sync_vault] Calling provider.push...");
+        info!("[sync_vault] Calling provider.push...");
         provider.push(&vault_dir_clone, &options).map_err(|e| {
-            println!("[sync_vault] Push failed: {}", e);
+            error!("[sync_vault] Push failed: {}", e);
             e.to_string()
         })
     })
     .await
     .map_err(|e| {
-        println!("[sync_vault] spawn_blocking failed: {}", e);
+        error!("[sync_vault] spawn_blocking failed: {}", e);
         e.to_string()
     })??;
 
-    println!(
+    info!(
         "[sync_vault] Push complete: files_pushed={}",
         result.files_pushed
     );

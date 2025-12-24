@@ -32,6 +32,10 @@ num_cpus = "1.16"
 anyhow = "1.0"
 parking_lot = "0.12"
 
+# Structured logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
 
