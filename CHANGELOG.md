@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/n24q02m/EchoVault/compare/v1.4.0...v1.5.0) (2025-12-24)
+
+
+### Features
+
+* migrate logging from println to tracing ([d7469b4](https://github.com/n24q02m/EchoVault/commit/d7469b44598db30f6d24e07abb65c2c10075c25b))
+
 # [1.4.0](https://github.com/n24q02m/EchoVault/compare/v1.3.0...v1.4.0) (2025-12-24)
 
 
