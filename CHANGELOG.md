@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/n24q02m/EchoVault/compare/v1.5.0...v1.6.0) (2025-12-25)
+
+
+### Features
+
+* official release polish ([e8dfb66](https://github.com/n24q02m/EchoVault/commit/e8dfb66b1ad50ebe42e025062e2b046da38b7c2d))
+
 # [1.5.0](https://github.com/n24q02m/EchoVault/compare/v1.4.0...v1.5.0) (2025-12-24)
 
 
