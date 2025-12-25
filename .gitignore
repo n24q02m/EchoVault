@@ -180,3 +180,4 @@ vite.config.ts.timestamp-*
 # Rclone binaries (bundled, not committed)
 apps/tauri/binaries/*
 !apps/tauri/binaries/README.md
+apps/tauri/*.key

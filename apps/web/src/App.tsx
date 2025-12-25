@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
+import { Toaster, toast } from "sonner";
 import { TextEditor } from "./TextEditor";
 
 // Types
@@ -267,7 +268,7 @@ function MainApp() {
         await invoke<AppConfig>("get_config");
         await loadSessions();
       } catch (err) {
-        console.error("Initialization failed:", err);
+        toast.error(`Initialization failed: ${String(err)}`);
       }
     };
     initialize();
@@ -280,7 +281,7 @@ function MainApp() {
       setSessions(result.sessions);
       saveCachedSessions(result.sessions);
     } catch (err) {
-      console.error("Failed to scan sessions:", err);
+      toast.error(`Failed to scan sessions: ${String(err)}`);
     } finally {
       setIsScanning(false);
     }
@@ -292,9 +293,10 @@ function MainApp() {
     setSyncError(null);
     try {
       await invoke<string>("sync_vault");
+      toast.success("Sync completed successfully");
       await loadSessions();
     } catch (err) {
-      console.error("Sync failed:", err);
+      toast.error(`Sync failed: ${String(err)}`);
       setSyncError(String(err));
     } finally {
       setIsSyncing(false);
@@ -509,7 +511,7 @@ function App() {
         const complete = await invoke<boolean>("check_setup_complete");
         setView(complete ? "main" : "setup");
       } catch (err) {
-        console.error("Failed to check setup:", err);
+        toast.error(`Failed to check setup: ${String(err)}`);
         setView("setup");
       } finally {
         setIsLoading(false);
@@ -527,10 +529,20 @@ function App() {
   }
 
   if (view === "setup") {
-    return <SetupWizard onComplete={() => setView("main")} />;
+    return (
+      <>
+        <Toaster richColors position="bottom-center" />
+        <SetupWizard onComplete={() => setView("main")} />
+      </>
+    );
   }
 
-  return <MainApp />;
+  return (
+    <>
+      <Toaster richColors position="bottom-center" />
+      <MainApp />
+    </>
+  );
 }
 
 export default App;

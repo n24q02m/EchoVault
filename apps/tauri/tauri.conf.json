@@ -47,5 +47,13 @@
             "icons/icon.ico"
         ]
     },
-    "plugins": {}
+    "plugins": {
+        "updater": {
+            "endpoints": [
+                "https://github.com/n24q02m/EchoVault/releases/latest/download/latest.json"
+            ],
+            "dialog": true,
+            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgwRDEzMzJBNTFDREU1QTQKUldTazVjMVJLalBSZ0t6WEZmenNkVWpHRHQ2NGc0NVE4MTJSUjVHd0xOeVMraHZNRWJtTEFMbTEK"
+        }
+    }
 }
