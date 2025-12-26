@@ -105,8 +105,8 @@ To fully remove EchoVault including all data:
 
 ```bash
 # Uninstall (choose based on your package manager)
-sudo dpkg -r echovault        # Debian/Ubuntu
-sudo rpm -e echovault         # Fedora/RHEL
+sudo dpkg -r echo-vault        # Debian/Ubuntu
+sudo rpm -e echo-vault         # Fedora/RHEL
 
 # Remove data
 rm -rf ~/.config/echovault ~/.local/share/echovault
