@@ -36,7 +36,7 @@ Download the latest installer from [Releases](https://github.com/n24q02m/EchoVau
 |                       | `EchoVault_x64.app.tar.gz`            | App bundle                 |
 | **macOS (Apple Silicon)** | `EchoVault_x.x.x_aarch64.dmg`     | DMG installer              |
 |                       | `EchoVault_aarch64.app.tar.gz`        | App bundle                 |
-| **Linux (Debian/Ubuntu)** | `echovault_x.x.x_amd64.deb`       | DEB package                |
+| **Linux (Debian/Ubuntu)** | `EchoVault_x.x.x_amd64.deb`       | DEB package                |
 | **Linux (Fedora/RHEL)**   | `EchoVault-x.x.x-1.x86_64.rpm`    | RPM package                |
 | **Linux (Universal)** | `EchoVault_x.x.x_amd64.AppImage`      | Portable AppImage          |
 
@@ -59,7 +59,7 @@ Download the latest installer from [Releases](https://github.com/n24q02m/EchoVau
 **Linux (Debian/Ubuntu):**
 
 ```bash
-sudo dpkg -i echovault_x.x.x_amd64.deb
+sudo dpkg -i EchoVault_x.x.x_amd64.deb
 ```
 
 **Linux (Fedora/RHEL):**
