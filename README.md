@@ -28,13 +28,89 @@ EchoVault extracts and syncs chat history from GitHub Copilot, Cursor, Antigravi
 
 Download the latest installer from [Releases](https://github.com/n24q02m/EchoVault/releases):
 
-| Platform              | File                              |
-| --------------------- | --------------------------------- |
-| Windows               | `EchoVault_x.x.x_x64-setup.exe`   |
-| macOS (Intel)         | `EchoVault_x.x.x_x64.dmg`         |
-| macOS (Apple Silicon) | `EchoVault_x.x.x_aarch64.dmg`     |
-| Linux (Debian/Ubuntu) | `echovault_x.x.x_amd64.deb`       |
-| Linux (AppImage)      | `EchoVault_x.x.x_amd64.AppImage`  |
+| Platform              | File                                  | Description                |
+| --------------------- | ------------------------------------- | -------------------------- |
+| **Windows**           | `EchoVault_x.x.x_x64-setup.exe`       | NSIS installer (recommended) |
+|                       | `EchoVault_x.x.x_x64_en-US.msi`       | MSI installer              |
+| **macOS (Intel)**     | `EchoVault_x.x.x_x64.dmg`             | DMG installer              |
+|                       | `EchoVault_x64.app.tar.gz`            | App bundle                 |
+| **macOS (Apple Silicon)** | `EchoVault_x.x.x_aarch64.dmg`     | DMG installer              |
+|                       | `EchoVault_aarch64.app.tar.gz`        | App bundle                 |
+| **Linux (Debian/Ubuntu)** | `echovault_x.x.x_amd64.deb`       | DEB package                |
+| **Linux (Fedora/RHEL)**   | `EchoVault-x.x.x-1.x86_64.rpm`    | RPM package                |
+| **Linux (Universal)** | `EchoVault_x.x.x_amd64.AppImage`      | Portable AppImage          |
+
+### Installation
+
+**Windows:**
+
+1. Download `EchoVault_x.x.x_x64-setup.exe` (recommended) or `.msi`
+2. Run the installer and follow the prompts
+3. Launch from Start Menu or Desktop shortcut
+
+**macOS:**
+
+1. Download the `.dmg` file matching your chip:
+   - Intel Mac: `EchoVault_x.x.x_x64.dmg`
+   - Apple Silicon (M1/M2/M3): `EchoVault_x.x.x_aarch64.dmg`
+2. Open the DMG and drag EchoVault to Applications
+3. First launch: Right-click > Open (to bypass Gatekeeper)
+
+**Linux (Debian/Ubuntu):**
+
+```bash
+sudo dpkg -i echovault_x.x.x_amd64.deb
+```
+
+**Linux (Fedora/RHEL):**
+
+```bash
+sudo rpm -i EchoVault-x.x.x-1.x86_64.rpm
+```
+
+**Linux (AppImage):**
+
+```bash
+chmod +x EchoVault_x.x.x_amd64.AppImage
+./EchoVault_x.x.x_amd64.AppImage
+```
+
+## Data Storage
+
+EchoVault stores data in standard OS locations:
+
+| Type   | Windows                            | macOS                                      | Linux                          |
+| ------ | ---------------------------------- | ------------------------------------------ | ------------------------------ |
+| Config | `%APPDATA%\echovault\`             | `~/Library/Application Support/echovault/` | `~/.config/echovault/`         |
+| Data   | `%LOCALAPPDATA%\echovault\vault\`  | `~/Library/Application Support/echovault/` | `~/.local/share/echovault/`    |
+
+> [!NOTE]
+> Uninstalling the app does NOT remove your config and data. This is intentional so you can reinstall without losing your chat history.
+
+### Complete Removal
+
+To fully remove EchoVault including all data:
+
+**Windows:**
+
+1. Uninstall via Settings > Apps
+2. Delete `%APPDATA%\echovault\` and `%LOCALAPPDATA%\echovault\`
+
+**macOS:**
+
+1. Delete EchoVault from Applications
+2. Delete `~/Library/Application Support/echovault/`
+
+**Linux:**
+
+```bash
+# Uninstall (choose based on your package manager)
+sudo dpkg -r echovault        # Debian/Ubuntu
+sudo rpm -e echovault         # Fedora/RHEL
+
+# Remove data
+rm -rf ~/.config/echovault ~/.local/share/echovault
+```
 
 ## Quick Setup
 
