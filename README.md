@@ -38,28 +38,26 @@ Download the latest installer from [Releases](https://github.com/n24q02m/EchoVau
 
 ## Quick Setup
 
-Just 2 steps:
+**Prerequisites:** [mise](https://mise.jdx.dev/) only.
 
 ```bash
 # Clone repository
 git clone https://github.com/n24q02m/EchoVault.git
 cd EchoVault
 
-# Run auto setup - installs EVERYTHING
-pnpm setup
+# Setup (auto-install tools + dependencies)
+mise run setup
 ```
 
-The setup script will **AUTOMATICALLY** install:
+The setup will **AUTOMATICALLY** install:
 
-1. **OS packages** - Tauri dependencies (libgtk-3, webkit2gtk, etc.)
-2. **mise** - Tool version manager
-3. **Rust, Node.js, uv** - Via mise
-4. **pnpm** - Package manager
-5. **Node dependencies** - All required packages
-6. **Rclone binary** - Sync engine for Google Drive
-7. **Pre-commit hooks** - Automatic quality checks
+1. **mise tools** - Rust, Node.js, pnpm, uv
+2. **Node dependencies** - All required packages
+3. **Cargo build** - Rust compilation
+4. **Rclone binary** - Sync engine for Google Drive
+5. **Pre-commit hooks** - Automatic quality checks
 
-> **Note**: Script requires sudo password on Linux to install system packages.
+> **Note for Linux**: Install [Tauri dependencies](#linux-tauri-dependencies) first.
 
 ## Running the App
 
