@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/n24q02m/EchoVault/compare/v1.6.0...v1.7.0) (2025-12-26)
+
+
+### Features
+
+* introduce `mise run setup` task for automated development environment provisioning and update README. ([2730302](https://github.com/n24q02m/EchoVault/commit/27303023219a673859772ead63185b19fa3e71d4))
+
 # [1.6.0](https://github.com/n24q02m/EchoVault/compare/v1.5.0...v1.6.0) (2025-12-25)
 
 
