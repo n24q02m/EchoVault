@@ -25,9 +25,21 @@ fn create_test_session(id: &str, source: &str, mtime: u64) -> SessionEntry {
 }
 
 /// Get vault directory path for CI tests.
+/// Uses GITHUB_WORKSPACE in CI, otherwise uses workspace root.
 fn get_ci_vault_path() -> std::path::PathBuf {
-    // Use current directory's vault folder (set by CI workflow)
-    std::env::current_dir().unwrap().join("vault")
+    // In CI, GITHUB_WORKSPACE points to repo root
+    if let Ok(workspace) = std::env::var("GITHUB_WORKSPACE") {
+        std::path::PathBuf::from(workspace).join("vault")
+    } else {
+        // Local: use CARGO_MANIFEST_DIR (apps/core) and go up to workspace root
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
+        std::path::PathBuf::from(manifest_dir)
+            .parent()
+            .unwrap() // apps
+            .parent()
+            .unwrap() // workspace root
+            .join("vault")
+    }
 }
 
 #[cfg(test)]
