@@ -11,6 +11,10 @@ repository = "https://github.com/n24q02m/EchoVault"
 name = "echovault_core"
 path = "src/lib.rs"
 
+[features]
+default = []
+ci-sync-test = []
+
 [dependencies]
 # SQLite for reading IDE databases and index
 rusqlite = { version = "0.32", features = ["bundled"] }

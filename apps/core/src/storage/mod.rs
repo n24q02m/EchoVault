@@ -8,5 +8,8 @@
 pub mod index;
 pub mod vault_db;
 
+#[cfg(feature = "ci-sync-test")]
+pub mod sync_test;
+
 pub use index::SessionIndex;
 pub use vault_db::{BatchResult, SessionEntry, UpsertResult, VaultDb};

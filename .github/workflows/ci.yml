@@ -268,3 +268,178 @@ jobs:
         with:
           fail-on-severity: high
           comment-summary-in-pr: always
+
+  # Multi-Machine Sync Test - Simulates 2 machines syncing to same vault
+  sync-test-a:
+    name: Sync Test (Machine A - Ubuntu)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Create dummy binaries
+        run: |
+          mkdir -p apps/tauri/binaries
+          touch apps/tauri/binaries/rclone-x86_64-unknown-linux-gnu
+          touch apps/tauri/binaries/rclone-x86_64-pc-windows-msvc.exe
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/web/package.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: apps/web
+        run: pnpm build
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: sync-test-ubuntu
+
+      - name: Run Machine A test (create vault)
+        run: cargo test --package echovault-core --features ci-sync-test sync_test_machine_a_create -- --ignored --nocapture
+
+      - name: Upload vault artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vault-from-machine-a
+          path: vault/
+          retention-days: 1
+
+  sync-test-b:
+    name: Sync Test (Machine B - Windows)
+    needs: sync-test-a
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Create dummy binaries
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path apps/tauri/binaries
+          New-Item -ItemType File -Force -Path apps/tauri/binaries/rclone-x86_64-unknown-linux-gnu
+          New-Item -ItemType File -Force -Path apps/tauri/binaries/rclone-x86_64-pc-windows-msvc.exe
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/web/package.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: apps/web
+        run: pnpm build
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: sync-test-windows
+
+      - name: Download vault from Machine A
+        uses: actions/download-artifact@v4
+        with:
+          name: vault-from-machine-a
+          path: vault/
+
+      - name: Run Machine B test (update vault)
+        run: cargo test --package echovault-core --features ci-sync-test sync_test_machine_b_update -- --ignored --nocapture
+
+      - name: Upload modified vault
+        uses: actions/upload-artifact@v4
+        with:
+          name: vault-from-machine-b
+          path: vault/
+          retention-days: 1
+
+  sync-test-verify:
+    name: Sync Test (Verify Resolution)
+    needs: sync-test-b
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Create dummy binaries
+        run: |
+          mkdir -p apps/tauri/binaries
+          touch apps/tauri/binaries/rclone-x86_64-unknown-linux-gnu
+          touch apps/tauri/binaries/rclone-x86_64-pc-windows-msvc.exe
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/web/package.json
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: apps/web
+        run: pnpm build
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: sync-test-verify
+
+      - name: Download vault from Machine B
+        uses: actions/download-artifact@v4
+        with:
+          name: vault-from-machine-b
+          path: vault/
+
+      - name: Run verification test
+        run: cargo test --package echovault-core --features ci-sync-test sync_test_verify_resolution -- --ignored --nocapture
