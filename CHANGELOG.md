@@ -1,3 +1,10 @@
+## [1.8.2](https://github.com/n24q02m/EchoVault/compare/v1.8.1...v1.8.2) (2025-12-26)
+
+
+### Bug Fixes
+
+* Correct package name in uninstall instructions in README. ([d7aa7df](https://github.com/n24q02m/EchoVault/commit/d7aa7df363e0fc656886fcbfff6b7c21eca9f64f))
+
 ## [1.8.1](https://github.com/n24q02m/EchoVault/compare/v1.8.0...v1.8.1) (2025-12-26)
 
 
