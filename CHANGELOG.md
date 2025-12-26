@@ -1,3 +1,10 @@
+## [1.8.1](https://github.com/n24q02m/EchoVault/compare/v1.8.0...v1.8.1) (2025-12-26)
+
+
+### Bug Fixes
+
+* **ci:** use GITHUB_WORKSPACE for vault path in sync tests ([b9ebdcc](https://github.com/n24q02m/EchoVault/commit/b9ebdcc7d7d83a074035d99f3d5eb561c4ae7e4f))
+
 # [1.8.0](https://github.com/n24q02m/EchoVault/compare/v1.7.0...v1.8.0) (2025-12-26)
 
 
