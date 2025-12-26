@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/n24q02m/EchoVault/compare/v1.7.0...v1.8.0) (2025-12-26)
+
+
+### Features
+
+* Add multi-machine sync tests to CI to verify conflict resolution. ([541a895](https://github.com/n24q02m/EchoVault/commit/541a89561b3fb3ac4339d595542445eb0d8267cd))
+
 # [1.7.0](https://github.com/n24q02m/EchoVault/compare/v1.6.0...v1.7.0) (2025-12-26)
 
 
