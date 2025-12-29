@@ -167,6 +167,20 @@ jobs:
           cp rclone-*/rclone apps/tauri/binaries/${{ matrix.rclone_binary }}
           chmod +x apps/tauri/binaries/${{ matrix.rclone_binary }}
 
+      - name: Update version in tauri.conf.json
+        shell: bash
+        run: |
+          VERSION="${{ needs.release.outputs.new_release_version }}"
+          # Use node to update JSON properly
+          node -e "
+            const fs = require('fs');
+            const path = 'apps/tauri/tauri.conf.json';
+            const config = JSON.parse(fs.readFileSync(path, 'utf8'));
+            config.version = '$VERSION';
+            fs.writeFileSync(path, JSON.stringify(config, null, 4) + '\n');
+          "
+          cat apps/tauri/tauri.conf.json | grep version
+
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
