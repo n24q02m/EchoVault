@@ -1,3 +1,10 @@
+## [1.8.3](https://github.com/n24q02m/EchoVault/compare/v1.8.2...v1.8.3) (2025-12-29)
+
+
+### Bug Fixes
+
+* Correct version placeholder in tauri.conf.json for proper release naming ([d2a5bf8](https://github.com/n24q02m/EchoVault/commit/d2a5bf8715c2b38630c7e8a1938a568112370e64))
+
 ## [1.8.2](https://github.com/n24q02m/EchoVault/compare/v1.8.1...v1.8.2) (2025-12-26)
 
 
