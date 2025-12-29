@@ -81,7 +81,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: ubuntu-latest
+          - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             rclone_url: https://downloads.rclone.org/rclone-current-linux-amd64.zip
             rclone_binary: rclone-x86_64-unknown-linux-gnu
