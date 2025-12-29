@@ -1,3 +1,10 @@
+## [1.8.5](https://github.com/n24q02m/EchoVault/compare/v1.8.4...v1.8.5) (2025-12-29)
+
+
+### Bug Fixes
+
+* Specify ubuntu-22.04 runner for GitHub Actions workflow instead of ubuntu-latest. ([9fe864c](https://github.com/n24q02m/EchoVault/commit/9fe864cced5791c0d5a3d14eb7439c08bf3fc8df))
+
 ## [1.8.4](https://github.com/n24q02m/EchoVault/compare/v1.8.3...v1.8.4) (2025-12-29)
 
 
