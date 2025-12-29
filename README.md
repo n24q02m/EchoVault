@@ -246,6 +246,10 @@ sudo dnf install -y pkg-config gtk3-devel webkit2gtk4.1-devel \
 # Arch
 sudo pacman -S --noconfirm pkg-config gtk3 webkit2gtk-4.1 \
   libayatana-appindicator librsvg
+
+> [!NOTE]
+> **System Requirements**: EchoVault requires **Ubuntu 22.04 LTS** or newer (GLIBC 2.35+).
+> Older versions (Ubuntu 20.04) are not supported due to Tauri v2's requirement for `libwebkit2gtk-4.1`.
 ```
 
 #### macOS: Homebrew
