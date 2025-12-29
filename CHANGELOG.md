@@ -1,3 +1,10 @@
+## [1.8.4](https://github.com/n24q02m/EchoVault/compare/v1.8.3...v1.8.4) (2025-12-29)
+
+
+### Bug Fixes
+
+* **ci:** Downgrade Linux runner to ubuntu-22.04 for broader GLIBC compatibility ([9ab5984](https://github.com/n24q02m/EchoVault/commit/9ab598419809599e4c70839f0237413a2d481177))
+
 ## [1.8.3](https://github.com/n24q02m/EchoVault/compare/v1.8.2...v1.8.3) (2025-12-29)
 
 
