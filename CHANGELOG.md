@@ -1,3 +1,10 @@
+## [1.8.6](https://github.com/n24q02m/EchoVault/compare/v1.8.5...v1.8.6) (2025-12-30)
+
+
+### Bug Fixes
+
+* **bundle:** Disable symbol stripping to fix AppImage corruption ([6abaeb1](https://github.com/n24q02m/EchoVault/commit/6abaeb14f3d22e98e5008b150db8ff4bdf7bdb38))
+
 ## [1.8.5](https://github.com/n24q02m/EchoVault/compare/v1.8.4...v1.8.5) (2025-12-29)
 
 
