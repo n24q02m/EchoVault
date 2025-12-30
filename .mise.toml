@@ -14,27 +14,13 @@ trusted_config_paths = ["."]
 
 [tasks.setup]
 description = "Setup development environment"
-run = """
-#!/bin/bash
-set -e
-
-echo "🔧 Installing mise tools (node, rust, pnpm, uv)..."
-mise install
-
-echo "📦 Node dependencies..."
-pnpm install
-
-echo "🦀 Rust build..."
-cargo build
-
-echo "⬇️ Download rclone..."
-node scripts/download-rclone.mjs
-
-echo "🪝 Pre-commit hooks..."
-uv run pre-commit install
-
-echo ""
-echo "✅ Setup complete!"
-echo "   → Dev: pnpm dev"
-echo "   → Tauri: cargo tauri dev"
-"""
+run = [
+  "mise install",
+  "pnpm install",
+  "cargo build",
+  "node scripts/download-rclone.mjs",
+  "uv run pre-commit install",
+  "echo 'Setup complete!'",
+  "echo '  Dev: pnpm dev'",
+  "echo '  Tauri: cargo tauri dev'"
+]

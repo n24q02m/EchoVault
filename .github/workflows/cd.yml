@@ -2,7 +2,14 @@ name: CD
 
 on:
   push:
-    branches: [main]
+    branches: [dev, main]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Select action'
+        type: choice
+        options:
+          - 'promote-to-stable'
 
 permissions:
   contents: write
@@ -10,16 +17,41 @@ permissions:
   issues: write
 
 jobs:
+  # Job: Promote dev to main (manual trigger only)
+  promote:
+    name: Promote to Stable
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'promote-to-stable'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge dev to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin
+          git checkout main
+          git merge origin/dev --no-ff -m "chore: promote dev to main"
+          git push origin main
+
+  # Job: Semantic Release (on push to dev or main)
   release:
     name: Semantic Release
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       new_release_published: ${{ steps.semantic.outputs.new_release_published }}
       new_release_version: ${{ steps.semantic.outputs.new_release_version }}
+      is_prerelease: ${{ contains(github.ref, 'dev') }}
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -34,7 +66,7 @@ jobs:
           package_json_file: package.json
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: "pnpm"
@@ -73,6 +105,7 @@ jobs:
             echo "new_release_published=false" >> "$GITHUB_OUTPUT"
           fi
 
+  # Job: Build Tauri apps
   build-tauri:
     name: Build Tauri (${{ matrix.target }})
     needs: release
@@ -102,7 +135,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -121,7 +154,7 @@ jobs:
           package_json_file: apps/web/package.json
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: "pnpm"
@@ -171,7 +204,6 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ needs.release.outputs.new_release_version }}"
-          # Use node to update JSON properly
           node -e "
             const fs = require('fs');
             const path = 'apps/tauri/tauri.conf.json';
@@ -190,8 +222,7 @@ jobs:
           releaseName: "EchoVault v${{ needs.release.outputs.new_release_version }}"
           releaseBody: "See the assets section below to download the installer for your platform."
           releaseDraft: false
-          prerelease: false
+          prerelease: ${{ needs.release.outputs.is_prerelease == 'true' }}
           projectPath: apps/tauri
           args: --target ${{ matrix.target }}
-          # Update existing release created by semantic-release
           tauriScript: pnpm tauri
