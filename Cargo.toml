@@ -10,11 +10,11 @@ license = "MIT"
 repository = "https://github.com/n24q02m/EchoVault"
 
 [profile.release]
-strip = true
+strip = false     # IMPORTANT: Must be false for Tauri AppImage bundling
 lto = true
 codegen-units = 1
-opt-level = "z"    # Optimize for size
-panic = "abort"    # Do not unwind stack when panic
+opt-level = "z"   # Optimize for size
+panic = "abort"   # Do not unwind stack when panic
 
 [profile.dev]
-opt-level = 1      # Optimize for dev mode
+opt-level = 1 # Optimize for dev mode
