@@ -1,0 +1,27 @@
+# Build artifacts
+target/
+node_modules/
+.git/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Temp files
+temp/
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker build cache
+docker/build/
+
+# Keep docker scripts
+!docker/run.sh
+!docker/Dockerfile.build
