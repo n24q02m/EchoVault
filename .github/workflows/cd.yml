@@ -201,17 +201,16 @@ jobs:
           chmod +x apps/tauri/binaries/${{ matrix.rclone_binary }}
 
       - name: Update version in tauri.conf.json
-        shell: bash
         run: |
-          VERSION="${{ needs.release.outputs.new_release_version }}"
           node -e "
             const fs = require('fs');
             const path = 'apps/tauri/tauri.conf.json';
             const config = JSON.parse(fs.readFileSync(path, 'utf8'));
-            config.version = '$VERSION';
+            const version = '${{ needs.release.outputs.new_release_version }}';
+            config.version = version;
             fs.writeFileSync(path, JSON.stringify(config, null, 4) + '\n');
+            console.log('Updated version to: ' + version);
           "
-          cat apps/tauri/tauri.conf.json | grep version
 
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
