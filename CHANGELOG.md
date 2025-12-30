@@ -1,3 +1,10 @@
+# [1.11.0-beta.2](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.1...v1.11.0-beta.2) (2025-12-30)
+
+
+### Bug Fixes
+
+* Update version handling in Tauri build process and clean up README formatting ([d071bd5](https://github.com/n24q02m/EchoVault/commit/d071bd544cc308c9ad2fd9c0c0974241c5204a32))
+
 # [1.11.0-beta.1](https://github.com/n24q02m/EchoVault/compare/v1.10.0...v1.11.0-beta.1) (2025-12-30)
 
 
