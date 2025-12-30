@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/n24q02m/EchoVault/compare/v1.8.6...v1.9.0) (2025-12-30)
+
+
+### Features
+
+* Implement initial Tauri application structure with Rclone synchronization and capability schema. ([8fe9407](https://github.com/n24q02m/EchoVault/commit/8fe94074165a982618eb6f7e14f8fe531ac49e49))
+
 ## [1.8.6](https://github.com/n24q02m/EchoVault/compare/v1.8.5...v1.8.6) (2025-12-30)
 
 
