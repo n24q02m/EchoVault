@@ -6,14 +6,80 @@
 //! - Periodic background sync
 //! - Notifications when sync completes
 //! - Autostart on login
+//! - Auto-update on startup
 
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    AppHandle, Manager,
 };
+use tauri_plugin_updater::UpdaterExt;
 
 mod commands;
+
+/// Check for updates on app startup.
+/// If an update is available, prompt the user and install if accepted.
+async fn check_for_updates(app: AppHandle) {
+    tracing::info!("Checking for updates...");
+
+    // Build and check for updates
+    let updater = match app.updater() {
+        Ok(updater) => updater,
+        Err(e) => {
+            tracing::warn!("Cannot create updater: {}", e);
+            return;
+        }
+    };
+
+    let update = match updater.check().await {
+        Ok(Some(update)) => update,
+        Ok(None) => {
+            tracing::info!("App is up to date");
+            return;
+        }
+        Err(e) => {
+            tracing::warn!("Update check failed: {}", e);
+            return;
+        }
+    };
+
+    tracing::info!(
+        "Update available: {} -> {}",
+        update.current_version,
+        update.version
+    );
+
+    // Show notification about the update
+    // Note: with "dialog": true in tauri.conf.json, the plugin will show
+    // a native dialog asking user to confirm before downloading.
+    // Here we just log and let the dialog handle confirmation.
+
+    // Download and install the update
+    let mut downloaded: usize = 0;
+
+    match update
+        .download_and_install(
+            |chunk, content_length| {
+                downloaded += chunk;
+                if let Some(total) = content_length {
+                    tracing::debug!("Downloaded {} / {} bytes", downloaded, total);
+                }
+            },
+            || {
+                tracing::info!("Download complete, preparing to install...");
+            },
+        )
+        .await
+    {
+        Ok(_) => {
+            tracing::info!("Update installed successfully, app will restart");
+            // The app will be restarted automatically
+        }
+        Err(e) => {
+            tracing::error!("Update installation failed: {}", e);
+        }
+    }
+}
 
 /// Setup system tray with menu (only Exit button).
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
@@ -79,6 +145,13 @@ pub fn run() {
         .manage(commands::AppState::default())
         .setup(|app| {
             setup_tray(app)?;
+
+            // Spawn background task to check for updates
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                check_for_updates(handle).await;
+            });
+
             Ok(())
         })
         .on_window_event(|window, event| {

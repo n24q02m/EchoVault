@@ -13,6 +13,13 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use tracing::info;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+/// Windows flag to prevent console window from appearing
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 /// Default remote name for Google Drive
 const DEFAULT_REMOTE_NAME: &str = "echovault-gdrive";
 
@@ -97,12 +104,14 @@ impl RcloneProvider {
 
     /// Run rclone command and return output.
     fn run_rclone(&self, args: &[&str]) -> Result<String> {
-        let output = Command::new(&self.rclone_path)
-            .args(args)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .context("Cannot execute rclone")?;
+        let mut cmd = Command::new(&self.rclone_path);
+        cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+
+        // On Windows, prevent console window from appearing
+        #[cfg(windows)]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+
+        let output = cmd.output().context("Cannot execute rclone")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
