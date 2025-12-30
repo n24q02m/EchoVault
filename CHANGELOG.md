@@ -1,3 +1,10 @@
+# [1.10.0](https://github.com/n24q02m/EchoVault/compare/v1.9.0...v1.10.0) (2025-12-30)
+
+
+### Features
+
+* Add Docker setup with X11 forwarding for running EchoVault on unsupported Linux distributions and update README. ([de97395](https://github.com/n24q02m/EchoVault/commit/de97395467350bf554b5ff03ceef256f523f894d))
+
 # [1.9.0](https://github.com/n24q02m/EchoVault/compare/v1.8.6...v1.9.0) (2025-12-30)
 
 
