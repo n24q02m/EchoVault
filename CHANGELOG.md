@@ -1,3 +1,10 @@
+# [1.11.0-beta.3](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.2...v1.11.0-beta.3) (2025-12-31)
+
+
+### Bug Fixes
+
+* Implement multi-stage Docker build for EchoVault AppImage from source. ([6c71ea6](https://github.com/n24q02m/EchoVault/commit/6c71ea659638639205bb796f209f7c966ceff0e5))
+
 # [1.11.0-beta.2](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.1...v1.11.0-beta.2) (2025-12-30)
 
 
