@@ -1,3 +1,10 @@
+# [1.11.0-beta.5](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.4...v1.11.0-beta.5) (2025-12-31)
+
+
+### Features
+
+* add `setup` command for rclone Google Drive configuration and auto-detect existing remotes ([51b5e0a](https://github.com/n24q02m/EchoVault/commit/51b5e0a0c388e84f3cabc41decfe0c2da6834a1d))
+
 # [1.11.0-beta.4](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.3...v1.11.0-beta.4) (2025-12-31)
 
 
