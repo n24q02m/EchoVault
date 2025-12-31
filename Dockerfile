@@ -1,23 +1,79 @@
-# EchoVault Docker Image
-# For running on unsupported Linux distributions (e.g., Ubuntu 20.04)
-# Uses X11 forwarding for GUI display
+# EchoVault Build Dockerfile
+# Multi-stage build for compiling EchoVault from source
+# Output: AppImage for Linux x86_64
 
-FROM ubuntu:22.04
+# Stage 1: Build environment
+FROM ubuntu:22.04 AS builder
 
-LABEL maintainer="n24q02m"
-LABEL description="EchoVault - Black box for your AI conversations"
-
-# Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install dependencies for Tauri/WebKitGTK
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
-    # WebKitGTK and GTK dependencies
+    # Build essentials
+    build-essential \
+    curl \
+    wget \
+    git \
+    pkg-config \
+    # Tauri/WebKitGTK build dependencies
+    libwebkit2gtk-4.1-dev \
+    libgtk-3-dev \
+    libayatana-appindicator3-dev \
+    librsvg2-dev \
+    libssl-dev \
+    # AppImage tools
+    file \
+    # Node.js (for frontend build)
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    # pnpm
+    && npm install -g pnpm \
+    # Clean up
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install Tauri CLI
+RUN cargo install tauri-cli --locked
+
+# Set working directory
+WORKDIR /app
+
+# Copy source code
+COPY . .
+
+# Download rclone binary for bundling
+RUN mkdir -p apps/tauri/binaries \
+    && curl -LO https://downloads.rclone.org/rclone-current-linux-amd64.zip \
+    && unzip rclone-current-linux-amd64.zip \
+    && cp rclone-*/rclone apps/tauri/binaries/rclone-x86_64-unknown-linux-gnu \
+    && chmod +x apps/tauri/binaries/rclone-x86_64-unknown-linux-gnu \
+    && rm -rf rclone-*
+
+# Install frontend dependencies
+WORKDIR /app/apps/web
+RUN pnpm install --frozen-lockfile
+
+# Build frontend
+RUN pnpm build
+
+# Build Tauri app
+WORKDIR /app/apps/tauri
+RUN cargo tauri build --target x86_64-unknown-linux-gnu
+
+# Stage 2: Runtime image (slim)
+FROM ubuntu:22.04 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y \
     libwebkit2gtk-4.1-0 \
     libgtk-3-0 \
     libayatana-appindicator3-1 \
     librsvg2-2 \
-    # X11 dependencies
     libx11-6 \
     libxcb1 \
     libxcomposite1 \
@@ -30,47 +86,37 @@ RUN apt-get update && apt-get install -y \
     libxrender1 \
     libxss1 \
     libxtst6 \
-    # Audio support (optional)
     libasound2 \
     libpulse0 \
-    # D-Bus for notifications
     dbus \
     dbus-x11 \
-    # Fonts
     fonts-liberation \
     fonts-noto \
-    # Utilities
     ca-certificates \
-    curl \
-    # Clean up
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user for security
+# Create user
 RUN useradd -m -s /bin/bash echovault \
     && mkdir -p /home/echovault/.config/echovault \
     && mkdir -p /home/echovault/.local/share/echovault \
     && chown -R echovault:echovault /home/echovault
 
-# Copy the pre-built AppImage or binary
-# Option 1: Copy from local build
-COPY --chown=echovault:echovault ./target/release/bundle/appimage/*.AppImage /opt/echovault/EchoVault.AppImage
+# Copy built AppImage from builder
+COPY --from=builder --chown=echovault:echovault \
+    /app/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage \
+    /opt/echovault/EchoVault.AppImage
 
-# Make AppImage executable
 RUN chmod +x /opt/echovault/EchoVault.AppImage
 
-# Set environment variables for X11
+# Environment
 ENV DISPLAY=:0
 ENV XDG_RUNTIME_DIR=/tmp/runtime-echovault
 
-# Switch to non-root user
 USER echovault
 WORKDIR /home/echovault
 
-# Create runtime directory
 RUN mkdir -p /tmp/runtime-echovault && chmod 700 /tmp/runtime-echovault
 
-# Volumes for persistent data
 VOLUME ["/home/echovault/.config/echovault", "/home/echovault/.local/share/echovault"]
 
-# Entry point - extract and run AppImage
 ENTRYPOINT ["/opt/echovault/EchoVault.AppImage", "--appimage-extract-and-run"]
