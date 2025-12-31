@@ -101,8 +101,12 @@ RUN apt-get update && apt-get install -y \
     unzip \
     && rm -rf /var/lib/apt/lists/*
 
-# Install rclone for sync functionality
-RUN curl https://rclone.org/install.sh | bash
+# Install rclone for sync functionality (download binary directly)
+RUN curl -LO https://downloads.rclone.org/rclone-current-linux-amd64.zip \
+    && unzip rclone-current-linux-amd64.zip \
+    && cp rclone-*/rclone /usr/local/bin/ \
+    && chmod +x /usr/local/bin/rclone \
+    && rm -rf rclone-*
 
 # Create user
 RUN useradd -m -s /bin/bash echovault \
