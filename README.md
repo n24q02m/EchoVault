@@ -83,15 +83,21 @@ If your Linux distribution is not supported (requires Ubuntu 22.04+ / WebKitGTK 
 git clone https://github.com/n24q02m/EchoVault.git
 cd EchoVault
 
-# Build and run with Docker
+# First time setup
 chmod +x docker/run.sh
-./docker/run.sh build   # Build Docker image
+./docker/run.sh setup   # Install rclone and login to Google Drive
+./docker/run.sh build   # Build Docker image (takes ~10 minutes)
 ./docker/run.sh run     # Run EchoVault
+
+# Daily usage
+./docker/run.sh run     # Start EchoVault
 ./docker/run.sh stop    # Stop when done
 ```
 
 > [!NOTE]
 > Docker mode requires X11 (not Wayland). Set `GDK_BACKEND=x11` if using Wayland.
+> 
+> The `setup` command will install rclone on your host and open a browser for Google Drive authentication. This only needs to be done once.
 
 
 ## Data Storage

@@ -123,6 +123,40 @@ clean_all() {
     fi
 }
 
+# Setup rclone for Google Drive sync
+setup_rclone() {
+    log_info "Setting up rclone for Google Drive sync..."
+
+    # Check if rclone is installed
+    if ! command -v rclone &> /dev/null; then
+        log_info "Installing rclone..."
+        curl https://rclone.org/install.sh | sudo bash
+    else
+        log_info "rclone is already installed: $(rclone version | head -n1)"
+    fi
+
+    # Check if gdrive remote already exists
+    if rclone listremotes | grep -q "^gdrive:$"; then
+        log_info "Google Drive remote 'gdrive' already configured."
+        read -p "Do you want to reconfigure? (y/N) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log_info "Skipping rclone configuration."
+            return
+        fi
+    fi
+
+    log_info "Configuring Google Drive remote..."
+    log_info "Follow the prompts to authenticate with Google Drive."
+    echo ""
+
+    # Run rclone config with pre-filled answers for Google Drive
+    rclone config create gdrive drive
+
+    log_info "Rclone setup complete!"
+    log_info "Your rclone config is saved at: ~/.config/rclone/rclone.conf"
+}
+
 # Show usage
 show_usage() {
     echo "EchoVault Docker Runner"
@@ -130,21 +164,29 @@ show_usage() {
     echo "Usage: $0 [command]"
     echo ""
     echo "Commands:"
-    echo "  run     Run EchoVault (default)"
+    echo "  setup   Install rclone and configure Google Drive (run this first!)"
     echo "  build   Build Docker image"
-    echo "  shell   Open shell in container"
-    echo "  logs    Show container logs"
+    echo "  run     Run EchoVault (default)"
     echo "  stop    Stop container"
+    echo "  logs    Show container logs"
+    echo "  shell   Open shell in container"
     echo "  clean   Remove container and volumes"
     echo ""
-    echo "Examples:"
-    echo "  $0 build   # Build the Docker image"
+    echo "First time setup:"
+    echo "  $0 setup   # Install rclone and login to Google Drive"
+    echo "  $0 build   # Build the Docker image (takes ~10 minutes)"
+    echo "  $0 run     # Start EchoVault"
+    echo ""
+    echo "Daily usage:"
     echo "  $0 run     # Start EchoVault"
     echo "  $0 stop    # Stop EchoVault"
 }
 
 # Main entry point
 case "${1:-run}" in
+    setup)
+        setup_rclone
+        ;;
     run)
         run_app
         ;;

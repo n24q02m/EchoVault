@@ -94,6 +94,8 @@ RUN apt-get update && apt-get install -y \
     fonts-liberation \
     fonts-noto \
     ca-certificates \
+    # For opening browser on host via X11
+    xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Create user

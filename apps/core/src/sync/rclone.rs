@@ -40,6 +40,7 @@ pub struct RcloneProvider {
 
 impl RcloneProvider {
     /// Create new provider with bundled rclone binary.
+    /// Auto-detects existing Google Drive remotes.
     pub fn new() -> Self {
         let rclone_path = Self::find_rclone_binary();
         let mut provider = Self {
@@ -49,9 +50,37 @@ impl RcloneProvider {
             is_configured: false,
         };
 
-        // Check if remote is already configured
-        provider.is_configured = provider.check_remote_exists().unwrap_or(false);
+        // Try to find existing Google Drive remote
+        if let Some(existing_remote) = provider.find_existing_drive_remote() {
+            info!("[Rclone] Found existing remote: {}", existing_remote);
+            provider.remote_name = existing_remote;
+            provider.is_configured = true;
+        } else {
+            // Check if default remote exists
+            provider.is_configured = provider.check_remote_exists().unwrap_or(false);
+        }
+
         provider
+    }
+
+    /// Find existing Google Drive remote from common names.
+    fn find_existing_drive_remote(&self) -> Option<String> {
+        let common_names = [
+            "gdrive",
+            "echovault-gdrive",
+            "google-drive",
+            "drive",
+            "googledrive",
+        ];
+
+        if let Ok(remotes) = self.list_remotes() {
+            for name in common_names {
+                if remotes.contains(&name.to_string()) {
+                    return Some(name.to_string());
+                }
+            }
+        }
+        None
     }
 
     /// Create provider with custom remote name.
