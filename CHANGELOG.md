@@ -1,3 +1,10 @@
+# [1.11.0-beta.4](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.3...v1.11.0-beta.4) (2025-12-31)
+
+
+### Bug Fixes
+
+* add unzip package to Dockerfile ([2413b11](https://github.com/n24q02m/EchoVault/commit/2413b11cb2ccecf1f1495b810415d936b673d9ee))
+
 # [1.11.0-beta.3](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.2...v1.11.0-beta.3) (2025-12-31)
 
 
