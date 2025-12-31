@@ -66,17 +66,7 @@ build_image() {
 
     cd "$PROJECT_DIR"
 
-    # Check if AppImage exists
-    APPIMAGE=$(find target/release/bundle/appimage -name "*.AppImage" 2>/dev/null | head -n1)
-
-    if [[ -z "$APPIMAGE" ]]; then
-        log_error "AppImage not found. Please build the app first:"
-        log_info "  cargo tauri build --target x86_64-unknown-linux-gnu"
-        exit 1
-    fi
-
-    log_info "Found AppImage: $APPIMAGE"
-
+    # Multi-stage Dockerfile will build the app inside the container
     docker build -t "$IMAGE_NAME" .
 
     log_info "Docker image built successfully!"
