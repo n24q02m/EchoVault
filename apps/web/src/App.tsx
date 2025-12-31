@@ -44,6 +44,27 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [folderName, setFolderName] = useState("EchoVault");
   const [error, setError] = useState<string | null>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  // Check if already authenticated on mount (e.g., rclone configured on host)
+  useEffect(() => {
+    const checkExistingAuth = async () => {
+      try {
+        const status = await invoke<AuthStatusResponse>("complete_auth");
+        setAuthStatus(status);
+        if (status.status === "authenticated") {
+          // Already authenticated, skip to config step
+          setStep("config");
+        }
+      } catch (err) {
+        // Ignore errors, just show connect button
+        console.log("Auth check failed:", err);
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+    checkExistingAuth();
+  }, []);
 
   const handleStartAuth = async () => {
     setIsAuthenticating(true);
@@ -112,7 +133,14 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
               Connect to Google Drive via Rclone.
             </p>
 
-            {!authStatus || authStatus.status === "not_authenticated" ? (
+            {isCheckingAuth ? (
+              <div className="flex items-center justify-center py-4">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+                <span className="ml-2 text-sm text-[var(--text-secondary)]">
+                  Checking connection...
+                </span>
+              </div>
+            ) : !authStatus || authStatus.status === "not_authenticated" ? (
               <button
                 onClick={handleStartAuth}
                 disabled={isAuthenticating}
