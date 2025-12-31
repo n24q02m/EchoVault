@@ -1,3 +1,17 @@
+# [1.11.0-beta.2](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.1...v1.11.0-beta.2) (2025-12-30)
+
+
+### Bug Fixes
+
+* Update version handling in Tauri build process and clean up README formatting ([d071bd5](https://github.com/n24q02m/EchoVault/commit/d071bd544cc308c9ad2fd9c0c0974241c5204a32))
+
+# [1.11.0-beta.1](https://github.com/n24q02m/EchoVault/compare/v1.10.0...v1.11.0-beta.1) (2025-12-30)
+
+
+### Features
+
+* Enhance CI/CD workflows with manual promotion action and update Node.js actions ([7fae657](https://github.com/n24q02m/EchoVault/commit/7fae657a9a9b325fd9974d50b6c0f8ca5c891fdd))
+
 # [1.10.0](https://github.com/n24q02m/EchoVault/compare/v1.9.0...v1.10.0) (2025-12-30)
 
 

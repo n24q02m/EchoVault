@@ -30,8 +30,7 @@ Download the latest installer from [Releases](https://github.com/n24q02m/EchoVau
 
 | Platform              | File                                  | Description                |
 | --------------------- | ------------------------------------- | -------------------------- |
-| **Windows**           | `EchoVault_x.x.x_x64-setup.exe`       | NSIS installer (recommended) |
-|                       | `EchoVault_x.x.x_x64_en-US.msi`       | MSI installer              |
+| **Windows**           | `EchoVault_x.x.x_x64-setup.exe`       | NSIS installer             |
 | **macOS (Intel)**     | `EchoVault_x.x.x_x64.dmg`             | DMG installer              |
 |                       | `EchoVault_x64.app.tar.gz`            | App bundle                 |
 | **macOS (Apple Silicon)** | `EchoVault_x.x.x_aarch64.dmg`     | DMG installer              |
@@ -44,7 +43,7 @@ Download the latest installer from [Releases](https://github.com/n24q02m/EchoVau
 
 **Windows:**
 
-1. Download `EchoVault_x.x.x_x64-setup.exe` (recommended) or `.msi`
+1. Download `EchoVault_x.x.x_x64-setup.exe`
 2. Run the installer and follow the prompts
 3. Launch from Start Menu or Desktop shortcut
 
