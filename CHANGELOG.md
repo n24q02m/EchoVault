@@ -1,3 +1,10 @@
+# [1.11.0-beta.6](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.5...v1.11.0-beta.6) (2025-12-31)
+
+
+### Features
+
+* Implement automatic authentication check with loading state and update pre-commit setup to use uv. ([653d8ba](https://github.com/n24q02m/EchoVault/commit/653d8ba66b7c0291bbde1e5348568649b27134ce))
+
 # [1.11.0-beta.5](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.4...v1.11.0-beta.5) (2025-12-31)
 
 
