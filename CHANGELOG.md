@@ -1,3 +1,10 @@
+# [1.11.0-beta.7](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.6...v1.11.0-beta.7) (2025-12-31)
+
+
+### Features
+
+* Install rclone in Dockerfile and enhance Google Drive remote setup with browser-based authentication and validation. ([60598b8](https://github.com/n24q02m/EchoVault/commit/60598b825c0dd9b940949c18e3fbafcde95eb537))
+
 # [1.11.0-beta.6](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.5...v1.11.0-beta.6) (2025-12-31)
 
 
