@@ -135,26 +135,46 @@ setup_rclone() {
         log_info "rclone is already installed: $(rclone version | head -n1)"
     fi
 
-    # Check if gdrive remote already exists
+    # Check if gdrive remote already exists and has valid token
     if rclone listremotes | grep -q "^gdrive:$"; then
-        log_info "Google Drive remote 'gdrive' already configured."
-        read -p "Do you want to reconfigure? (y/N) " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log_info "Skipping rclone configuration."
-            return
+        # Try to list remote to verify it's working
+        if rclone lsd gdrive: --max-depth 0 &> /dev/null; then
+            log_info "Google Drive remote 'gdrive' is already configured and working."
+            read -p "Do you want to reconfigure? (y/N) " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                log_info "Skipping rclone configuration."
+                return
+            fi
+            # Delete existing remote before reconfiguring
+            rclone config delete gdrive
+        else
+            log_warn "Remote 'gdrive' exists but is not working. Reconfiguring..."
+            rclone config delete gdrive
         fi
     fi
 
     log_info "Configuring Google Drive remote..."
-    log_info "Follow the prompts to authenticate with Google Drive."
+    log_info "A browser will open for you to login to Google Drive."
+    log_info "After login, return here to continue."
     echo ""
 
-    # Run rclone config with pre-filled answers for Google Drive
-    rclone config create gdrive drive
+    # Use rclone authorize to get token interactively
+    # This opens browser and waits for authentication
+    rclone config create gdrive drive config_is_local=true
 
-    log_info "Rclone setup complete!"
-    log_info "Your rclone config is saved at: ~/.config/rclone/rclone.conf"
+    # Verify configuration worked
+    if rclone listremotes | grep -q "^gdrive:$"; then
+        if rclone lsd gdrive: --max-depth 0 &> /dev/null; then
+            log_info "Rclone setup complete!"
+            log_info "Your rclone config is saved at: ~/.config/rclone/rclone.conf"
+        else
+            log_error "Remote created but authentication may have failed."
+            log_info "Try running: rclone config reconnect gdrive:"
+        fi
+    else
+        log_error "Failed to create remote. Please run 'rclone config' manually."
+    fi
 }
 
 # Show usage

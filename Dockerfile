@@ -96,7 +96,13 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     # For opening browser on host via X11
     xdg-utils \
+    # For rclone installation
+    curl \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
+
+# Install rclone for sync functionality
+RUN curl https://rclone.org/install.sh | bash
 
 # Create user
 RUN useradd -m -s /bin/bash echovault \
