@@ -1,3 +1,10 @@
+# [1.11.0-beta.9](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.8...v1.11.0-beta.9) (2026-01-01)
+
+
+### Bug Fixes
+
+* prevent console window from appearing on Windows when running rclone interactively ([c3f6ab6](https://github.com/n24q02m/EchoVault/commit/c3f6ab6678062976fdb85d178217ecb79ae3bbb7))
+
 # [1.11.0-beta.8](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.7...v1.11.0-beta.8) (2026-01-01)
 
 
