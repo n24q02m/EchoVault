@@ -96,7 +96,7 @@ chmod +x docker/run.sh
 
 > [!NOTE]
 > Docker mode requires X11 (not Wayland). Set `GDK_BACKEND=x11` if using Wayland.
-> 
+>
 > The `setup` command will install rclone on your host and open a browser for Google Drive authentication. This only needs to be done once.
 
 
