@@ -19,7 +19,7 @@ run = [
   "pnpm install",
   "cargo build",
   "node scripts/download-rclone.mjs",
-  "uv venv",
+  "uv venv --clear",
   "uv pip install pre-commit",
   "uv run pre-commit install",
   "echo 'Setup complete!'",
