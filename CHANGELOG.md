@@ -1,3 +1,10 @@
+# [1.11.0-beta.8](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.7...v1.11.0-beta.8) (2026-01-01)
+
+
+### Bug Fixes
+
+* add --clear flag to uv venv command in mise setup ([4968713](https://github.com/n24q02m/EchoVault/commit/4968713ad586cf4b1d83d232d8c93fc949c68093))
+
 # [1.11.0-beta.7](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.6...v1.11.0-beta.7) (2025-12-31)
 
 
