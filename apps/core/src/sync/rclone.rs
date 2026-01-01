@@ -152,13 +152,17 @@ impl RcloneProvider {
 
     /// Run rclone command with direct output (for interactive commands).
     fn run_rclone_interactive(&self, args: &[&str]) -> Result<()> {
-        let status = Command::new(&self.rclone_path)
-            .args(args)
+        let mut cmd = Command::new(&self.rclone_path);
+        cmd.args(args)
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
-            .context("Cannot execute rclone")?;
+            .stderr(Stdio::inherit());
+
+        // On Windows, prevent console window from appearing
+        #[cfg(windows)]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+
+        let status = cmd.status().context("Cannot execute rclone")?;
 
         if !status.success() {
             bail!("Rclone command failed with exit code: {:?}", status.code());
