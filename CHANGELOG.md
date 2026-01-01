@@ -1,3 +1,10 @@
+# [1.11.0-beta.10](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.9...v1.11.0-beta.10) (2026-01-01)
+
+
+### Features
+
+* add EditorConfig, update biome.json schema, and implement clean-venv script ([d7c331d](https://github.com/n24q02m/EchoVault/commit/d7c331d0076826fc1bf47b4c67e02fb629a20dd2))
+
 # [1.11.0-beta.9](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.8...v1.11.0-beta.9) (2026-01-01)
 
 

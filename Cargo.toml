@@ -3,7 +3,7 @@ resolver = "2"
 members = ["apps/core", "apps/tauri"]
 
 [workspace.package]
-version = "1.11.0-beta.9"
+version = "1.11.0-beta.10"
 edition = "2021"
 authors = ["n24q02m"]
 license = "MIT"
