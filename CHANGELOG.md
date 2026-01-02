@@ -1,3 +1,10 @@
+# [1.11.0-beta.14](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.13...v1.11.0-beta.14) (2026-01-02)
+
+
+### Bug Fixes
+
+* add cache busting mechanism to Dockerfile and update run script for improved build control ([879ccbc](https://github.com/n24q02m/EchoVault/commit/879ccbc4d9bdc525e632ddf7bc170cd0b941ec13))
+
 # [1.11.0-beta.13](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.12...v1.11.0-beta.13) (2026-01-02)
 
 
