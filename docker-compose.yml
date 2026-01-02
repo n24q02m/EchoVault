@@ -29,8 +29,10 @@ services:
       - echovault-config:/home/echovault/.config/echovault
       - echovault-data:/home/echovault/.local/share/echovault
 
-      # Rclone config (if using system rclone config)
-      - ${HOME}/.config/rclone:/home/echovault/.config/rclone:ro
+      # Rclone config - mount read-write so token can be auto-refreshed
+      # NOTE: When running with sudo, $HOME may resolve to /root instead of user home.
+      # Use RCLONE_CONFIG_DIR env var or ensure rclone.conf exists in the resolved path.
+      - ${RCLONE_CONFIG_DIR:-${HOME}/.config/rclone}:/home/echovault/.config/rclone:rw
 
     # Network mode for D-Bus access
     network_mode: host

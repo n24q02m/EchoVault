@@ -11,7 +11,16 @@
 #   shell   - Open shell in container
 #   logs    - Show container logs
 #   stop    - Stop container
+#   reset   - Reset app config
 #   clean   - Remove container and volumes
+#
+# Note on running with sudo:
+#   When running docker with sudo, $HOME may resolve to /root instead of your home.
+#   Option 1: Export RCLONE_CONFIG_DIR before running:
+#     RCLONE_CONFIG_DIR=$HOME/.config/rclone sudo -E docker compose up -d
+#   Option 2 (recommended): Add your user to the docker group:
+#     sudo usermod -aG docker $USER
+#     # Then log out and log back in
 
 set -e
 
@@ -196,6 +205,7 @@ show_usage() {
     echo "  stop    Stop container"
     echo "  logs    Show container logs"
     echo "  shell   Open shell in container"
+    echo "  reset   Reset app config (re-run first time setup)"
     echo "  clean   Remove container and volumes"
     echo ""
     echo "First time setup:"
@@ -206,6 +216,37 @@ show_usage() {
     echo "Daily usage:"
     echo "  $0 run     # Start EchoVault"
     echo "  $0 stop    # Stop EchoVault"
+    echo ""
+    echo "Note on running with sudo:"
+    echo "  When using sudo, \$HOME may resolve to /root instead of your home."
+    echo "  Option 1: Export RCLONE_CONFIG_DIR:"
+    echo "    RCLONE_CONFIG_DIR=\$HOME/.config/rclone sudo -E docker compose up -d"
+    echo "  Option 2 (recommended): Add user to docker group:"
+    echo "    sudo usermod -aG docker \$USER"
+    echo "    # Then log out and log back in"
+}
+
+# Reset app config (to re-run first time setup)
+reset_app() {
+    log_info "Resetting EchoVault app config..."
+
+    # Stop container if running
+    cd "$PROJECT_DIR"
+    docker compose down 2>/dev/null || true
+
+    # Remove config volume (keeps vault data)
+    docker volume rm echovault-config 2>/dev/null || true
+
+    log_info "Config reset complete."
+    log_info "Run '$0 run' to start fresh setup."
+
+    if [[ "${1:-}" == "--all" ]] || [[ "${1:-}" == "-a" ]]; then
+        log_warn "Removing vault data as well..."
+        docker volume rm echovault-data 2>/dev/null || true
+        log_info "All data removed."
+    else
+        log_info "Note: Vault data still preserved. Use '$0 reset --all' to remove everything."
+    fi
 }
 
 # Main entry point
@@ -227,6 +268,9 @@ case "${1:-run}" in
         ;;
     stop)
         stop_app
+        ;;
+    reset)
+        reset_app "${2:-}"
         ;;
     clean)
         clean_all

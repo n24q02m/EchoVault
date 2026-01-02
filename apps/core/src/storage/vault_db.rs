@@ -1,11 +1,65 @@
 //! VaultDb - SQLite database for vault synchronization.
 //!
 //! This module handles the vault.db file which is synced across machines.
-//! It provides conflict resolution for multi-machine sync scenarios.
+//! It provides conflict resolution for multi-machine sync scenarios using
+//! cr-sqlite CRDT (Conflict-free Replicated Data Types).
 
 use anyhow::{Context, Result};
-use rusqlite::{params, Connection, OptionalExtension};
-use std::path::Path;
+use rusqlite::{params, Connection, LoadExtensionGuard, OptionalExtension};
+use std::path::{Path, PathBuf};
+use tracing::info;
+
+/// Find cr-sqlite extension binary path.
+/// Looks in: bundled (same dir as exe), development path, system paths.
+fn find_crsqlite_path() -> Option<PathBuf> {
+    // Try bundled path first (Tauri sidecar)
+    if let Ok(exe_path) = std::env::current_exe() {
+        let real_exe = exe_path.canonicalize().unwrap_or(exe_path);
+        if let Some(exe_dir) = real_exe.parent() {
+            let ext = if cfg!(windows) {
+                ".dll"
+            } else if cfg!(target_os = "macos") {
+                ".dylib"
+            } else {
+                ".so"
+            };
+            let bundled = exe_dir.join(format!("crsqlite{}", ext));
+            if bundled.exists() {
+                return Some(bundled);
+            }
+        }
+    }
+
+    // Try development paths
+    let dev_paths = [
+        "apps/tauri/binaries/crsqlite-x86_64-unknown-linux-gnu.so",
+        "apps/tauri/binaries/crsqlite-aarch64-unknown-linux-gnu.so",
+        "apps/tauri/binaries/crsqlite-x86_64-apple-darwin.dylib",
+        "apps/tauri/binaries/crsqlite-aarch64-apple-darwin.dylib",
+        "apps/tauri/binaries/crsqlite-x86_64-pc-windows-msvc.dll",
+    ];
+    for path in dev_paths {
+        let p = PathBuf::from(path);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+
+    // Try system paths (Docker/Linux installation)
+    let system_paths = [
+        "/usr/local/lib/crsqlite.so",
+        "/usr/lib/crsqlite.so",
+        "/usr/local/lib/crsqlite.dylib",
+    ];
+    for path in system_paths {
+        let p = PathBuf::from(path);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+
+    None
+}
 
 /// Get a unique machine identifier for this installation.
 fn get_machine_id() -> String {
@@ -62,7 +116,7 @@ pub struct SessionEntry {
 }
 
 impl VaultDb {
-    /// Open or create the vault database.
+    /// Open or create the vault database with cr-sqlite CRDT support.
     pub fn open(vault_dir: &Path) -> Result<Self> {
         let db_path = vault_dir.join("vault.db");
 
@@ -83,6 +137,22 @@ impl VaultDb {
         ",
         )?;
 
+        // Load cr-sqlite extension for CRDT support
+        if let Some(crsqlite_path) = find_crsqlite_path() {
+            info!("[VaultDb] Loading cr-sqlite from: {:?}", crsqlite_path);
+            unsafe {
+                let _guard =
+                    LoadExtensionGuard::new(&conn).context("Failed to enable extension loading")?;
+                conn.load_extension(&crsqlite_path, Some("sqlite3_crsqlite_init"))
+                    .with_context(|| {
+                        format!("Failed to load cr-sqlite from: {}", crsqlite_path.display())
+                    })?;
+            }
+            info!("[VaultDb] cr-sqlite loaded successfully");
+        } else {
+            info!("[VaultDb] cr-sqlite not found, running without CRDT support");
+        }
+
         let db = Self { conn };
         db.init_schema()?;
         Ok(db)
@@ -97,12 +167,21 @@ impl VaultDb {
         Ok(db)
     }
 
+    /// Check if cr-sqlite extension is loaded.
+    fn is_crsqlite_loaded(&self) -> bool {
+        // Try calling crsql_site_id() - this will only work if extension is loaded
+        self.conn
+            .query_row("SELECT crsql_site_id()", [], |_| Ok(()))
+            .is_ok()
+    }
+
     /// Initialize database schema.
     fn init_schema(&self) -> Result<()> {
+        // Create tables first
         self.conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS sessions (
-                id TEXT PRIMARY KEY,
+                id TEXT PRIMARY KEY NOT NULL,
                 source TEXT NOT NULL,
                 machine_id TEXT NOT NULL,
                 mtime INTEGER NOT NULL,
@@ -126,14 +205,36 @@ impl VaultDb {
                 action TEXT NOT NULL,
                 details TEXT
             );
+
+            -- Track sync state for incremental sync
+            CREATE TABLE IF NOT EXISTS sync_state (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                last_synced_db_version INTEGER NOT NULL DEFAULT 0
+            );
+            INSERT OR IGNORE INTO sync_state (id, last_synced_db_version) VALUES (1, 0);
         ",
         )?;
+
+        // Upgrade sessions table to CRR if cr-sqlite is loaded
+        if self.is_crsqlite_loaded() {
+            info!("[VaultDb] Upgrading sessions table to CRR...");
+            // crsql_as_crr is idempotent - safe to call multiple times
+            self.conn.execute("SELECT crsql_as_crr('sessions')", [])?;
+            info!("[VaultDb] Sessions table upgraded to CRR");
+        }
+
         Ok(())
     }
 
     /// Get the current machine ID.
     pub fn get_machine_id(&self) -> &str {
         machine_id()
+    }
+
+    /// Get reference to the underlying connection (for testing/advanced use).
+    #[cfg(feature = "ci-sync-test")]
+    pub fn conn(&self) -> &Connection {
+        &self.conn
     }
 
     /// Upsert a session with conflict resolution (keep newest by mtime).

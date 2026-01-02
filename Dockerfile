@@ -53,6 +53,13 @@ RUN mkdir -p apps/tauri/binaries \
     && chmod +x apps/tauri/binaries/rclone-x86_64-unknown-linux-gnu \
     && rm -rf rclone-*
 
+# Download cr-sqlite extension for CRDT sync support
+RUN curl -LO https://github.com/vlcn-io/cr-sqlite/releases/download/v0.16.3/crsqlite-linux-x86_64.zip \
+    && unzip crsqlite-linux-x86_64.zip \
+    && cp crsqlite.so apps/tauri/binaries/crsqlite-x86_64-unknown-linux-gnu.so \
+    && chmod +x apps/tauri/binaries/crsqlite-x86_64-unknown-linux-gnu.so \
+    && rm -rf crsqlite-linux-x86_64.zip crsqlite.so
+
 # Install frontend dependencies
 WORKDIR /app/apps/web
 RUN pnpm install --frozen-lockfile
@@ -107,6 +114,13 @@ RUN curl -LO https://downloads.rclone.org/rclone-current-linux-amd64.zip \
     && cp rclone-*/rclone /usr/local/bin/ \
     && chmod +x /usr/local/bin/rclone \
     && rm -rf rclone-*
+
+# Install cr-sqlite extension for CRDT sync support
+RUN curl -LO https://github.com/vlcn-io/cr-sqlite/releases/download/v0.16.3/crsqlite-linux-x86_64.zip \
+    && unzip crsqlite-linux-x86_64.zip \
+    && cp crsqlite.so /usr/local/lib/crsqlite.so \
+    && chmod +x /usr/local/lib/crsqlite.so \
+    && rm -rf crsqlite-linux-x86_64.zip crsqlite.so
 
 # Create user
 RUN useradd -m -s /bin/bash echovault \

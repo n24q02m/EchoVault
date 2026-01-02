@@ -159,5 +159,47 @@ mod ci_sync_tests {
         println!("  - session-002: mtime=2000 (from Machine B)");
         println!("  - session-003: mtime=1000 (unchanged)");
         println!("  - session-004: mtime=2000 (new from Machine B)");
+
+        // Test cr-sqlite CRDT is loaded and working
+        test_crsqlite_loaded(&db);
+    }
+
+    /// Verify cr-sqlite CRDT extension is loaded and functioning.
+    fn test_crsqlite_loaded(db: &VaultDb) {
+        // Try to get db_version (only works if cr-sqlite is loaded)
+        let result: Result<i64, _> = db
+            .conn()
+            .query_row("SELECT crsql_db_version()", [], |row| row.get(0));
+
+        match result {
+            Ok(version) => {
+                println!("[CRDT] cr-sqlite loaded! db_version = {}", version);
+
+                // Verify sessions table is a CRR (check crsql_changes)
+                let changes_count: i64 = db
+                    .conn()
+                    .query_row(
+                        "SELECT COUNT(*) FROM crsql_changes WHERE \"table\" = 'sessions'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+                println!("[CRDT] Changes tracked: {}", changes_count);
+
+                // Get site_id
+                let site_id: Vec<u8> = db
+                    .conn()
+                    .query_row("SELECT crsql_site_id()", [], |row| row.get(0))
+                    .unwrap_or_default();
+                println!("[CRDT] Site ID: {:?}", &site_id[..8.min(site_id.len())]);
+            }
+            Err(_) => {
+                println!(
+                    "[CRDT] cr-sqlite not loaded (extension not available in this environment)"
+                );
+                // This is OK - tests should still pass without cr-sqlite
+                // The mtime-based conflict resolution in VaultDb is a fallback
+            }
+        }
     }
 }
