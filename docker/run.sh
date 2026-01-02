@@ -76,10 +76,10 @@ build_image() {
     cd "$PROJECT_DIR"
 
     # Multi-stage Dockerfile will build the app inside the container
-    # Use --no-cache if FORCE_REBUILD is set
+    # Use --no-cache if FORCE_REBUILD is set, and pass CACHEBUST to invalidate COPY cache
     if [[ "${FORCE_REBUILD:-}" == "1" ]]; then
         log_info "Force rebuilding without cache..."
-        docker build --no-cache -t "$IMAGE_NAME" .
+        docker build --no-cache --build-arg CACHEBUST=$(date +%s) -t "$IMAGE_NAME" .
     else
         docker build -t "$IMAGE_NAME" .
     fi

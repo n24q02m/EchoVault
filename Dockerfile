@@ -42,6 +42,9 @@ RUN cargo install tauri-cli --locked
 # Set working directory
 WORKDIR /app
 
+# Cache busting - thay đổi giá trị này sẽ invalidate cache từ đây
+ARG CACHEBUST=1
+
 # Copy source code
 COPY . .
 
