@@ -1,3 +1,10 @@
+# [1.11.0-beta.11](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.10...v1.11.0-beta.11) (2026-01-02)
+
+
+### Bug Fixes
+
+* **cd:** auto-resolve merge conflicts in semantic-release managed files ([dbe970f](https://github.com/n24q02m/EchoVault/commit/dbe970feebbb0d2c3633b2eb30d3259a52b5204c))
+
 # [1.11.0-beta.10](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.9...v1.11.0-beta.10) (2026-01-01)
 
 
