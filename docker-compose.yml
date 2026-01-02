@@ -3,6 +3,7 @@
 
 services:
   echovault:
+    image: echovault
     build:
       context: .
       dockerfile: Dockerfile
