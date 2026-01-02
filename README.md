@@ -89,6 +89,10 @@ chmod +x docker/run.sh
 ./docker/run.sh build   # Build Docker image (takes ~10 minutes)
 ./docker/run.sh run     # Run EchoVault
 
+# After pulling new code changes
+./docker/run.sh rebuild # Force rebuild without cache
+./docker/run.sh run     # Run updated EchoVault
+
 # Daily usage
 ./docker/run.sh run     # Start EchoVault
 ./docker/run.sh stop    # Stop when done

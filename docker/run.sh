@@ -87,6 +87,18 @@ build_image() {
     log_info "Docker image built successfully!"
 }
 
+# Force rebuild Docker image without cache
+rebuild_image() {
+    log_info "Stopping existing container..."
+    cd "$PROJECT_DIR"
+    docker compose down 2>/dev/null || true
+
+    export FORCE_REBUILD=1
+    build_image
+
+    log_info "Rebuild complete! Run './docker/run.sh run' to start."
+}
+
 # Run EchoVault in Docker
 run_app() {
     check_linux
@@ -95,7 +107,8 @@ run_app() {
     log_info "Running EchoVault in Docker..."
 
     cd "$PROJECT_DIR"
-    docker compose up -d
+    # Force recreate to ensure using latest image
+    docker compose up -d --force-recreate
 
     log_info "EchoVault is running!"
     log_info "To view logs: $0 logs"
@@ -200,7 +213,8 @@ show_usage() {
     echo ""
     echo "Commands:"
     echo "  setup   Install rclone and configure Google Drive (run this first!)"
-    echo "  build   Build Docker image"
+    echo "  build   Build Docker image (uses cache)"
+    echo "  rebuild Force rebuild Docker image without cache"
     echo "  run     Run EchoVault (default)"
     echo "  stop    Stop container"
     echo "  logs    Show container logs"
@@ -212,6 +226,10 @@ show_usage() {
     echo "  $0 setup   # Install rclone and login to Google Drive"
     echo "  $0 build   # Build the Docker image (takes ~10 minutes)"
     echo "  $0 run     # Start EchoVault"
+    echo ""
+    echo "After code changes:"
+    echo "  $0 rebuild # Force rebuild without cache"
+    echo "  $0 run     # Start updated EchoVault"
     echo ""
     echo "Daily usage:"
     echo "  $0 run     # Start EchoVault"
@@ -259,6 +277,9 @@ case "${1:-run}" in
         ;;
     build)
         build_image
+        ;;
+    rebuild)
+        rebuild_image
         ;;
     shell)
         open_shell
