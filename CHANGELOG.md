@@ -1,3 +1,10 @@
+# [1.11.0-beta.13](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.12...v1.11.0-beta.13) (2026-01-02)
+
+
+### Features
+
+* enhance session scanning with additional metadata and improve sync UI feedback ([8b7e765](https://github.com/n24q02m/EchoVault/commit/8b7e765209ac17d3c6b54566fab64da86cced0fc))
+
 # [1.11.0-beta.12](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.11...v1.11.0-beta.12) (2026-01-02)
 
 
