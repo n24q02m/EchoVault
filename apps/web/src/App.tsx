@@ -321,10 +321,8 @@ function MainApp() {
     setSyncError(null);
     try {
       await invoke<string>("sync_vault");
-      toast.success("Sync completed successfully");
       await loadSessions();
     } catch (err) {
-      toast.error(`Sync failed: ${String(err)}`);
       setSyncError(String(err));
     } finally {
       setIsSyncing(false);
@@ -399,14 +397,18 @@ function MainApp() {
           <img src="/logo.png" alt="EchoVault" className="h-8 w-8 rounded-lg" />
           <span className="font-semibold">EchoVault</span>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleSync}
-            disabled={isSyncing}
-            className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {isSyncing ? "Syncing..." : "Sync"}
-          </button>
+        <div className="flex items-center gap-2 text-sm">
+          {isSyncing ? (
+            <>
+              <div className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+              <span className="text-[var(--text-secondary)]">Syncing...</span>
+            </>
+          ) : (
+            <>
+              <div className="h-2 w-2 rounded-full bg-[var(--success)]" />
+              <span className="text-[var(--text-secondary)]">Synced</span>
+            </>
+          )}
         </div>
       </div>
 
