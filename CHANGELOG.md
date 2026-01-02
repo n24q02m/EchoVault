@@ -1,3 +1,10 @@
+# [1.11.0-beta.12](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.11...v1.11.0-beta.12) (2026-01-02)
+
+
+### Features
+
+* integrate cr-sqlite extension for CRDT sync support ([6a81331](https://github.com/n24q02m/EchoVault/commit/6a813317adede827e419cff28fad4b374b80dc16))
+
 # [1.11.0-beta.11](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.10...v1.11.0-beta.11) (2026-01-02)
 
 
