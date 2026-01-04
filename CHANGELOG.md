@@ -1,3 +1,10 @@
+# [1.11.0-beta.16](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.15...v1.11.0-beta.16) (2026-01-04)
+
+
+### Features
+
+* **cd:** add shared scripts for promote workflow and fix venv setup ([e72a087](https://github.com/n24q02m/EchoVault/commit/e72a087171771399392511a8a2fd850210fc39c5))
+
 # [1.11.0-beta.15](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.14...v1.11.0-beta.15) (2026-01-04)
 
 
