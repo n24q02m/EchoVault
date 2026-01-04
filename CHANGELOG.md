@@ -1,3 +1,30 @@
+# [1.12.0](https://github.com/n24q02m/EchoVault/compare/v1.11.0...v1.12.0) (2026-01-04)
+
+
+### Bug Fixes
+
+* add --clear flag to uv venv command in mise setup ([4968713](https://github.com/n24q02m/EchoVault/commit/4968713ad586cf4b1d83d232d8c93fc949c68093))
+* add cache busting mechanism to Dockerfile and update run script for improved build control ([879ccbc](https://github.com/n24q02m/EchoVault/commit/879ccbc4d9bdc525e632ddf7bc170cd0b941ec13))
+* add unzip package to Dockerfile ([2413b11](https://github.com/n24q02m/EchoVault/commit/2413b11cb2ccecf1f1495b810415d936b673d9ee))
+* **cd:** auto-resolve merge conflicts in semantic-release managed files ([dbe970f](https://github.com/n24q02m/EchoVault/commit/dbe970feebbb0d2c3633b2eb30d3259a52b5204c))
+* **cd:** improve merge conflict auto-resolution in promote workflow ([0d39d13](https://github.com/n24q02m/EchoVault/commit/0d39d13178227219fc9e1c595850860bde5989f8))
+* **cd:** improve merge conflict auto-resolution in promote workflow ([88e0357](https://github.com/n24q02m/EchoVault/commit/88e0357d7777c46ace452c83b71781bd82212885))
+* **cd:** use GH_PAT to enable workflow trigger on main ([ee34d66](https://github.com/n24q02m/EchoVault/commit/ee34d66c4731172008db70cc1dc4eb7b11cd8b52))
+* Implement multi-stage Docker build for EchoVault AppImage from source. ([6c71ea6](https://github.com/n24q02m/EchoVault/commit/6c71ea659638639205bb796f209f7c966ceff0e5))
+* prevent console window from appearing on Windows when running rclone interactively ([c3f6ab6](https://github.com/n24q02m/EchoVault/commit/c3f6ab6678062976fdb85d178217ecb79ae3bbb7))
+
+
+### Features
+
+* add `setup` command for rclone Google Drive configuration and auto-detect existing remotes ([51b5e0a](https://github.com/n24q02m/EchoVault/commit/51b5e0a0c388e84f3cabc41decfe0c2da6834a1d))
+* add EditorConfig, update biome.json schema, and implement clean-venv script ([d7c331d](https://github.com/n24q02m/EchoVault/commit/d7c331d0076826fc1bf47b4c67e02fb629a20dd2))
+* **cd:** add shared scripts for promote workflow and fix venv setup ([e72a087](https://github.com/n24q02m/EchoVault/commit/e72a087171771399392511a8a2fd850210fc39c5))
+* enhance session scanning with additional metadata and improve sync UI feedback ([8b7e765](https://github.com/n24q02m/EchoVault/commit/8b7e765209ac17d3c6b54566fab64da86cced0fc))
+* Implement automatic authentication check with loading state and update pre-commit setup to use uv. ([653d8ba](https://github.com/n24q02m/EchoVault/commit/653d8ba66b7c0291bbde1e5348568649b27134ce))
+* Install rclone in Dockerfile and enhance Google Drive remote setup with browser-based authentication and validation. ([60598b8](https://github.com/n24q02m/EchoVault/commit/60598b825c0dd9b940949c18e3fbafcde95eb537))
+* integrate cr-sqlite extension for CRDT sync support ([6a81331](https://github.com/n24q02m/EchoVault/commit/6a813317adede827e419cff28fad4b374b80dc16))
+* **settings:** add settings overlay and commands for app info, autostart, and export path management ([6d9af9d](https://github.com/n24q02m/EchoVault/commit/6d9af9df99c6cd8ba78d21758e957b3193431b70))
+
 # [1.11.0-beta.18](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.17...v1.11.0-beta.18) (2026-01-04)
 
 
