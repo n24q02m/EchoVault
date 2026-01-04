@@ -40,6 +40,7 @@ pub struct RcloneProvider {
 
 impl RcloneProvider {
     /// Create new provider with bundled rclone binary.
+    /// Auto-detects existing Google Drive remotes.
     pub fn new() -> Self {
         let rclone_path = Self::find_rclone_binary();
         let mut provider = Self {
@@ -49,9 +50,37 @@ impl RcloneProvider {
             is_configured: false,
         };
 
-        // Check if remote is already configured
-        provider.is_configured = provider.check_remote_exists().unwrap_or(false);
+        // Try to find existing Google Drive remote
+        if let Some(existing_remote) = provider.find_existing_drive_remote() {
+            info!("[Rclone] Found existing remote: {}", existing_remote);
+            provider.remote_name = existing_remote;
+            provider.is_configured = true;
+        } else {
+            // Check if default remote exists
+            provider.is_configured = provider.check_remote_exists().unwrap_or(false);
+        }
+
         provider
+    }
+
+    /// Find existing Google Drive remote from common names.
+    fn find_existing_drive_remote(&self) -> Option<String> {
+        let common_names = [
+            "gdrive",
+            "echovault-gdrive",
+            "google-drive",
+            "drive",
+            "googledrive",
+        ];
+
+        if let Ok(remotes) = self.list_remotes() {
+            for name in common_names {
+                if remotes.contains(&name.to_string()) {
+                    return Some(name.to_string());
+                }
+            }
+        }
+        None
     }
 
     /// Create provider with custom remote name.
@@ -72,13 +101,19 @@ impl RcloneProvider {
     fn find_rclone_binary() -> PathBuf {
         // Try to find bundled rclone first (Tauri sidecar)
         if let Ok(exe_path) = std::env::current_exe() {
-            if let Some(exe_dir) = exe_path.parent() {
+            // Resolve symlinks to get the real path
+            // This is important for AppImage which may use symlinks
+            let real_exe_path = exe_path.canonicalize().unwrap_or(exe_path);
+
+            if let Some(exe_dir) = real_exe_path.parent() {
                 let bundled = if cfg!(windows) {
                     exe_dir.join("rclone.exe")
                 } else {
                     exe_dir.join("rclone")
                 };
+                info!("[Rclone] Looking for bundled rclone at: {:?}", bundled);
                 if bundled.exists() {
+                    info!("[Rclone] Found bundled rclone at: {:?}", bundled);
                     return bundled;
                 }
 
@@ -89,12 +124,24 @@ impl RcloneProvider {
                     exe_dir.join("binaries").join("rclone")
                 };
                 if dev_bundled.exists() {
+                    info!("[Rclone] Found dev bundled rclone at: {:?}", dev_bundled);
                     return dev_bundled;
                 }
             }
         }
 
-        // Fallback: use system rclone
+        // Fallback: try common system paths
+        let system_paths = ["/usr/local/bin/rclone", "/usr/bin/rclone"];
+        for path in system_paths {
+            let p = PathBuf::from(path);
+            if p.exists() {
+                info!("[Rclone] Found system rclone at: {:?}", p);
+                return p;
+            }
+        }
+
+        // Last fallback: use system rclone (rely on PATH)
+        info!("[Rclone] Falling back to system PATH for rclone");
         if cfg!(windows) {
             PathBuf::from("rclone.exe")
         } else {
@@ -123,13 +170,17 @@ impl RcloneProvider {
 
     /// Run rclone command with direct output (for interactive commands).
     fn run_rclone_interactive(&self, args: &[&str]) -> Result<()> {
-        let status = Command::new(&self.rclone_path)
-            .args(args)
+        let mut cmd = Command::new(&self.rclone_path);
+        cmd.args(args)
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
-            .context("Cannot execute rclone")?;
+            .stderr(Stdio::inherit());
+
+        // On Windows, prevent console window from appearing
+        #[cfg(windows)]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+
+        let status = cmd.status().context("Cannot execute rclone")?;
 
         if !status.success() {
             bail!("Rclone command failed with exit code: {:?}", status.code());
@@ -378,7 +429,9 @@ mod tests {
     fn test_rclone_provider_new() {
         let provider = RcloneProvider::new();
         assert_eq!(provider.name(), "rclone");
-        assert_eq!(provider.remote_name(), DEFAULT_REMOTE_NAME);
+        // Note: remote_name may differ based on local rclone config
+        // Just check that it's not empty
+        assert!(!provider.remote_name().is_empty());
         assert_eq!(provider.remote_path(), DEFAULT_REMOTE_PATH);
     }
 
@@ -391,7 +444,8 @@ mod tests {
 
     #[test]
     fn test_get_remote_url() {
-        let provider = RcloneProvider::new();
+        // Use with_remote to get deterministic values (not affected by local config)
+        let provider = RcloneProvider::with_remote(DEFAULT_REMOTE_NAME, DEFAULT_REMOTE_PATH);
         assert_eq!(provider.get_remote_url(), "echovault-gdrive:EchoVault");
     }
 }

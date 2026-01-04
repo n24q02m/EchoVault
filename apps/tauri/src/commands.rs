@@ -319,6 +319,9 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
                                 &db_session.id,
                                 db_session.file_size,
                                 &db_session.source,
+                                db_session.created_at.as_deref(),
+                                db_session.title.as_deref(),
+                                db_session.workspace_name.as_deref(),
                             );
                             all_sessions.push(session_info);
                         }
@@ -351,6 +354,9 @@ fn find_vault_session_info(
     session_id: &str,
     file_size: u64,
     source: &str,
+    db_created_at: Option<&str>,
+    db_title: Option<&str>,
+    db_workspace_name: Option<&str>,
 ) -> SessionInfo {
     use std::fs;
 
@@ -403,31 +409,33 @@ fn find_vault_session_info(
         found_path = sessions_dir.to_string_lossy().to_string();
     }
 
-    // Thử đọc file để lấy thêm thông tin
-    let title = if !found_path.is_empty() && std::path::Path::new(&found_path).exists() {
-        if let Ok(content) = fs::read_to_string(&found_path) {
-            // Parse JSON để lấy title/workspace
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                json.get("title")
-                    .or_else(|| json.get("workspace_name"))
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
+    // Ưu tiên title từ db, nếu không có thì thử đọc từ file
+    let title = db_title.map(|s| s.to_string()).or_else(|| {
+        if !found_path.is_empty() && std::path::Path::new(&found_path).exists() {
+            if let Ok(content) = fs::read_to_string(&found_path) {
+                // Parse JSON để lấy title/workspace
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    json.get("title")
+                        .or_else(|| json.get("workspace_name"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                } else {
+                    display_title.clone()
+                }
             } else {
-                display_title
+                display_title.clone()
             }
         } else {
-            display_title
+            display_title.clone()
         }
-    } else {
-        display_title
-    };
+    });
 
     SessionInfo {
         id: session_id.to_string(),
         source: source.to_string(),
         title,
-        workspace_name: None,
-        created_at: None, // Không có timestamp chính xác từ index
+        workspace_name: db_workspace_name.map(|s| s.to_string()),
+        created_at: db_created_at.map(|s| s.to_string()),
         file_size,
         path: found_path,
     }

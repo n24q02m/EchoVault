@@ -17,7 +17,9 @@ ci-sync-test = []
 
 [dependencies]
 # SQLite for reading IDE databases and index
-rusqlite = { version = "0.32", features = ["bundled"] }
+# bundled: compile SQLite from source
+# load_extension: enable Connection::load_extension() and LoadExtensionGuard
+rusqlite = { version = "0.32", features = ["bundled", "load_extension"] }
 
 # JSON serialization
 serde = { version = "1.0", features = ["derive"] }

@@ -1,14 +1,93 @@
-# [1.11.0](https://github.com/n24q02m/EchoVault/compare/v1.10.0...v1.11.0) (2025-12-31)
+# [1.11.0-beta.15](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.14...v1.11.0-beta.15) (2026-01-04)
 
 
 ### Bug Fixes
 
-* Update version handling in Tauri build process and clean up README formatting ([d071bd5](https://github.com/n24q02m/EchoVault/commit/d071bd544cc308c9ad2fd9c0c0974241c5204a32))
+* **cd:** improve merge conflict auto-resolution in promote workflow ([88e0357](https://github.com/n24q02m/EchoVault/commit/88e0357d7777c46ace452c83b71781bd82212885))
+
+# [1.11.0-beta.14](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.13...v1.11.0-beta.14) (2026-01-02)
+
+
+### Bug Fixes
+
+* add cache busting mechanism to Dockerfile and update run script for improved build control ([879ccbc](https://github.com/n24q02m/EchoVault/commit/879ccbc4d9bdc525e632ddf7bc170cd0b941ec13))
+
+# [1.11.0-beta.13](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.12...v1.11.0-beta.13) (2026-01-02)
 
 
 ### Features
 
-* Enhance CI/CD workflows with manual promotion action and update Node.js actions ([7fae657](https://github.com/n24q02m/EchoVault/commit/7fae657a9a9b325fd9974d50b6c0f8ca5c891fdd))
+* enhance session scanning with additional metadata and improve sync UI feedback ([8b7e765](https://github.com/n24q02m/EchoVault/commit/8b7e765209ac17d3c6b54566fab64da86cced0fc))
+
+# [1.11.0-beta.12](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.11...v1.11.0-beta.12) (2026-01-02)
+
+
+### Features
+
+* integrate cr-sqlite extension for CRDT sync support ([6a81331](https://github.com/n24q02m/EchoVault/commit/6a813317adede827e419cff28fad4b374b80dc16))
+
+# [1.11.0-beta.11](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.10...v1.11.0-beta.11) (2026-01-02)
+
+
+### Bug Fixes
+
+* **cd:** auto-resolve merge conflicts in semantic-release managed files ([dbe970f](https://github.com/n24q02m/EchoVault/commit/dbe970feebbb0d2c3633b2eb30d3259a52b5204c))
+
+# [1.11.0-beta.10](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.9...v1.11.0-beta.10) (2026-01-01)
+
+
+### Features
+
+* add EditorConfig, update biome.json schema, and implement clean-venv script ([d7c331d](https://github.com/n24q02m/EchoVault/commit/d7c331d0076826fc1bf47b4c67e02fb629a20dd2))
+
+# [1.11.0-beta.9](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.8...v1.11.0-beta.9) (2026-01-01)
+
+
+### Bug Fixes
+
+* prevent console window from appearing on Windows when running rclone interactively ([c3f6ab6](https://github.com/n24q02m/EchoVault/commit/c3f6ab6678062976fdb85d178217ecb79ae3bbb7))
+
+# [1.11.0-beta.8](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.7...v1.11.0-beta.8) (2026-01-01)
+
+
+### Bug Fixes
+
+* add --clear flag to uv venv command in mise setup ([4968713](https://github.com/n24q02m/EchoVault/commit/4968713ad586cf4b1d83d232d8c93fc949c68093))
+
+# [1.11.0-beta.7](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.6...v1.11.0-beta.7) (2025-12-31)
+
+
+### Features
+
+* Install rclone in Dockerfile and enhance Google Drive remote setup with browser-based authentication and validation. ([60598b8](https://github.com/n24q02m/EchoVault/commit/60598b825c0dd9b940949c18e3fbafcde95eb537))
+
+# [1.11.0-beta.6](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.5...v1.11.0-beta.6) (2025-12-31)
+
+
+### Features
+
+* Implement automatic authentication check with loading state and update pre-commit setup to use uv. ([653d8ba](https://github.com/n24q02m/EchoVault/commit/653d8ba66b7c0291bbde1e5348568649b27134ce))
+
+# [1.11.0-beta.5](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.4...v1.11.0-beta.5) (2025-12-31)
+
+
+### Features
+
+* add `setup` command for rclone Google Drive configuration and auto-detect existing remotes ([51b5e0a](https://github.com/n24q02m/EchoVault/commit/51b5e0a0c388e84f3cabc41decfe0c2da6834a1d))
+
+# [1.11.0-beta.4](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.3...v1.11.0-beta.4) (2025-12-31)
+
+
+### Bug Fixes
+
+* add unzip package to Dockerfile ([2413b11](https://github.com/n24q02m/EchoVault/commit/2413b11cb2ccecf1f1495b810415d936b673d9ee))
+
+# [1.11.0-beta.3](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.2...v1.11.0-beta.3) (2025-12-31)
+
+
+### Bug Fixes
+
+* Implement multi-stage Docker build for EchoVault AppImage from source. ([6c71ea6](https://github.com/n24q02m/EchoVault/commit/6c71ea659638639205bb796f209f7c966ceff0e5))
 
 # [1.11.0-beta.2](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.1...v1.11.0-beta.2) (2025-12-30)
 

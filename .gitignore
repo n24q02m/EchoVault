@@ -181,3 +181,6 @@ vite.config.ts.timestamp-*
 apps/tauri/binaries/*
 !apps/tauri/binaries/README.md
 apps/tauri/*.key
+
+# Virtual environment
+.venv
