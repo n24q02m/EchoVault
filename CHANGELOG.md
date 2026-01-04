@@ -1,3 +1,10 @@
+# [1.11.0-beta.15](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.14...v1.11.0-beta.15) (2026-01-04)
+
+
+### Bug Fixes
+
+* **cd:** improve merge conflict auto-resolution in promote workflow ([88e0357](https://github.com/n24q02m/EchoVault/commit/88e0357d7777c46ace452c83b71781bd82212885))
+
 # [1.11.0-beta.14](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.13...v1.11.0-beta.14) (2026-01-02)
 
 
