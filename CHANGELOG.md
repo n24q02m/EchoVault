@@ -1,3 +1,10 @@
+# [1.11.0-beta.19](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.18...v1.11.0-beta.19) (2026-01-04)
+
+
+### Bug Fixes
+
+* **ci:** verify CD workflow with beta and stable releases ([30e64be](https://github.com/n24q02m/EchoVault/commit/30e64be2299e9b7407b871bb3ad3d3019ecb87c9))
+
 # [1.11.0-beta.18](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.17...v1.11.0-beta.18) (2026-01-04)
 
 
