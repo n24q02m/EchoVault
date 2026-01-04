@@ -173,6 +173,15 @@ pub fn run() {
             commands::sync_vault,
             commands::open_url,
             commands::read_file_content,
+            // Settings commands
+            commands::get_app_info,
+            commands::get_autostart_status,
+            commands::set_autostart,
+            commands::get_export_path,
+            commands::set_export_path,
+            commands::open_data_folder,
+            commands::open_logs_folder,
+            commands::check_update_manual,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

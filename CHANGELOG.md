@@ -1,3 +1,10 @@
+# [1.11.0-beta.18](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.17...v1.11.0-beta.18) (2026-01-04)
+
+
+### Features
+
+* **settings:** add settings overlay and commands for app info, autostart, and export path management ([6d9af9d](https://github.com/n24q02m/EchoVault/commit/6d9af9df99c6cd8ba78d21758e957b3193431b70))
+
 # [1.11.0-beta.17](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.16...v1.11.0-beta.17) (2026-01-04)
 
 

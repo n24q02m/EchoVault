@@ -23,7 +23,5 @@ run = [
   "uv pip install pre-commit",
   "uv run pre-commit install",
   "echo 'Setup complete!'",
-  "echo '  Dev: pnpm dev'",
-  "echo '  Tauri: cargo tauri dev'"
 ]
 

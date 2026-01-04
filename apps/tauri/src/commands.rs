@@ -883,3 +883,173 @@ pub async fn read_file_content(path: String) -> Result<String, String> {
 
     fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))
 }
+
+// ============ SETTINGS COMMANDS ============
+
+/// Thông tin app để hiển thị trong Settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppInfo {
+    pub version: String,
+    pub data_dir: String,
+    pub config_dir: String,
+    pub logs_dir: String,
+}
+
+/// Lấy thông tin app
+#[tauri::command]
+pub async fn get_app_info() -> Result<AppInfo, String> {
+    use echovault_core::config::{default_config_dir, default_vault_path};
+
+    let data_dir = default_vault_path();
+    let config_dir = default_config_dir();
+    // Logs dir is sibling of vault dir (data_dir/../logs)
+    let logs_dir = data_dir
+        .parent()
+        .map(|p| p.join("logs"))
+        .unwrap_or_else(|| std::path::PathBuf::from("./logs"));
+
+    Ok(AppInfo {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        data_dir: data_dir.to_string_lossy().to_string(),
+        config_dir: config_dir.to_string_lossy().to_string(),
+        logs_dir: logs_dir.to_string_lossy().to_string(),
+    })
+}
+
+/// Lấy trạng thái autostart hiện tại
+#[tauri::command]
+pub async fn get_autostart_status(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+
+    let autostart_manager = app.autolaunch();
+    autostart_manager.is_enabled().map_err(|e| e.to_string())
+}
+
+/// Bật/tắt autostart
+#[tauri::command]
+pub async fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+
+    let autostart_manager = app.autolaunch();
+    if enabled {
+        autostart_manager.enable().map_err(|e| e.to_string())
+    } else {
+        autostart_manager.disable().map_err(|e| e.to_string())
+    }
+}
+
+/// Lấy export path từ config
+#[tauri::command]
+pub async fn get_export_path() -> Result<String, String> {
+    use echovault_core::config::default_vault_path;
+
+    let config = Config::load_default().map_err(|e| e.to_string())?;
+    let export_path = config.export_path.unwrap_or_else(|| {
+        // Default export path is sibling of vault: data_dir/../exports
+        default_vault_path()
+            .parent()
+            .map(|p| p.join("exports"))
+            .unwrap_or_else(|| std::path::PathBuf::from("./exports"))
+    });
+    Ok(export_path.to_string_lossy().to_string())
+}
+
+/// Cập nhật export path
+#[tauri::command]
+pub async fn set_export_path(path: String) -> Result<(), String> {
+    use echovault_core::config::default_config_path;
+
+    let mut config = Config::load_default().map_err(|e| e.to_string())?;
+    config.export_path = Some(std::path::PathBuf::from(path));
+    config
+        .save(&default_config_path())
+        .map_err(|e| e.to_string())
+}
+
+/// Mở thư mục data trong file explorer
+#[tauri::command]
+pub async fn open_data_folder() -> Result<(), String> {
+    use echovault_core::config::default_vault_path;
+
+    let data_dir = default_vault_path();
+    if !data_dir.exists() {
+        std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
+    }
+    open_folder_in_explorer(&data_dir)
+}
+
+/// Mở thư mục logs
+#[tauri::command]
+pub async fn open_logs_folder() -> Result<(), String> {
+    use echovault_core::config::default_vault_path;
+
+    // Logs dir is sibling of vault dir (data_dir/../logs)
+    let logs_dir = default_vault_path()
+        .parent()
+        .map(|p| p.join("logs"))
+        .unwrap_or_else(|| std::path::PathBuf::from("./logs"));
+
+    if !logs_dir.exists() {
+        std::fs::create_dir_all(&logs_dir).map_err(|e| e.to_string())?;
+    }
+    open_folder_in_explorer(&logs_dir)
+}
+
+/// Helper: Mở folder trong file explorer
+fn open_folder_in_explorer(path: &std::path::Path) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+/// Response cho update check
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateCheckResult {
+    pub update_available: bool,
+    pub current_version: String,
+    pub new_version: Option<String>,
+}
+
+/// Kiểm tra update thủ công
+#[tauri::command]
+pub async fn check_update_manual(app: tauri::AppHandle) -> Result<UpdateCheckResult, String> {
+    use tauri_plugin_updater::UpdaterExt;
+
+    let updater = app.updater().map_err(|e| e.to_string())?;
+
+    match updater.check().await {
+        Ok(Some(update)) => Ok(UpdateCheckResult {
+            update_available: true,
+            current_version: update.current_version.to_string(),
+            new_version: Some(update.version.clone()),
+        }),
+        Ok(None) => Ok(UpdateCheckResult {
+            update_available: false,
+            current_version: env!("CARGO_PKG_VERSION").to_string(),
+            new_version: None,
+        }),
+        Err(e) => Err(format!("Failed to check for updates: {}", e)),
+    }
+}
