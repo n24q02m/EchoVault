@@ -52,6 +52,10 @@ pub struct Config {
     /// Extractors configuration
     #[serde(default)]
     pub extractors: ExtractorsConfig,
+
+    /// Export path for session exports
+    #[serde(default)]
+    pub export_path: Option<PathBuf>,
 }
 
 fn default_version() -> u32 {
@@ -66,6 +70,7 @@ impl Default for Config {
             vault_path: default_vault_path(),
             sync: SyncConfig::default(),
             extractors: ExtractorsConfig::default(),
+            export_path: None,
         }
     }
 }
