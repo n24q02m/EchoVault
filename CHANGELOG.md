@@ -1,3 +1,10 @@
+# [1.11.0-beta.20](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.19...v1.11.0-beta.20) (2026-01-05)
+
+
+### Bug Fixes
+
+* verify ci/cd workflow changes ([1299c14](https://github.com/n24q02m/EchoVault/commit/1299c14f4965e976d49d33f43ccb971f1542f421))
+
 # [1.11.0-beta.19](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.18...v1.11.0-beta.19) (2026-01-04)
 
 
