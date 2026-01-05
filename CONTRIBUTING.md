@@ -83,6 +83,25 @@ test: add integration tests for Cursor extractor
 - [ ] Commit messages follow Conventional Commits
 - [ ] Documentation updated (if needed)
 
+## Release Process
+
+Releases are automated using **Semantic Release**. We strictly follow the **Conventional Commits** specification to determine version bumps and generate changelogs automatically.
+
+### How to Release
+
+1. Create a Pull Request with your changes.
+2. Ensure your commit messages follow the convention above.
+3. Merge the PR to `main`.
+4. The CI pipeline will automatically:
+   - Analyze the new commits
+   - Determine the next version number
+   - Generate release notes
+   - Update `CHANGELOG.md`
+   - Create a GitHub Release
+   - Build and publish Tauri app installers
+
+You do **not** need to create manual tags or changelog entries.
+
 ## Code Style
 
 ### Rust
