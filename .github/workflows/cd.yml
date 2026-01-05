@@ -6,10 +6,12 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: 'Select action'
+        description: "Select action"
+        required: true
+        default: "promote-to-stable"
         type: choice
         options:
-          - 'promote-to-stable'
+          - promote-to-stable
 
 permissions:
   contents: write
@@ -24,7 +26,7 @@ jobs:
   # Job: Promote dev to main (manual trigger only)
   promote:
     name: Promote to Stable
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'promote-to-stable'
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'promote-to-stable'
     runs-on: ubuntu-latest
 
     steps:
@@ -54,8 +56,8 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
-      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
-      new_release_version: ${{ steps.semantic.outputs.new_release_version }}
+      released: ${{ steps.semantic.outputs.new_release_published }}
+      version: ${{ steps.semantic.outputs.new_release_version }}
       is_prerelease: ${{ contains(github.ref, 'dev') }}
 
     steps:
@@ -118,7 +120,7 @@ jobs:
   build-tauri:
     name: Build Tauri (${{ matrix.target }})
     needs: release
-    if: needs.release.outputs.new_release_published == 'true'
+    if: needs.release.outputs.released == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -215,7 +217,7 @@ jobs:
             const fs = require('fs');
             const path = 'apps/tauri/tauri.conf.json';
             const config = JSON.parse(fs.readFileSync(path, 'utf8'));
-            const version = '${{ needs.release.outputs.new_release_version }}';
+            const version = '${{ needs.release.outputs.version }}';
             config.version = version;
             fs.writeFileSync(path, JSON.stringify(config, null, 4) + '\n');
             console.log('Updated version to: ' + version);
@@ -226,8 +228,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v${{ needs.release.outputs.new_release_version }}
-          releaseName: "EchoVault v${{ needs.release.outputs.new_release_version }}"
+          tagName: v${{ needs.release.outputs.version }}
+          releaseName: "EchoVault v${{ needs.release.outputs.version }}"
           releaseBody: "See the assets section below to download the installer for your platform."
           releaseDraft: false
           prerelease: ${{ needs.release.outputs.is_prerelease == 'true' }}
