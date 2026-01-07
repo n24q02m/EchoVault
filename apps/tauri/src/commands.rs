@@ -300,32 +300,41 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
         }
 
         // 5. Read sessions from vault.db (synced from other machines)
+        // Use inner scope to ensure VaultDb connection is dropped before returning
         if let Ok(config) = Config::load_default() {
             let vault_dir = config.vault_path;
 
-            if let Ok(vault_db) = echovault_core::storage::VaultDb::open(&vault_dir) {
-                if let Ok(db_sessions) = vault_db.get_all_sessions() {
-                    info!(
-                        "[scan_sessions] Found {} entries in vault.db",
-                        db_sessions.len()
-                    );
-
-                    // For each session in vault.db that we don't already have locally,
-                    // add it from vault (synced from other machine)
-                    for db_session in db_sessions {
-                        if seen_ids.insert(db_session.id.clone()) {
-                            let session_info = find_vault_session_info(
-                                &vault_dir,
-                                &db_session.id,
-                                db_session.file_size,
-                                &db_session.source,
-                                db_session.created_at.as_deref(),
-                                db_session.title.as_deref(),
-                                db_session.workspace_name.as_deref(),
-                            );
-                            all_sessions.push(session_info);
-                        }
+            // Inner scope to ensure VaultDb is dropped after reading
+            let db_entries: Vec<_> = {
+                if let Ok(vault_db) = echovault_core::storage::VaultDb::open(&vault_dir) {
+                    if let Ok(db_sessions) = vault_db.get_all_sessions() {
+                        info!(
+                            "[scan_sessions] Found {} entries in vault.db",
+                            db_sessions.len()
+                        );
+                        db_sessions
+                    } else {
+                        Vec::new()
                     }
+                } else {
+                    Vec::new()
+                }
+                // vault_db is dropped here
+            };
+
+            // Process db entries after connection is released
+            for db_session in db_entries {
+                if seen_ids.insert(db_session.id.clone()) {
+                    let session_info = find_vault_session_info(
+                        &vault_dir,
+                        &db_session.id,
+                        db_session.file_size,
+                        &db_session.source,
+                        db_session.created_at.as_deref(),
+                        db_session.title.as_deref(),
+                        db_session.workspace_name.as_deref(),
+                    );
+                    all_sessions.push(session_info);
                 }
             }
         }
@@ -441,6 +450,171 @@ fn find_vault_session_info(
     }
 }
 
+/// Import sessions from vault/sessions folder into vault.db
+/// This is called after pull to import sessions from other machines
+fn import_vault_sessions(vault_dir: &std::path::Path) -> Result<usize, String> {
+    use echovault_core::storage::{SessionEntry, VaultDb};
+    use std::fs;
+
+    let sessions_dir = vault_dir.join("sessions");
+    if !sessions_dir.exists() {
+        info!("[import_vault_sessions] No sessions directory found, skipping...");
+        return Ok(0);
+    }
+
+    info!(
+        "[import_vault_sessions] Scanning {:?} for sessions to import...",
+        sessions_dir
+    );
+
+    // Open VaultDb
+    let mut vault_db =
+        VaultDb::open(vault_dir).map_err(|e| format!("Failed to open vault.db: {}", e))?;
+
+    // Get existing session IDs for quick lookup
+    let existing_sessions = vault_db
+        .get_all_sessions()
+        .map_err(|e| format!("Failed to get existing sessions: {}", e))?;
+    let existing_ids: std::collections::HashSet<String> =
+        existing_sessions.iter().map(|s| s.id.clone()).collect();
+    let existing_mtimes: std::collections::HashMap<String, u64> = existing_sessions
+        .iter()
+        .map(|s| (s.id.clone(), s.mtime))
+        .collect();
+
+    let mut sessions_to_import: Vec<SessionEntry> = Vec::new();
+
+    // Scan all subdirectories (antigravity, vscode-copilot, etc.)
+    if let Ok(entries) = fs::read_dir(&sessions_dir) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let source_dir = entry.path();
+            if !source_dir.is_dir() {
+                continue;
+            }
+
+            let source_name = source_dir
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+
+            // Scan session files in this source directory (supports .json, .pb, .md)
+            if let Ok(files) = fs::read_dir(&source_dir) {
+                for file in files.filter_map(|f| f.ok()) {
+                    let file_path = file.path();
+
+                    // Check for supported extensions
+                    let extension = file_path.extension().and_then(|e| e.to_str());
+                    if !matches!(extension, Some("json") | Some("pb") | Some("md")) {
+                        continue;
+                    }
+
+                    // Get session ID from filename (without extension)
+                    let session_id = file_path
+                        .file_stem()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("")
+                        .to_string();
+
+                    if session_id.is_empty() {
+                        continue;
+                    }
+
+                    // Get file metadata
+                    let metadata = match fs::metadata(&file_path) {
+                        Ok(m) => m,
+                        Err(_) => continue,
+                    };
+
+                    let file_mtime = metadata
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+
+                    // Skip if already exists with same or newer mtime
+                    if let Some(&existing_mtime) = existing_mtimes.get(&session_id) {
+                        if existing_mtime >= file_mtime {
+                            continue;
+                        }
+                    }
+
+                    // Extract metadata based on file type
+                    let (title, workspace_name, created_at) = if extension == Some("json") {
+                        // Parse JSON to extract metadata
+                        match fs::read_to_string(&file_path) {
+                            Ok(content) => {
+                                if let Ok(json) =
+                                    serde_json::from_str::<serde_json::Value>(&content)
+                                {
+                                    let title = json
+                                        .get("title")
+                                        .or_else(|| json.get("name"))
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string());
+                                    let workspace = json
+                                        .get("workspace_name")
+                                        .or_else(|| json.get("workspaceName"))
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string());
+                                    let created = json
+                                        .get("created_at")
+                                        .or_else(|| json.get("createdAt"))
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string());
+                                    (title, workspace, created)
+                                } else {
+                                    (None, None, None)
+                                }
+                            }
+                            Err(_) => (None, None, None),
+                        }
+                    } else {
+                        // For .pb and .md files, no metadata extraction
+                        (None, None, None)
+                    };
+
+                    let ext = extension.unwrap_or("json");
+                    let vault_path = format!("sessions/{}/{}.{}", source_name, session_id, ext);
+
+                    sessions_to_import.push(SessionEntry {
+                        id: session_id,
+                        source: source_name.clone(),
+                        mtime: file_mtime,
+                        file_size: metadata.len(),
+                        title,
+                        workspace_name,
+                        created_at,
+                        vault_path,
+                        original_path: file_path.to_string_lossy().to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    let import_count = sessions_to_import.len();
+
+    if import_count > 0 {
+        info!(
+            "[import_vault_sessions] Importing {} sessions into vault.db...",
+            import_count
+        );
+        vault_db
+            .upsert_batch(&sessions_to_import)
+            .map_err(|e| format!("Failed to import sessions: {}", e))?;
+        info!(
+            "[import_vault_sessions] Import complete: {} sessions",
+            import_count
+        );
+    } else {
+        info!("[import_vault_sessions] No new sessions to import");
+    }
+
+    Ok(import_count)
+}
+
 /// Ingest sessions từ local extractors vào vault
 fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     use echovault_core::extractors::{
@@ -546,9 +720,35 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
         total_sessions
     );
 
-    // 2. Open VaultDb for deduplication
-    let vault_db = echovault_core::storage::VaultDb::open(vault_dir)
-        .map_err(|e| format!("Failed to open vault.db: {}", e))?;
+    // 2. Open VaultDb for deduplication (with retry for concurrent access)
+    info!("[ingest_sessions] Opening VaultDb at {:?}...", vault_dir);
+    let vault_db = {
+        let mut attempts = 0;
+        let max_attempts = 3;
+        loop {
+            attempts += 1;
+            match echovault_core::storage::VaultDb::open(vault_dir) {
+                Ok(db) => {
+                    info!("[ingest_sessions] VaultDb opened successfully");
+                    break db;
+                }
+                Err(e) => {
+                    if attempts >= max_attempts {
+                        error!(
+                            "[ingest_sessions] Failed to open vault.db after {} attempts: {}",
+                            max_attempts, e
+                        );
+                        return Err(format!("Failed to open vault.db: {}", e));
+                    }
+                    warn!(
+                        "[ingest_sessions] VaultDb open attempt {} failed: {}, retrying...",
+                        attempts, e
+                    );
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                }
+            }
+        }
+    };
 
     let sessions_dir = vault_dir.join("sessions");
     fs::create_dir_all(&sessions_dir).map_err(|e| e.to_string())?;
@@ -791,7 +991,19 @@ pub async fn sync_vault(state: State<'_, AppState>) -> Result<String, String> {
         }
     }
 
-    // 2. Ingest Sessions (local -> vault)
+    // 2. Import sessions from vault/sessions folder (pulled from other machines)
+    info!("[sync_vault] Importing vault sessions...");
+    let vault_dir_for_import = vault_dir.clone();
+    let import_result =
+        tokio::task::spawn_blocking(move || import_vault_sessions(&vault_dir_for_import))
+            .await
+            .map_err(|e| e.to_string())??;
+    info!(
+        "[sync_vault] Import complete: {} sessions imported",
+        import_result
+    );
+
+    // 3. Ingest Sessions (local extractors -> vault)
     info!("[sync_vault] Ingesting sessions...");
     let vault_dir_for_ingest = vault_dir.clone();
     let ingest_result = tokio::task::spawn_blocking(move || ingest_sessions(&vault_dir_for_ingest))
@@ -897,7 +1109,7 @@ pub struct AppInfo {
 
 /// Lấy thông tin app
 #[tauri::command]
-pub async fn get_app_info() -> Result<AppInfo, String> {
+pub async fn get_app_info(app: tauri::AppHandle) -> Result<AppInfo, String> {
     use echovault_core::config::{default_config_dir, default_vault_path};
 
     let data_dir = default_vault_path();
@@ -909,7 +1121,7 @@ pub async fn get_app_info() -> Result<AppInfo, String> {
         .unwrap_or_else(|| std::path::PathBuf::from("./logs"));
 
     Ok(AppInfo {
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        version: app.package_info().version.to_string(),
         data_dir: data_dir.to_string_lossy().to_string(),
         config_dir: config_dir.to_string_lossy().to_string(),
         logs_dir: logs_dir.to_string_lossy().to_string(),

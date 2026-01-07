@@ -575,10 +575,10 @@ function MainApp() {
   syncRef.current = handleSync;
 
   useEffect(() => {
-    // Initial sync after 5s
-    const timeout = setTimeout(() => syncRef.current(), 5000);
-    // Periodic sync every 30s
-    const interval = setInterval(() => syncRef.current(), 30000);
+    // Initial sync after 10s (give app time to fully load)
+    const timeout = setTimeout(() => syncRef.current(), 10000);
+    // Periodic sync every 5 minutes (300000ms) to reduce RAM/CPU usage
+    const interval = setInterval(() => syncRef.current(), 300000);
 
     // Listen for tray menu event
     const unlisten = listen("trigger-sync", () => syncRef.current());

@@ -322,12 +322,18 @@ impl SyncProvider for RcloneProvider {
 
         info!("[Rclone] Pulling from {} to {}...", remote_url, local_path);
 
-        // rclone sync remote:path local_path
-        // Use --verbose to be able to parse output later
+        // rclone copy remote:path local_path
+        // Use 'copy' instead of 'sync' to prevent deleting local files
+        // that don't exist on remote (important for bidirectional sync)
+        // Exclude SQLite WAL files as they are temporary and cause conflicts
         let output = self.run_rclone(&[
-            "sync",
+            "copy",
             &remote_url,
             &local_path,
+            "--exclude",
+            "*.db-wal",
+            "--exclude",
+            "*.db-shm",
             "--verbose",
             "--stats-one-line",
         ])?;
@@ -352,11 +358,18 @@ impl SyncProvider for RcloneProvider {
 
         info!("[Rclone] Pushing from {} to {}...", local_path, remote_url);
 
-        // rclone sync local_path remote:path
+        // rclone copy local_path remote:path
+        // Use 'copy' instead of 'sync' to prevent deleting remote files
+        // that don't exist locally (important for bidirectional sync)
+        // Exclude SQLite WAL files as they are temporary and cause conflicts
         let output = self.run_rclone(&[
-            "sync",
+            "copy",
             &local_path,
             &remote_url,
+            "--exclude",
+            "*.db-wal",
+            "--exclude",
+            "*.db-shm",
             "--verbose",
             "--stats-one-line",
         ])?;

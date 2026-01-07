@@ -345,11 +345,36 @@ function downloadRclone() {
 }
 
 // ============================================================================
-// Step 7: Setup pre-commit hooks
+// Step 7: Download CR-SQLite extension
+// ============================================================================
+
+function downloadCrsqlite() {
+  printStep("Step 7: Download CR-SQLite extension");
+
+  const downloadScript = join(__dirname, "download-crsqlite.mjs");
+
+  if (!existsSync(downloadScript)) {
+    printWarning("download-crsqlite.mjs not found, skipping");
+    return false;
+  }
+
+  const result = runCommand(`node "${downloadScript}"`);
+
+  if (!result.success) {
+    printWarning("Failed to download CR-SQLite (CRDT sync will be disabled)");
+    return false;
+  }
+
+  printSuccess("CR-SQLite extension downloaded");
+  return true;
+}
+
+// ============================================================================
+// Step 8: Setup pre-commit hooks
 // ============================================================================
 
 function setupPreCommit() {
-  printStep("Step 7: Setup pre-commit hooks");
+  printStep("Step 8: Setup pre-commit hooks");
 
   const projectRoot = join(__dirname, "..");
   const venvPath = join(projectRoot, ".venv");
@@ -448,6 +473,13 @@ async function main() {
   }
 
   // Step 7
+  if (downloadCrsqlite()) {
+    successSteps.push("CR-SQLite extension");
+  } else {
+    failedSteps.push("CR-SQLite extension (optional)");
+  }
+
+  // Step 8
   if (setupPreCommit()) {
     successSteps.push("Pre-commit hooks");
   } else {
