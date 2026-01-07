@@ -1,3 +1,10 @@
+# [1.11.0-beta.21](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.20...v1.11.0-beta.21) (2026-01-07)
+
+
+### Features
+
+* enhance app reset options, adjust web sync intervals, and improve VaultDb connection handling ([136e902](https://github.com/n24q02m/EchoVault/commit/136e90216bb4eabb77ff62ef66f1877e04c43ee2))
+
 # [1.11.0-beta.20](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.19...v1.11.0-beta.20) (2026-01-05)
 
 
