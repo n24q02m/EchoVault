@@ -475,7 +475,7 @@ fn import_vault_sessions(vault_dir: &std::path::Path) -> Result<usize, String> {
     let existing_sessions = vault_db
         .get_all_sessions()
         .map_err(|e| format!("Failed to get existing sessions: {}", e))?;
-    let existing_ids: std::collections::HashSet<String> =
+    let _existing_ids: std::collections::HashSet<String> =
         existing_sessions.iter().map(|s| s.id.clone()).collect();
     let existing_mtimes: std::collections::HashMap<String, u64> = existing_sessions
         .iter()
