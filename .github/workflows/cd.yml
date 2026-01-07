@@ -129,18 +129,26 @@ jobs:
             target: x86_64-unknown-linux-gnu
             rclone_url: https://downloads.rclone.org/rclone-current-linux-amd64.zip
             rclone_binary: rclone-x86_64-unknown-linux-gnu
+            crsqlite_url: https://github.com/vlcn-io/cr-sqlite/releases/download/v0.16.3/crsqlite-linux-x86_64.zip
+            crsqlite_binary: crsqlite-x86_64-unknown-linux-gnu.so
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             rclone_url: https://downloads.rclone.org/rclone-current-windows-amd64.zip
             rclone_binary: rclone-x86_64-pc-windows-msvc.exe
+            crsqlite_url: https://github.com/vlcn-io/cr-sqlite/releases/download/v0.16.3/crsqlite-win-x86_64.zip
+            crsqlite_binary: crsqlite-x86_64-pc-windows-msvc.dll
           - platform: macos-latest
             target: x86_64-apple-darwin
             rclone_url: https://downloads.rclone.org/rclone-current-osx-amd64.zip
             rclone_binary: rclone-x86_64-apple-darwin
+            crsqlite_url: https://github.com/vlcn-io/cr-sqlite/releases/download/v0.16.3/crsqlite-darwin-x86_64.zip
+            crsqlite_binary: crsqlite-x86_64-apple-darwin.dylib
           - platform: macos-latest
             target: aarch64-apple-darwin
             rclone_url: https://downloads.rclone.org/rclone-current-osx-arm64.zip
             rclone_binary: rclone-aarch64-apple-darwin
+            crsqlite_url: https://github.com/vlcn-io/cr-sqlite/releases/download/v0.16.3/crsqlite-darwin-aarch64.zip
+            crsqlite_binary: crsqlite-aarch64-apple-darwin.dylib
 
     runs-on: ${{ matrix.platform }}
 
@@ -210,6 +218,30 @@ jobs:
           unzip rclone-*.zip
           cp rclone-*/rclone apps/tauri/binaries/${{ matrix.rclone_binary }}
           chmod +x apps/tauri/binaries/${{ matrix.rclone_binary }}
+
+      - name: Download CR-SQLite (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "${{ matrix.crsqlite_url }}" -OutFile "crsqlite.zip"
+          Expand-Archive -Path "crsqlite.zip" -DestinationPath "crsqlite-temp"
+          Copy-Item -Path "crsqlite-temp/crsqlite.dll" -Destination "apps/tauri/binaries/${{ matrix.crsqlite_binary }}"
+
+      - name: Download CR-SQLite (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          curl -LO ${{ matrix.crsqlite_url }}
+          unzip crsqlite-linux-x86_64.zip
+          cp crsqlite.so apps/tauri/binaries/${{ matrix.crsqlite_binary }}
+          chmod +x apps/tauri/binaries/${{ matrix.crsqlite_binary }}
+
+      - name: Download CR-SQLite (macOS)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          curl -LO ${{ matrix.crsqlite_url }}
+          unzip crsqlite-darwin-*.zip
+          cp crsqlite.dylib apps/tauri/binaries/${{ matrix.crsqlite_binary }}
+          chmod +x apps/tauri/binaries/${{ matrix.crsqlite_binary }}
 
       - name: Update version in tauri.conf.json
         run: |

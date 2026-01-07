@@ -74,35 +74,6 @@ chmod +x EchoVault_x.x.x_amd64.AppImage
 ./EchoVault_x.x.x_amd64.AppImage
 ```
 
-**Linux (Docker - for unsupported distros like Ubuntu 20.04):**
-
-If your Linux distribution is not supported (requires Ubuntu 22.04+ / WebKitGTK 4.1), you can run EchoVault via Docker with X11 forwarding:
-
-```bash
-# Clone repository
-git clone https://github.com/n24q02m/EchoVault.git
-cd EchoVault
-
-# First time setup
-chmod +x docker/run.sh
-./docker/run.sh setup   # Install rclone and login to Google Drive
-./docker/run.sh build   # Build Docker image (takes ~10 minutes)
-./docker/run.sh run     # Run EchoVault
-
-# After pulling new code changes
-./docker/run.sh rebuild # Force rebuild without cache
-./docker/run.sh run     # Run updated EchoVault
-
-# Daily usage
-./docker/run.sh run     # Start EchoVault
-./docker/run.sh stop    # Stop when done
-```
-
-> [!NOTE]
-> Docker mode requires X11 (not Wayland). Set `GDK_BACKEND=x11` if using Wayland.
->
-> The `setup` command will install rclone on your host and open a browser for Google Drive authentication. This only needs to be done once.
-
 
 ## Data Storage
 

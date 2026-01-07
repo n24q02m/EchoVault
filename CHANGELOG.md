@@ -1,9 +1,16 @@
-## [1.12.2](https://github.com/n24q02m/EchoVault/compare/v1.12.1...v1.12.2) (2026-01-05)
+# [1.11.0-beta.22](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.21...v1.11.0-beta.22) (2026-01-07)
 
 
 ### Bug Fixes
 
-* verify ci/cd workflow changes ([1299c14](https://github.com/n24q02m/EchoVault/commit/1299c14f4965e976d49d33f43ccb971f1542f421))
+* unused variable warning in import_vault_sessions ([c6d9e33](https://github.com/n24q02m/EchoVault/commit/c6d9e334f41a0369898e31608b7effe211c8b30e))
+
+# [1.11.0-beta.21](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.20...v1.11.0-beta.21) (2026-01-07)
+
+
+### Features
+
+* enhance app reset options, adjust web sync intervals, and improve VaultDb connection handling ([136e902](https://github.com/n24q02m/EchoVault/commit/136e90216bb4eabb77ff62ef66f1877e04c43ee2))
 
 # [1.11.0-beta.20](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.19...v1.11.0-beta.20) (2026-01-05)
 

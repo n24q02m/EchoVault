@@ -10,36 +10,66 @@ use std::path::{Path, PathBuf};
 use tracing::info;
 
 /// Find cr-sqlite extension binary path.
-/// Looks in: bundled (same dir as exe), development path, system paths.
+/// Looks in: bundled (same dir as exe), development paths, system paths.
 fn find_crsqlite_path() -> Option<PathBuf> {
-    // Try bundled path first (Tauri sidecar)
+    let ext = if cfg!(windows) {
+        ".dll"
+    } else if cfg!(target_os = "macos") {
+        ".dylib"
+    } else {
+        ".so"
+    };
+
+    let target_triple = if cfg!(windows) {
+        "x86_64-pc-windows-msvc"
+    } else if cfg!(target_os = "macos") {
+        if cfg!(target_arch = "aarch64") {
+            "aarch64-apple-darwin"
+        } else {
+            "x86_64-apple-darwin"
+        }
+    } else if cfg!(target_arch = "aarch64") {
+        "aarch64-unknown-linux-gnu"
+    } else {
+        "x86_64-unknown-linux-gnu"
+    };
+
+    let binary_name = format!("crsqlite-{}{}", target_triple, ext);
+
+    // Try bundled path first (Tauri production build - same dir as exe)
     if let Ok(exe_path) = std::env::current_exe() {
         let real_exe = exe_path.canonicalize().unwrap_or(exe_path);
         if let Some(exe_dir) = real_exe.parent() {
-            let ext = if cfg!(windows) {
-                ".dll"
-            } else if cfg!(target_os = "macos") {
-                ".dylib"
-            } else {
-                ".so"
-            };
+            // Production: crsqlite.so next to exe
             let bundled = exe_dir.join(format!("crsqlite{}", ext));
             if bundled.exists() {
                 return Some(bundled);
             }
+
+            // Dev mode: exe is in target/debug, binaries are in apps/tauri/binaries
+            // Go up to project root and look in apps/tauri/binaries
+            if let Some(target_dir) = exe_dir.parent() {
+                if let Some(project_root) = target_dir.parent() {
+                    let dev_path = project_root
+                        .join("apps")
+                        .join("tauri")
+                        .join("binaries")
+                        .join(&binary_name);
+                    if dev_path.exists() {
+                        return Some(dev_path);
+                    }
+                }
+            }
         }
     }
 
-    // Try development paths
-    let dev_paths = [
-        "apps/tauri/binaries/crsqlite-x86_64-unknown-linux-gnu.so",
-        "apps/tauri/binaries/crsqlite-aarch64-unknown-linux-gnu.so",
-        "apps/tauri/binaries/crsqlite-x86_64-apple-darwin.dylib",
-        "apps/tauri/binaries/crsqlite-aarch64-apple-darwin.dylib",
-        "apps/tauri/binaries/crsqlite-x86_64-pc-windows-msvc.dll",
+    // Try current working directory relative paths (fallback)
+    let cwd_paths = [
+        format!("apps/tauri/binaries/{}", binary_name),
+        format!("binaries/{}", binary_name),
     ];
-    for path in dev_paths {
-        let p = PathBuf::from(path);
+    for path in cwd_paths {
+        let p = PathBuf::from(&path);
         if p.exists() {
             return Some(p);
         }
@@ -118,6 +148,8 @@ pub struct SessionEntry {
 impl VaultDb {
     /// Open or create the vault database with cr-sqlite CRDT support.
     pub fn open(vault_dir: &Path) -> Result<Self> {
+        use rusqlite::OpenFlags;
+
         let db_path = vault_dir.join("vault.db");
 
         // Create directory if needed
@@ -125,30 +157,43 @@ impl VaultDb {
             std::fs::create_dir_all(parent)?;
         }
 
-        let conn = Connection::open(&db_path)
+        // Use shared cache mode and full mutex for thread-safe multi-connection access
+        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
+            | OpenFlags::SQLITE_OPEN_CREATE
+            | OpenFlags::SQLITE_OPEN_SHARED_CACHE
+            | OpenFlags::SQLITE_OPEN_FULL_MUTEX;
+
+        let conn = Connection::open_with_flags(&db_path, flags)
             .with_context(|| format!("Cannot open vault database: {}", db_path.display()))?;
 
-        // Enable WAL mode for concurrent access
+        // Enable WAL mode for concurrent access with longer busy timeout
         conn.execute_batch(
             "
             PRAGMA journal_mode = WAL;
             PRAGMA synchronous = NORMAL;
-            PRAGMA busy_timeout = 5000;
+            PRAGMA busy_timeout = 30000;
         ",
         )?;
 
-        // Load cr-sqlite extension for CRDT support
+        // Load cr-sqlite extension for CRDT support (multi-machine conflict resolution)
         if let Some(crsqlite_path) = find_crsqlite_path() {
             info!("[VaultDb] Loading cr-sqlite from: {:?}", crsqlite_path);
-            unsafe {
-                let _guard =
-                    LoadExtensionGuard::new(&conn).context("Failed to enable extension loading")?;
-                conn.load_extension(&crsqlite_path, Some("sqlite3_crsqlite_init"))
-                    .with_context(|| {
-                        format!("Failed to load cr-sqlite from: {}", crsqlite_path.display())
-                    })?;
+            let load_result = unsafe {
+                let guard_result = LoadExtensionGuard::new(&conn);
+                match guard_result {
+                    Ok(_guard) => {
+                        conn.load_extension(&crsqlite_path, Some("sqlite3_crsqlite_init"))
+                    }
+                    Err(e) => Err(e),
+                }
+            };
+            match load_result {
+                Ok(_) => info!("[VaultDb] cr-sqlite loaded successfully"),
+                Err(e) => info!(
+                    "[VaultDb] cr-sqlite load failed (continuing without CRDT): {}",
+                    e
+                ),
             }
-            info!("[VaultDb] cr-sqlite loaded successfully");
         } else {
             info!("[VaultDb] cr-sqlite not found, running without CRDT support");
         }
@@ -182,16 +227,16 @@ impl VaultDb {
             "
             CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY NOT NULL,
-                source TEXT NOT NULL,
-                machine_id TEXT NOT NULL,
-                mtime INTEGER NOT NULL,
-                file_size INTEGER NOT NULL,
-                last_synced INTEGER NOT NULL,
+                source TEXT NOT NULL DEFAULT '',
+                machine_id TEXT NOT NULL DEFAULT '',
+                mtime INTEGER NOT NULL DEFAULT 0,
+                file_size INTEGER NOT NULL DEFAULT 0,
+                last_synced INTEGER NOT NULL DEFAULT 0,
                 title TEXT,
                 workspace_name TEXT,
                 created_at TEXT,
-                vault_path TEXT NOT NULL,
-                original_path TEXT NOT NULL
+                vault_path TEXT NOT NULL DEFAULT '',
+                original_path TEXT NOT NULL DEFAULT ''
             );
 
             CREATE INDEX IF NOT EXISTS idx_sessions_source ON sessions(source);
@@ -200,9 +245,9 @@ impl VaultDb {
 
             CREATE TABLE IF NOT EXISTS sync_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                machine_id TEXT NOT NULL,
-                timestamp INTEGER NOT NULL,
-                action TEXT NOT NULL,
+                machine_id TEXT NOT NULL DEFAULT '',
+                timestamp INTEGER NOT NULL DEFAULT 0,
+                action TEXT NOT NULL DEFAULT '',
                 details TEXT
             );
 
@@ -219,7 +264,9 @@ impl VaultDb {
         if self.is_crsqlite_loaded() {
             info!("[VaultDb] Upgrading sessions table to CRR...");
             // crsql_as_crr is idempotent - safe to call multiple times
-            self.conn.execute("SELECT crsql_as_crr('sessions')", [])?;
+            // Use query_row since SELECT returns results
+            self.conn
+                .query_row("SELECT crsql_as_crr('sessions')", [], |_| Ok(()))?;
             info!("[VaultDb] Sessions table upgraded to CRR");
         }
 

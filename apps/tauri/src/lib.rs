@@ -81,21 +81,41 @@ async fn check_for_updates(app: AppHandle) {
     }
 }
 
-/// Setup system tray with menu (only Exit button).
+/// Setup system tray with menu.
+/// On Linux, click events are not supported (AppIndicator protocol limitation),
+/// so we provide Show/Hide menu items as workaround.
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
+    let show = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
+    let hide = MenuItem::with_id(app, "hide", "Hide Window", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Exit", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&quit])?;
+    let menu = Menu::with_items(app, &[&show, &hide, &quit])?;
 
-    let _tray = TrayIconBuilder::new()
+    // Use unique ID to avoid collision with other Tauri apps on Linux
+    let _tray = TrayIconBuilder::with_id("com.n24q02m.echovault")
         .menu(&menu)
+        .tooltip("EchoVault")
         .icon(app.default_window_icon().unwrap().clone())
-        .on_menu_event(|app, event| {
-            if event.id.as_ref() == "quit" {
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+            "hide" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+            }
+            "quit" => {
                 app.exit(0);
             }
+            _ => {}
         })
         .on_tray_icon_event(|tray, event| {
+            // Note: Linux does not support tray icon click events (AppIndicator limitation)
+            // This handler only works on Windows and macOS
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
@@ -104,13 +124,8 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
             {
                 let app = tray.app_handle();
                 if let Some(window) = app.get_webview_window("main") {
-                    // Toggle visibility: show if hidden, hide if visible
-                    if window.is_visible().unwrap_or(false) {
-                        let _ = window.hide();
-                    } else {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+                    let _ = window.show();
+                    let _ = window.set_focus();
                 }
             }
         })
