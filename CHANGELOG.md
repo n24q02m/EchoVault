@@ -1,3 +1,11 @@
+## [1.13.1](https://github.com/n24q02m/EchoVault/compare/v1.13.0...v1.13.1) (2026-01-11)
+
+
+### Bug Fixes
+
+* **cd:** add signing keys and includeUpdaterJson for auto-update ([8d7ddad](https://github.com/n24q02m/EchoVault/commit/8d7ddad21b21c12a7b22508df091c40d401d5685))
+* **windows:** hide terminal flash and implement dynamic tray toggle ([b839157](https://github.com/n24q02m/EchoVault/commit/b8391577e92a545950767efd23ee1c7ee3bde6f5))
+
 # [1.11.0-beta.24](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.23...v1.11.0-beta.24) (2026-01-11)
 
 
