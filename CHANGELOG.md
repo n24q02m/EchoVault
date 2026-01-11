@@ -1,3 +1,10 @@
+# [1.11.0-beta.26](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.25...v1.11.0-beta.26) (2026-01-11)
+
+
+### Bug Fixes
+
+* **updater:** add createUpdaterArtifacts to enable .sig and latest.json generation ([8a054cd](https://github.com/n24q02m/EchoVault/commit/8a054cdc19e7b29d45c321873271083556d1d9e0))
+
 # [1.11.0-beta.25](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.24...v1.11.0-beta.25) (2026-01-11)
 
 
