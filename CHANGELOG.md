@@ -1,3 +1,10 @@
+# [1.11.0-beta.24](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.23...v1.11.0-beta.24) (2026-01-11)
+
+
+### Bug Fixes
+
+* **cd:** add signing keys and includeUpdaterJson for auto-update ([8d7ddad](https://github.com/n24q02m/EchoVault/commit/8d7ddad21b21c12a7b22508df091c40d401d5685))
+
 # [1.11.0-beta.23](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.22...v1.11.0-beta.23) (2026-01-11)
 
 
