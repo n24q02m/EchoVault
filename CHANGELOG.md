@@ -1,3 +1,10 @@
+# [1.11.0-beta.23](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.22...v1.11.0-beta.23) (2026-01-11)
+
+
+### Bug Fixes
+
+* **windows:** hide terminal flash and implement dynamic tray toggle ([b839157](https://github.com/n24q02m/EchoVault/commit/b8391577e92a545950767efd23ee1c7ee3bde6f5))
+
 # [1.11.0-beta.22](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.21...v1.11.0-beta.22) (2026-01-07)
 
 
