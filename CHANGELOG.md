@@ -1,3 +1,10 @@
+# [1.11.0-beta.25](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.24...v1.11.0-beta.25) (2026-01-11)
+
+
+### Bug Fixes
+
+* trigger beta rebuild with updater signing keys ([0f85921](https://github.com/n24q02m/EchoVault/commit/0f85921ba183cd8d1a7e4d0e3c12f2d843f4014c))
+
 # [1.11.0-beta.24](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.23...v1.11.0-beta.24) (2026-01-11)
 
 
