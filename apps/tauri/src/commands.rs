@@ -11,6 +11,13 @@ use std::sync::{Arc, Mutex};
 use tauri::State;
 use tracing::{error, info, warn};
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+/// Windows flag to prevent console window from appearing
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 /// State chứa RcloneProvider
 #[derive(Clone)]
 pub struct AppState {
@@ -1045,10 +1052,10 @@ pub async fn sync_vault(state: State<'_, AppState>) -> Result<String, String> {
 pub async fn open_url(url: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", &url])
-            .spawn()
-            .map_err(|e| e.to_string())?;
+        let mut cmd = std::process::Command::new("cmd");
+        cmd.args(["/C", "start", "", &url]);
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd.spawn().map_err(|e| e.to_string())?;
     }
 
     #[cfg(target_os = "linux")]
@@ -1211,10 +1218,10 @@ pub async fn open_logs_folder() -> Result<(), String> {
 fn open_folder_in_explorer(path: &std::path::Path) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("explorer")
-            .arg(path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
+        let mut cmd = std::process::Command::new("explorer");
+        cmd.arg(path);
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd.spawn().map_err(|e| e.to_string())?;
     }
 
     #[cfg(target_os = "linux")]

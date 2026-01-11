@@ -82,14 +82,15 @@ async fn check_for_updates(app: AppHandle) {
 }
 
 /// Setup system tray with menu.
+/// Uses a dynamic toggle item that changes between Show/Hide based on window state.
 /// On Linux, click events are not supported (AppIndicator protocol limitation),
-/// so we provide Show/Hide menu items as workaround.
+/// so the menu-based toggle is the primary way to show/hide the window.
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
-    let show = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
-    let hide = MenuItem::with_id(app, "hide", "Hide Window", true, None::<&str>)?;
+    // Toggle item with label "Show/Hide Window" - action depends on current visibility
+    let toggle = MenuItem::with_id(app, "toggle", "Show/Hide Window", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Exit", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&show, &hide, &quit])?;
+    let menu = Menu::with_items(app, &[&toggle, &quit])?;
 
     // Use unique ID to avoid collision with other Tauri apps on Linux
     let _tray = TrayIconBuilder::with_id("com.n24q02m.echovault")
@@ -97,15 +98,15 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
         .tooltip("EchoVault")
         .icon(app.default_window_icon().unwrap().clone())
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "show" => {
+            "toggle" => {
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
-            }
-            "hide" => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.hide();
+                    // Toggle based on current visibility state
+                    if window.is_visible().unwrap_or(false) {
+                        let _ = window.hide();
+                    } else {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
                 }
             }
             "quit" => {
