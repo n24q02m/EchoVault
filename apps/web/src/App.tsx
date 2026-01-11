@@ -309,9 +309,14 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
       } else {
         toast.info("You are on the latest version");
       }
-    } catch {
-      // In dev mode, updater is not available - show info instead of error
-      toast.info("Update check not available in dev mode");
+    } catch (err) {
+      // Show actual error for debugging
+      const errorMsg = String(err);
+      if (errorMsg.includes("not running from an installed app") || errorMsg.includes("dev")) {
+        toast.info("Update check not available in development builds");
+      } else {
+        toast.error(`Update check failed: ${errorMsg}`);
+      }
     } finally {
       setIsCheckingUpdate(false);
     }

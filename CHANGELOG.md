@@ -1,14 +1,16 @@
-# [1.13.0](https://github.com/n24q02m/EchoVault/compare/v1.12.2...v1.13.0) (2026-01-07)
+# [1.11.0-beta.24](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.23...v1.11.0-beta.24) (2026-01-11)
 
 
 ### Bug Fixes
 
-* unused variable warning in import_vault_sessions ([c6d9e33](https://github.com/n24q02m/EchoVault/commit/c6d9e334f41a0369898e31608b7effe211c8b30e))
+* **cd:** add signing keys and includeUpdaterJson for auto-update ([8d7ddad](https://github.com/n24q02m/EchoVault/commit/8d7ddad21b21c12a7b22508df091c40d401d5685))
+
+# [1.11.0-beta.23](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.22...v1.11.0-beta.23) (2026-01-11)
 
 
-### Features
+### Bug Fixes
 
-* enhance app reset options, adjust web sync intervals, and improve VaultDb connection handling ([136e902](https://github.com/n24q02m/EchoVault/commit/136e90216bb4eabb77ff62ef66f1877e04c43ee2))
+* **windows:** hide terminal flash and implement dynamic tray toggle ([b839157](https://github.com/n24q02m/EchoVault/commit/b8391577e92a545950767efd23ee1c7ee3bde6f5))
 
 # [1.11.0-beta.22](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.21...v1.11.0-beta.22) (2026-01-07)
 

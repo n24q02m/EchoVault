@@ -259,6 +259,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v${{ needs.release.outputs.version }}
           releaseName: "EchoVault v${{ needs.release.outputs.version }}"
@@ -268,3 +270,4 @@ jobs:
           projectPath: apps/tauri
           args: --target ${{ matrix.target }}
           tauriScript: pnpm tauri
+          includeUpdaterJson: true
