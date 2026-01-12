@@ -1,3 +1,10 @@
+# [1.11.0-beta.27](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.26...v1.11.0-beta.27) (2026-01-12)
+
+
+### Features
+
+* add installation scripts for Windows and Linux ([c3c689d](https://github.com/n24q02m/EchoVault/commit/c3c689d610fc6e8a9cdff2d55575d95a2fcf4106))
+
 # [1.11.0-beta.26](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.25...v1.11.0-beta.26) (2026-01-11)
 
 
