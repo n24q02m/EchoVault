@@ -6,7 +6,7 @@ Thank you for your interest in contributing to EchoVault!
 
 ### Prerequisites
 
-- **mise** (recommended) or Rust 1.70+, Node.js 22+, pnpm
+- **mise** (recommended) or Rust 1.70+, Node.js 24+, pnpm
 - Git
 
 ### Setup Development Environment
