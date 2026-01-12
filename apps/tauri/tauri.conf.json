@@ -27,7 +27,7 @@
     },
     "bundle": {
         "active": true,
-        "createUpdaterArtifacts": true,
+        "createUpdaterArtifacts": "v2",
         "targets": [
             "deb",
             "rpm",
