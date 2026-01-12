@@ -198,6 +198,7 @@ pub fn run() {
             commands::open_data_folder,
             commands::open_logs_folder,
             commands::check_update_manual,
+            commands::install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

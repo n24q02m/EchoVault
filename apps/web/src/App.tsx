@@ -305,7 +305,18 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
     try {
       const result = await invoke<UpdateCheckResult>("check_update_manual");
       if (result.update_available) {
-        toast.success(`Update available: v${result.new_version}`);
+        const confirmed = window.confirm(
+          `Update available: v${result.new_version}\n\nDo you want to download and install now?`
+        );
+        if (confirmed) {
+          toast.info("Downloading update...");
+          try {
+            await invoke("install_update");
+            toast.success("Update installed! App will restart.");
+          } catch (installErr) {
+            toast.error(`Install failed: ${String(installErr)}`);
+          }
+        }
       } else {
         toast.info("You are on the latest version");
       }

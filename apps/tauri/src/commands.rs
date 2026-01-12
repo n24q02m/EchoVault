@@ -1272,3 +1272,40 @@ pub async fn check_update_manual(app: tauri::AppHandle) -> Result<UpdateCheckRes
         Err(e) => Err(format!("Failed to check for updates: {}", e)),
     }
 }
+
+/// Download và install update
+#[tauri::command]
+pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_updater::UpdaterExt;
+
+    let updater = app.updater().map_err(|e| e.to_string())?;
+
+    let update = updater
+        .check()
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("No update available")?;
+
+    tracing::info!(
+        "Installing update: {} -> {}",
+        update.current_version,
+        update.version
+    );
+
+    update
+        .download_and_install(
+            |chunk, total| {
+                if let Some(total) = total {
+                    tracing::debug!("Downloaded {} / {} bytes", chunk, total);
+                }
+            },
+            || {
+                tracing::info!("Download complete, installing...");
+            },
+        )
+        .await
+        .map_err(|e| format!("Install failed: {}", e))?;
+
+    tracing::info!("Update installed, app will restart");
+    Ok(())
+}
