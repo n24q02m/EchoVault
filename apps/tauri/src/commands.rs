@@ -1276,7 +1276,12 @@ pub async fn check_update_manual(app: tauri::AppHandle) -> Result<UpdateCheckRes
 /// Download và install update
 #[tauri::command]
 pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::utils::platform::bundle_type;
     use tauri_plugin_updater::UpdaterExt;
+
+    // Log bundle type for debugging
+    let detected_bundle = bundle_type();
+    tracing::info!("Detected bundle type: {:?}", detected_bundle);
 
     let updater = app.updater().map_err(|e| e.to_string())?;
 
@@ -1291,6 +1296,8 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
         update.current_version,
         update.version
     );
+    tracing::info!("Download URL: {}", update.download_url);
+    tracing::info!("Target platform: {}", update.target);
 
     update
         .download_and_install(
