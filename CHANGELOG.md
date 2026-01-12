@@ -1,3 +1,10 @@
+# [1.11.0-beta.28](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.27...v1.11.0-beta.28) (2026-01-12)
+
+
+### Features
+
+* add install_update command and integrate with frontend for update installation ([1396521](https://github.com/n24q02m/EchoVault/commit/139652108ce1b33d57fea94a4d3ded29836ff27c))
+
 # [1.11.0-beta.27](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.26...v1.11.0-beta.27) (2026-01-12)
 
 
