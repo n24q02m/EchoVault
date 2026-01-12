@@ -1,3 +1,11 @@
+## [1.13.2](https://github.com/n24q02m/EchoVault/compare/v1.13.1...v1.13.2) (2026-01-12)
+
+
+### Bug Fixes
+
+* trigger beta rebuild with updater signing keys ([0f85921](https://github.com/n24q02m/EchoVault/commit/0f85921ba183cd8d1a7e4d0e3c12f2d843f4014c))
+* **updater:** add createUpdaterArtifacts to enable .sig and latest.json generation ([8a054cd](https://github.com/n24q02m/EchoVault/commit/8a054cdc19e7b29d45c321873271083556d1d9e0))
+
 # [1.11.0-beta.26](https://github.com/n24q02m/EchoVault/compare/v1.11.0-beta.25...v1.11.0-beta.26) (2026-01-11)
 
 
