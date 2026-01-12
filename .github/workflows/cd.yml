@@ -118,37 +118,64 @@ jobs:
 
   # Job: Build Tauri apps
   build-tauri:
-    name: Build Tauri (${{ matrix.target }})
+    name: Build Tauri (${{ matrix.bundle_name }})
     needs: release
     if: needs.release.outputs.released == 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Linux builds - separate jobs to ensure correct __TAURI_BUNDLE_TYPE patching
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             rclone_url: https://downloads.rclone.org/rclone-current-linux-amd64.zip
             rclone_binary: rclone-x86_64-unknown-linux-gnu
             crsqlite_url: https://github.com/vlcn-io/cr-sqlite/releases/download/v0.16.3/crsqlite-linux-x86_64.zip
             crsqlite_binary: crsqlite-x86_64-unknown-linux-gnu.so
+            bundle_name: linux-deb
+            bundle_args: --bundles deb
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            rclone_url: https://downloads.rclone.org/rclone-current-linux-amd64.zip
+            rclone_binary: rclone-x86_64-unknown-linux-gnu
+            crsqlite_url: https://github.com/vlcn-io/cr-sqlite/releases/download/v0.16.3/crsqlite-linux-x86_64.zip
+            crsqlite_binary: crsqlite-x86_64-unknown-linux-gnu.so
+            bundle_name: linux-rpm
+            bundle_args: --bundles rpm
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            rclone_url: https://downloads.rclone.org/rclone-current-linux-amd64.zip
+            rclone_binary: rclone-x86_64-unknown-linux-gnu
+            crsqlite_url: https://github.com/vlcn-io/cr-sqlite/releases/download/v0.16.3/crsqlite-linux-x86_64.zip
+            crsqlite_binary: crsqlite-x86_64-unknown-linux-gnu.so
+            bundle_name: linux-appimage
+            bundle_args: --bundles appimage
+          # Windows build
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             rclone_url: https://downloads.rclone.org/rclone-current-windows-amd64.zip
             rclone_binary: rclone-x86_64-pc-windows-msvc.exe
             crsqlite_url: https://github.com/vlcn-io/cr-sqlite/releases/download/v0.16.3/crsqlite-win-x86_64.zip
             crsqlite_binary: crsqlite-x86_64-pc-windows-msvc.dll
+            bundle_name: windows-nsis
+            bundle_args: ""
+          # macOS builds
           - platform: macos-latest
             target: x86_64-apple-darwin
             rclone_url: https://downloads.rclone.org/rclone-current-osx-amd64.zip
             rclone_binary: rclone-x86_64-apple-darwin
             crsqlite_url: https://github.com/vlcn-io/cr-sqlite/releases/download/v0.16.3/crsqlite-darwin-x86_64.zip
             crsqlite_binary: crsqlite-x86_64-apple-darwin.dylib
+            bundle_name: macos-x64
+            bundle_args: ""
           - platform: macos-latest
             target: aarch64-apple-darwin
             rclone_url: https://downloads.rclone.org/rclone-current-osx-arm64.zip
             rclone_binary: rclone-aarch64-apple-darwin
             crsqlite_url: https://github.com/vlcn-io/cr-sqlite/releases/download/v0.16.3/crsqlite-darwin-aarch64.zip
             crsqlite_binary: crsqlite-aarch64-apple-darwin.dylib
+            bundle_name: macos-arm64
+            bundle_args: ""
 
     runs-on: ${{ matrix.platform }}
 
@@ -268,6 +295,6 @@ jobs:
           releaseDraft: false
           prerelease: ${{ needs.release.outputs.is_prerelease == 'true' }}
           projectPath: apps/tauri
-          args: --target ${{ matrix.target }}
+          args: --target ${{ matrix.target }} ${{ matrix.bundle_args }}
           tauriScript: pnpm tauri
           includeUpdaterJson: true
