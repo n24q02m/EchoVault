@@ -1,3 +1,10 @@
+# [1.15.0-beta.2](https://github.com/n24q02m/EchoVault/compare/v1.15.0-beta.1...v1.15.0-beta.2) (2026-01-12)
+
+
+### Bug Fixes
+
+* update Node.js version to 24 in workflows and configuration files ([00c961e](https://github.com/n24q02m/EchoVault/commit/00c961e3e8cec23107a83fdf0b680445a89c2ff3))
+
 # [1.15.0-beta.1](https://github.com/n24q02m/EchoVault/compare/v1.14.0...v1.15.0-beta.1) (2026-01-12)
 
 
