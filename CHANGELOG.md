@@ -1,3 +1,15 @@
+# [1.15.0-beta.3](https://github.com/n24q02m/EchoVault/compare/v1.15.0-beta.2...v1.15.0-beta.3) (2026-01-12)
+
+
+### Bug Fixes
+
+* **updater:** use v2 format for createUpdaterArtifacts to generate .tar.gz bundles ([fca88df](https://github.com/n24q02m/EchoVault/commit/fca88dff72c9b4bf6ea62e74cb3aef0b1a171caa))
+
+
+### Reverts
+
+* use correct createUpdaterArtifacts value (true, not v2 string) ([e9b8fa7](https://github.com/n24q02m/EchoVault/commit/e9b8fa741b22faab3fd85bd8a41fd083f7a0892a))
+
 # [1.15.0-beta.2](https://github.com/n24q02m/EchoVault/compare/v1.15.0-beta.1...v1.15.0-beta.2) (2026-01-12)
 
 
