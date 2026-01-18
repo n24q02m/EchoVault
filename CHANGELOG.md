@@ -1,3 +1,10 @@
+# [1.15.0-beta.5](https://github.com/n24q02m/EchoVault/compare/v1.15.0-beta.4...v1.15.0-beta.5) (2026-01-18)
+
+
+### Bug Fixes
+
+* **ci:** trigger cd ([9560b7a](https://github.com/n24q02m/EchoVault/commit/9560b7a8064d2bc7b44fe8f6f173b18eafd2c064))
+
 # [1.15.0-beta.4](https://github.com/n24q02m/EchoVault/compare/v1.15.0-beta.3...v1.15.0-beta.4) (2026-01-12)
 
 
