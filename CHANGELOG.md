@@ -1,9 +1,9 @@
-## [1.15.3](https://github.com/n24q02m/EchoVault/compare/v1.15.2...v1.15.3) (2026-01-18)
+# [1.15.0-beta.6](https://github.com/n24q02m/EchoVault/compare/v1.15.0-beta.5...v1.15.0-beta.6) (2026-01-18)
 
 
 ### Bug Fixes
 
-* **ci:** trigger cd ([9560b7a](https://github.com/n24q02m/EchoVault/commit/9560b7a8064d2bc7b44fe8f6f173b18eafd2c064))
+* **ci:** trigger cd ([7389651](https://github.com/n24q02m/EchoVault/commit/73896510fd1b60c1d087347e535a6f665e93894b))
 
 # [1.15.0-beta.5](https://github.com/n24q02m/EchoVault/compare/v1.15.0-beta.4...v1.15.0-beta.5) (2026-01-18)
 
