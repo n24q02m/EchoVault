@@ -77,3 +77,4 @@ impl Default for FileWatcher {
         Self::new().expect("Failed to create FileWatcher - check OS support for file watching")
     }
 }
+// Trigger cd
