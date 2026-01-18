@@ -1,9 +1,9 @@
-## [1.15.2](https://github.com/n24q02m/EchoVault/compare/v1.15.1...v1.15.2) (2026-01-12)
+# [1.15.0-beta.5](https://github.com/n24q02m/EchoVault/compare/v1.15.0-beta.4...v1.15.0-beta.5) (2026-01-18)
 
 
 ### Bug Fixes
 
-* **cd:** split Linux builds into separate jobs for correct bundle type patching ([861836b](https://github.com/n24q02m/EchoVault/commit/861836b964fe3a8b23a5143ce1813ca6a4f60201))
+* **ci:** trigger cd ([9560b7a](https://github.com/n24q02m/EchoVault/commit/9560b7a8064d2bc7b44fe8f6f173b18eafd2c064))
 
 # [1.15.0-beta.4](https://github.com/n24q02m/EchoVault/compare/v1.15.0-beta.3...v1.15.0-beta.4) (2026-01-12)
 
