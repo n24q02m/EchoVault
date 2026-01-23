@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["apps/core", "apps/tauri"]
+members = ["apps/core", "apps/tauri", "apps/cli"]
 
 [workspace.package]
 version = "1.15.0-beta.6"

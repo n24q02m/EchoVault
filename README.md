@@ -80,6 +80,25 @@ chmod +x EchoVault_x.x.x_amd64.AppImage
 ./EchoVault_x.x.x_amd64.AppImage
 ```
 
+### CLI for Unsupported OS
+
+For older Linux distributions (e.g., Ubuntu 20.04) where the desktop app doesn't work, use the CLI:
+
+```bash
+# Build CLI from source
+cargo build -p echovault-cli --release
+
+# First time: authenticate with Google Drive
+./target/release/echovault-cli auth
+
+# Sync your AI chat history
+./target/release/echovault-cli sync
+
+# Other commands
+./target/release/echovault-cli status   # Show status
+./target/release/echovault-cli extract  # Extract only (no cloud sync)
+```
+
 ## Quick Setup
 
 **Prerequisites:** [mise](https://mise.jdx.dev/) only.

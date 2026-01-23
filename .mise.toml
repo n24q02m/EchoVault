@@ -17,7 +17,7 @@ description = "Setup development environment"
 run = [
   "mise install",
   "pnpm install",
-  "cargo build",
+  "node scripts/build-rust.mjs",
   "node scripts/download-rclone.mjs",
   "node scripts/download-crsqlite.mjs",
   "node scripts/clean-venv.mjs",
