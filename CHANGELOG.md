@@ -1,9 +1,9 @@
-## [1.15.4](https://github.com/n24q02m/EchoVault/compare/v1.15.3...v1.15.4) (2026-01-18)
+# [1.15.0-beta.7](https://github.com/n24q02m/EchoVault/compare/v1.15.0-beta.6...v1.15.0-beta.7) (2026-01-23)
 
 
-### Bug Fixes
+### Features
 
-* **ci:** trigger cd ([7389651](https://github.com/n24q02m/EchoVault/commit/73896510fd1b60c1d087347e535a6f665e93894b))
+* **cli:** add CLI support for unsupported OS and enhance build process ([92b4e27](https://github.com/n24q02m/EchoVault/commit/92b4e2732a0a3a9c796a6fb5424b7a29c338ac13))
 
 # [1.15.0-beta.6](https://github.com/n24q02m/EchoVault/compare/v1.15.0-beta.5...v1.15.0-beta.6) (2026-01-18)
 

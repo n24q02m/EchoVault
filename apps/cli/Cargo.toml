@@ -1,0 +1,46 @@
+[package]
+name = "echovault-cli"
+version = "0.1.0"
+edition = "2021"
+authors = ["n24q02m"]
+description = "EchoVault CLI - Sync AI chat history for unsupported OS"
+license = "MIT"
+repository = "https://github.com/n24q02m/EchoVault"
+
+[[bin]]
+name = "echovault-cli"
+path = "src/main.rs"
+
+[dependencies]
+# Core library - reuse all sync and extractor logic
+echovault-core = { path = "../core" }
+
+# CLI argument parsing
+clap = { version = "4", features = ["derive"] }
+
+# Terminal output
+colored = "2.1"
+indicatif = { version = "0.17", features = ["rayon"] }
+
+# Interactive prompts
+dialoguer = "0.11"
+
+# Error handling
+anyhow = "1.0"
+
+# Structured logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Parallel processing (for extraction)
+rayon = "1.10"
+
+# Timestamps
+chrono = { version = "0.4", features = ["serde"] }
+
+# JSON for config
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Cross-platform paths
+dirs = "5.0"
