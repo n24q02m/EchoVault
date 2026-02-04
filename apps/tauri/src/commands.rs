@@ -330,9 +330,18 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
             };
 
             // Process db entries after connection is released
-            for db_session in db_entries {
-                if seen_ids.insert(db_session.id.clone()) {
-                    let session_info = find_vault_session_info(
+            // Filter sessions to process (sequential to update seen_ids correctly)
+            let sessions_to_process: Vec<_> = db_entries
+                .into_iter()
+                .filter(|s| seen_ids.insert(s.id.clone()))
+                .collect();
+
+            use rayon::prelude::*;
+            // Process in parallel
+            let new_sessions: Vec<_> = sessions_to_process
+                .par_iter()
+                .map(|db_session| {
+                    find_vault_session_info(
                         &vault_dir,
                         &db_session.id,
                         db_session.file_size,
@@ -340,10 +349,11 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
                         db_session.created_at.as_deref(),
                         db_session.title.as_deref(),
                         db_session.workspace_name.as_deref(),
-                    );
-                    all_sessions.push(session_info);
-                }
-            }
+                    )
+                })
+                .collect();
+
+            all_sessions.extend(new_sessions);
         }
 
         // Sort by created_at descending (newest first)
