@@ -761,39 +761,8 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     fs::create_dir_all(&sessions_dir).map_err(|e| e.to_string())?;
 
     // 3. Filter sessions that need processing
-    let sessions_to_process: Vec<_> = sessions
-        .into_iter()
-        .filter_map(|session| {
-            let source_path = &session.metadata.original_path;
-            let file_size = session.metadata.file_size;
-
-            // Skip if source file doesn't exist
-            let metadata = match fs::metadata(source_path) {
-                Ok(m) => m,
-                Err(_) => return None,
-            };
-
-            let mtime = metadata
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-
-            // Check against vault.db
-            let should_process = match vault_db.get_session_mtime(&session.metadata.id) {
-                Ok(Some(cached_mtime)) => mtime > cached_mtime,
-                Ok(None) => true,
-                Err(_) => true, // Process if we can't check
-            };
-
-            if should_process {
-                Some((session, mtime, file_size))
-            } else {
-                None
-            }
-        })
-        .collect();
+    // Parallelized using rayon and cached DB lookups
+    let sessions_to_process = echovault_core::utils::ingest::filter_sessions_parallel(sessions, &vault_db);
 
     let to_process = sessions_to_process.len();
     let skipped = total_sessions - to_process;
