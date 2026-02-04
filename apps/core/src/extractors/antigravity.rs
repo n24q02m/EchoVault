@@ -105,7 +105,11 @@ impl AntigravityExtractor {
 
     /// Find conversations directory.
     fn find_conversations_dir(&self) -> Option<PathBuf> {
-        let paths = self.storage_paths.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let paths = self
+            .storage_paths
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         for base_path in paths.iter() {
             let conversations_dir = base_path.join("conversations");
             if conversations_dir.exists() && conversations_dir.is_dir() {
@@ -117,7 +121,11 @@ impl AntigravityExtractor {
 
     /// Find brain (artifacts) directory.
     fn find_brain_dir(&self) -> Option<PathBuf> {
-        let paths = self.storage_paths.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let paths = self
+            .storage_paths
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         for base_path in paths.iter() {
             let brain_dir = base_path.join("brain");
             if brain_dir.exists() && brain_dir.is_dir() {
