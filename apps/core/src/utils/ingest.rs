@@ -112,7 +112,8 @@ mod tests {
         std::fs::write(&path, "dummy content").unwrap();
 
         // Set mtime
-        filetime::set_file_mtime(&path, filetime::FileTime::from_unix_time(mtime as i64, 0)).unwrap();
+        filetime::set_file_mtime(&path, filetime::FileTime::from_unix_time(mtime as i64, 0))
+            .unwrap();
 
         let session = SessionFile {
             source_path: path.clone(),
@@ -149,7 +150,7 @@ mod tests {
 
             // DB mtime = 1000 (so file is newer, should process)
             // Insert into DB
-             let entry = crate::storage::SessionEntry {
+            let entry = crate::storage::SessionEntry {
                 id: name,
                 source: "test".to_string(),
                 mtime: 1000,
@@ -188,7 +189,7 @@ mod tests {
         // Also test case where update is NOT needed
         let name_skip = "session_skip";
         let (_, session_skip) = create_dummy_file(&temp_dir.path().to_path_buf(), name_skip, 1000);
-         let entry_skip = crate::storage::SessionEntry {
+        let entry_skip = crate::storage::SessionEntry {
             id: name_skip.to_string(),
             source: "test".to_string(),
             mtime: 2000, // DB newer

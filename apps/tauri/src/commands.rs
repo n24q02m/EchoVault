@@ -762,7 +762,8 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
 
     // 3. Filter sessions that need processing
     // Parallelized using rayon and cached DB lookups
-    let sessions_to_process = echovault_core::utils::ingest::filter_sessions_parallel(sessions, &vault_db);
+    let sessions_to_process =
+        echovault_core::utils::ingest::filter_sessions_parallel(sessions, &vault_db);
 
     let to_process = sessions_to_process.len();
     let skipped = total_sessions - to_process;
