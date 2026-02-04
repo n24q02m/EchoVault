@@ -315,17 +315,14 @@ impl Extractor for AntigravityExtractor {
                 .filter(|p| p.is_dir())
                 .collect();
 
-            for artifact_dir in artifact_dirs {
-                let artifact_sessions: Vec<SessionFile> = self
-                    .extract_artifact_metadata(&artifact_dir)
+            sessions.par_extend(artifact_dirs.par_iter().flat_map_iter(|artifact_dir| {
+                self.extract_artifact_metadata(artifact_dir)
                     .into_iter()
                     .map(|metadata| SessionFile {
                         source_path: metadata.original_path.clone(),
                         metadata,
                     })
-                    .collect();
-                sessions.extend(artifact_sessions);
-            }
+            }));
         }
 
         // Sort by creation time (newest first)
