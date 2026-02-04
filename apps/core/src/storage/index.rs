@@ -157,10 +157,8 @@ impl SessionIndex {
         let tx = self.conn.transaction()?;
         let mut count = 0;
 
-        for metadata in sessions {
-            let created_at = metadata.created_at.map(|dt| dt.to_rfc3339());
-
-            tx.execute(
+        {
+            let mut stmt = tx.prepare(
                 "INSERT INTO sessions (id, source, title, created_at, vault_path, original_path, file_size, workspace_name)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                  ON CONFLICT(id) DO UPDATE SET
@@ -172,7 +170,12 @@ impl SessionIndex {
                     file_size = excluded.file_size,
                     workspace_name = excluded.workspace_name,
                     indexed_at = datetime('now')",
-                params![
+            )?;
+
+            for metadata in sessions {
+                let created_at = metadata.created_at.map(|dt| dt.to_rfc3339());
+
+                stmt.execute(params![
                     metadata.id,
                     metadata.source,
                     metadata.title,
@@ -181,9 +184,9 @@ impl SessionIndex {
                     metadata.original_path.to_string_lossy().to_string(),
                     metadata.file_size as i64,
                     metadata.workspace_name,
-                ],
-            )?;
-            count += 1;
+                ])?;
+                count += 1;
+            }
         }
 
         tx.commit()?;
@@ -535,4 +538,5 @@ mod tests {
 
         Ok(())
     }
+
 }
