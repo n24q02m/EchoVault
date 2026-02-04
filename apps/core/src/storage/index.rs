@@ -536,6 +536,7 @@ mod tests {
         index.delete("to-delete")?;
         assert!(!index.exists("to-delete")?);
 
+        // Verified deletion
         Ok(())
     }
 }
