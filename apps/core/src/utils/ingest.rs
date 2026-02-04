@@ -107,7 +107,7 @@ mod tests {
     use tempfile::TempDir;
 
     // Helper to create a dummy file
-    fn create_dummy_file(dir: &PathBuf, name: &str, mtime: u64) -> (PathBuf, SessionFile) {
+    fn create_dummy_file(dir: &std::path::Path, name: &str, mtime: u64) -> (PathBuf, SessionFile) {
         let path = dir.join(name);
         std::fs::write(&path, "dummy content").unwrap();
 
@@ -145,7 +145,7 @@ mod tests {
         for i in 0..count {
             let name = format!("session_{}", i);
             // File mtime = 2000
-            let (_, session) = create_dummy_file(&temp_dir.path().to_path_buf(), &name, 2000);
+            let (_, session) = create_dummy_file(temp_dir.path(), &name, 2000);
             sessions.push(session);
 
             // DB mtime = 1000 (so file is newer, should process)
@@ -188,7 +188,7 @@ mod tests {
 
         // Also test case where update is NOT needed
         let name_skip = "session_skip";
-        let (_, session_skip) = create_dummy_file(&temp_dir.path().to_path_buf(), name_skip, 1000);
+        let (_, session_skip) = create_dummy_file(temp_dir.path(), name_skip, 1000);
         let entry_skip = crate::storage::SessionEntry {
             id: name_skip.to_string(),
             source: "test".to_string(),
