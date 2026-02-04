@@ -1,0 +1,20 @@
+[advisories]
+ignore = [
+    "RUSTSEC-2024-0412", # gdk is unmaintained
+    "RUSTSEC-2024-0418", # gdk-sys is unmaintained
+    "RUSTSEC-2024-0411", # gdkwayland-sys is unmaintained
+    "RUSTSEC-2024-0417", # gdkx11 is unmaintained
+    "RUSTSEC-2024-0414", # gdkx11-sys is unmaintained
+    "RUSTSEC-2024-0415", # gtk is unmaintained
+    "RUSTSEC-2024-0420", # gtk-sys is unmaintained
+    "RUSTSEC-2024-0419", # gtk3-macros is unmaintained
+    "RUSTSEC-2024-0384", # instant is unmaintained
+    "RUSTSEC-2025-0119", # number_prefix is unmaintained
+    "RUSTSEC-2024-0370", # proc-macro-error is unmaintained
+    "RUSTSEC-2025-0081", # unic-char-property is unmaintained
+    "RUSTSEC-2025-0075", # unic-char-range is unmaintained
+    "RUSTSEC-2025-0080", # unic-common is unmaintained
+    "RUSTSEC-2025-0100", # unic-ucd-ident is unmaintained
+    "RUSTSEC-2025-0098", # unic-ucd-version is unmaintained
+    "RUSTSEC-2024-0429", # glib unsoundness (requires tauri upgrade to fix)
+]
