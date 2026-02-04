@@ -489,7 +489,10 @@ fn import_vault_sessions(vault_dir: &std::path::Path) -> Result<usize, String> {
         .map(|s| (s.id.clone(), s.mtime))
         .collect();
 
-    let mut sessions_to_import: Vec<SessionEntry> = Vec::new();
+    use rayon::prelude::*;
+
+    // Collect all candidate files first
+    let mut all_files = Vec::new();
 
     // Scan all subdirectories (antigravity, vscode-copilot, etc.)
     if let Ok(entries) = fs::read_dir(&sessions_dir) {
@@ -508,98 +511,101 @@ fn import_vault_sessions(vault_dir: &std::path::Path) -> Result<usize, String> {
             // Scan session files in this source directory (supports .json, .pb, .md)
             if let Ok(files) = fs::read_dir(&source_dir) {
                 for file in files.filter_map(|f| f.ok()) {
-                    let file_path = file.path();
-
-                    // Check for supported extensions
-                    let extension = file_path.extension().and_then(|e| e.to_str());
-                    if !matches!(extension, Some("json") | Some("pb") | Some("md")) {
-                        continue;
-                    }
-
-                    // Get session ID from filename (without extension)
-                    let session_id = file_path
-                        .file_stem()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("")
-                        .to_string();
-
-                    if session_id.is_empty() {
-                        continue;
-                    }
-
-                    // Get file metadata
-                    let metadata = match fs::metadata(&file_path) {
-                        Ok(m) => m,
-                        Err(_) => continue,
-                    };
-
-                    let file_mtime = metadata
-                        .modified()
-                        .ok()
-                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                        .map(|d| d.as_secs())
-                        .unwrap_or(0);
-
-                    // Skip if already exists with same or newer mtime
-                    if let Some(&existing_mtime) = existing_mtimes.get(&session_id) {
-                        if existing_mtime >= file_mtime {
-                            continue;
-                        }
-                    }
-
-                    // Extract metadata based on file type
-                    let (title, workspace_name, created_at) = if extension == Some("json") {
-                        // Parse JSON to extract metadata
-                        match fs::read_to_string(&file_path) {
-                            Ok(content) => {
-                                if let Ok(json) =
-                                    serde_json::from_str::<serde_json::Value>(&content)
-                                {
-                                    let title = json
-                                        .get("title")
-                                        .or_else(|| json.get("name"))
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string());
-                                    let workspace = json
-                                        .get("workspace_name")
-                                        .or_else(|| json.get("workspaceName"))
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string());
-                                    let created = json
-                                        .get("created_at")
-                                        .or_else(|| json.get("createdAt"))
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string());
-                                    (title, workspace, created)
-                                } else {
-                                    (None, None, None)
-                                }
-                            }
-                            Err(_) => (None, None, None),
-                        }
-                    } else {
-                        // For .pb and .md files, no metadata extraction
-                        (None, None, None)
-                    };
-
-                    let ext = extension.unwrap_or("json");
-                    let vault_path = format!("sessions/{}/{}.{}", source_name, session_id, ext);
-
-                    sessions_to_import.push(SessionEntry {
-                        id: session_id,
-                        source: source_name.clone(),
-                        mtime: file_mtime,
-                        file_size: metadata.len(),
-                        title,
-                        workspace_name,
-                        created_at,
-                        vault_path,
-                        original_path: file_path.to_string_lossy().to_string(),
-                    });
+                    all_files.push((source_name.clone(), file.path()));
                 }
             }
         }
     }
+
+    let sessions_to_import: Vec<SessionEntry> = all_files
+        .par_iter()
+        .filter_map(|(source_name, file_path)| {
+            // Check for supported extensions
+            let extension = file_path.extension().and_then(|e| e.to_str());
+            if !matches!(extension, Some("json") | Some("pb") | Some("md")) {
+                return None;
+            }
+
+            // Get session ID from filename (without extension)
+            let session_id = file_path
+                .file_stem()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+
+            if session_id.is_empty() {
+                return None;
+            }
+
+            // Get file metadata
+            let metadata = match fs::metadata(file_path) {
+                Ok(m) => m,
+                Err(_) => return None,
+            };
+
+            let file_mtime = metadata
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+
+            // Skip if already exists with same or newer mtime
+            if let Some(&existing_mtime) = existing_mtimes.get(&session_id) {
+                if existing_mtime >= file_mtime {
+                    return None;
+                }
+            }
+
+            // Extract metadata based on file type
+            let (title, workspace_name, created_at) = if extension == Some("json") {
+                // Parse JSON to extract metadata
+                match fs::read_to_string(file_path) {
+                    Ok(content) => {
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                            let title = json
+                                .get("title")
+                                .or_else(|| json.get("name"))
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string());
+                            let workspace = json
+                                .get("workspace_name")
+                                .or_else(|| json.get("workspaceName"))
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string());
+                            let created = json
+                                .get("created_at")
+                                .or_else(|| json.get("createdAt"))
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string());
+                            (title, workspace, created)
+                        } else {
+                            (None, None, None)
+                        }
+                    }
+                    Err(_) => (None, None, None),
+                }
+            } else {
+                // For .pb and .md files, no metadata extraction
+                (None, None, None)
+            };
+
+            let ext = extension.unwrap_or("json");
+            let vault_path = format!("sessions/{}/{}.{}", source_name, session_id, ext);
+
+            Some(SessionEntry {
+                id: session_id,
+                source: source_name.clone(),
+                mtime: file_mtime,
+                file_size: metadata.len(),
+                title,
+                workspace_name,
+                created_at,
+                vault_path,
+                original_path: file_path.to_string_lossy().to_string(),
+            })
+        })
+        .collect();
 
     let import_count = sessions_to_import.len();
 
