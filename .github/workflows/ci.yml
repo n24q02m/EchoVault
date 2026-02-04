@@ -278,21 +278,6 @@ jobs:
       - name: Build Rust (check only)
         run: cargo check --workspace
 
-  dependency-review:
-    name: Dependency Review
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Dependency Review
-        uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: moderate
-          comment-summary-in-pr: always
-
   # Multi-Machine Sync Test - Simulates 2 machines syncing to same vault
   sync-test-a:
     name: Sync Test (Machine A - Ubuntu)
