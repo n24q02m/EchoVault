@@ -358,7 +358,8 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 hover:bg-[var(--bg-card)]"
+            className="rounded-lg p-1.5 hover:bg-[var(--bg-card)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            aria-label="Settings"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <title>Close</title>
@@ -631,7 +632,8 @@ function MainApp() {
           <button
             type="button"
             onClick={() => setShowSettings(true)}
-            className="rounded-lg p-1.5 hover:bg-[var(--bg-card)]"
+            className="rounded-lg p-1.5 hover:bg-[var(--bg-card)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            aria-label="Settings"
             title="Settings"
           >
             <svg
@@ -686,7 +688,7 @@ function MainApp() {
               <div key={source} className="glass rounded-xl">
                 <button
                   onClick={() => toggleSource(source)}
-                  className="flex w-full items-center justify-between px-4 py-3"
+                  className="flex w-full items-center justify-between px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded-lg"
                 >
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{source}</span>
@@ -716,7 +718,7 @@ function MainApp() {
                         type="button"
                         key={session.id}
                         onClick={() => handleOpenFile(session)}
-                        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-[var(--bg-card)]"
+                        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-[var(--bg-card)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-inset"
                       >
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium">
@@ -751,7 +753,7 @@ function MainApp() {
                             [source]: visibleCount + ITEMS_PER_PAGE,
                           }))
                         }
-                        className="block w-full py-2 text-center text-sm text-[var(--accent)]"
+                        className="block w-full py-2 text-center text-sm text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-inset"
                       >
                         Show more ({sourceSessions.length - visibleCount} remaining)
                       </button>
