@@ -1,3 +1,11 @@
+# [1.15.0-beta.8](https://github.com/n24q02m/EchoVault/compare/v1.15.0-beta.7...v1.15.0-beta.8) (2026-02-05)
+
+
+### Bug Fixes
+
+* Add Python 3.13 to mise configuration and set Rust to stable. ([8b43ebc](https://github.com/n24q02m/EchoVault/commit/8b43ebc8f62204cae6cc1b3f86e6afc80315683d))
+* **cd:** checkout main branch for PR merge release ([d9b4e95](https://github.com/n24q02m/EchoVault/commit/d9b4e9571997ba2e0b4af63db3caa4e64ec80dab))
+
 # [1.15.0-beta.7](https://github.com/n24q02m/EchoVault/compare/v1.15.0-beta.6...v1.15.0-beta.7) (2026-01-23)
 
 
