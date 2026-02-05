@@ -369,26 +369,32 @@ impl VaultDb {
         let mut updated = 0;
         let mut skipped = 0;
 
-        for session in sessions {
-            let existing: Option<i64> = tx
-                .query_row(
-                    "SELECT mtime FROM sessions WHERE id = ?1",
-                    params![session.id],
-                    |row| row.get(0),
-                )
-                .optional()?;
+        {
+            let mut check_stmt = tx.prepare_cached("SELECT mtime FROM sessions WHERE id = ?1")?;
+            let mut update_stmt = tx.prepare_cached(
+                "UPDATE sessions SET
+                    source = ?2, machine_id = ?3, mtime = ?4,
+                    file_size = ?5, last_synced = ?6, title = ?7,
+                    workspace_name = ?8, created_at = ?9,
+                    vault_path = ?10, original_path = ?11
+                 WHERE id = ?1",
+            )?;
+            let mut insert_stmt = tx.prepare_cached(
+                "INSERT INTO sessions
+                    (id, source, machine_id, mtime, file_size, last_synced,
+                     title, workspace_name, created_at, vault_path, original_path)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            )?;
 
-            match existing {
-                Some(existing_mtime) => {
-                    if session.mtime as i64 > existing_mtime {
-                        tx.execute(
-                            "UPDATE sessions SET
-                                source = ?2, machine_id = ?3, mtime = ?4,
-                                file_size = ?5, last_synced = ?6, title = ?7,
-                                workspace_name = ?8, created_at = ?9,
-                                vault_path = ?10, original_path = ?11
-                             WHERE id = ?1",
-                            params![
+            for session in sessions {
+                let existing: Option<i64> = check_stmt
+                    .query_row(params![session.id], |row| row.get(0))
+                    .optional()?;
+
+                match existing {
+                    Some(existing_mtime) => {
+                        if session.mtime as i64 > existing_mtime {
+                            update_stmt.execute(params![
                                 session.id,
                                 session.source,
                                 machine_id(),
@@ -400,20 +406,14 @@ impl VaultDb {
                                 session.created_at,
                                 session.vault_path,
                                 session.original_path
-                            ],
-                        )?;
-                        updated += 1;
-                    } else {
-                        skipped += 1;
+                            ])?;
+                            updated += 1;
+                        } else {
+                            skipped += 1;
+                        }
                     }
-                }
-                None => {
-                    tx.execute(
-                        "INSERT INTO sessions
-                            (id, source, machine_id, mtime, file_size, last_synced,
-                             title, workspace_name, created_at, vault_path, original_path)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-                        params![
+                    None => {
+                        insert_stmt.execute(params![
                             session.id,
                             session.source,
                             machine_id(),
@@ -425,9 +425,9 @@ impl VaultDb {
                             session.created_at,
                             session.vault_path,
                             session.original_path
-                        ],
-                    )?;
-                    inserted += 1;
+                        ])?;
+                        inserted += 1;
+                    }
                 }
             }
         }
