@@ -1,3 +1,10 @@
+# [1.15.0-beta.9](https://github.com/n24q02m/EchoVault/compare/v1.15.0-beta.8...v1.15.0-beta.9) (2026-02-05)
+
+
+### Bug Fixes
+
+* **cd:** use draft release to allow Tauri builds to upload assets ([7e6c01f](https://github.com/n24q02m/EchoVault/commit/7e6c01fc794a5237f08af16089c8f65f55f72b50))
+
 # [1.15.0-beta.8](https://github.com/n24q02m/EchoVault/compare/v1.15.0-beta.7...v1.15.0-beta.8) (2026-02-05)
 
 
