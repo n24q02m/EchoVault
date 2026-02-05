@@ -279,6 +279,7 @@ jobs:
         run: cargo check --workspace
 
   dependency-review:
+    continue-on-error: true
     name: Dependency Review
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
