@@ -13,11 +13,14 @@ use chrono::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+#[cfg(target_os = "windows")]
+use std::thread;
 
 /// Antigravity Extractor
 pub struct AntigravityExtractor {
     /// Paths that may contain Antigravity data
-    storage_paths: Vec<PathBuf>,
+    storage_paths: Arc<Mutex<Vec<PathBuf>>>,
 }
 
 /// Artifact metadata JSON
@@ -32,19 +35,19 @@ struct ArtifactMetadata {
 impl AntigravityExtractor {
     /// Create new extractor with default paths per platform.
     pub fn new() -> Self {
-        let mut storage_paths = Vec::new();
+        let mut initial_paths = Vec::new();
 
         // Prefer reading from HOME env variable (for testing with HOME override)
         if let Ok(home) = std::env::var("HOME") {
             let home_path = Path::new(&home);
-            storage_paths.push(home_path.join(".gemini/antigravity"));
+            initial_paths.push(home_path.join(".gemini/antigravity"));
         }
 
         // Fallback: ~/.gemini/antigravity/ via dirs crate
         if let Some(home) = dirs::home_dir() {
             let path = home.join(".gemini/antigravity");
-            if !storage_paths.contains(&path) {
-                storage_paths.push(path);
+            if !initial_paths.contains(&path) {
+                initial_paths.push(path);
             }
         }
 
@@ -52,33 +55,41 @@ impl AntigravityExtractor {
         #[cfg(target_os = "windows")]
         if let Some(home) = dirs::home_dir() {
             let path = home.join(".gemini").join("antigravity");
-            if !storage_paths.contains(&path) {
-                storage_paths.push(path);
+            if !initial_paths.contains(&path) {
+                initial_paths.push(path);
             }
         }
+
+        let storage_paths = Arc::new(Mutex::new(initial_paths));
 
         // Windows: Add WSL support (\\wsl$\<distro>\home\<user>\.gemini\antigravity\)
         #[cfg(target_os = "windows")]
         {
-            // Get Windows username to create WSL path
-            // In WSL, username is usually same as Windows or needs to scan home directories
-            if let Ok(wsl_path) = std::fs::read_dir(r"\\wsl$") {
-                for entry in wsl_path.flatten() {
-                    let distro_path = entry.path();
-                    if distro_path.is_dir() {
-                        // Scan all home directories in WSL distro
-                        let wsl_home = distro_path.join("home");
-                        if wsl_home.exists() && wsl_home.is_dir() {
-                            if let Ok(home_entries) = std::fs::read_dir(&wsl_home) {
-                                for home_entry in home_entries.flatten() {
-                                    let user_home = home_entry.path();
-                                    if user_home.is_dir() {
-                                        let wsl_antigravity =
-                                            user_home.join(".gemini").join("antigravity");
-                                        if wsl_antigravity.exists()
-                                            && !storage_paths.contains(&wsl_antigravity)
-                                        {
-                                            storage_paths.push(wsl_antigravity);
+            let paths_clone = Arc::clone(&storage_paths);
+            thread::spawn(move || {
+                // Get Windows username to create WSL path
+                // In WSL, username is usually same as Windows or needs to scan home directories
+                if let Ok(wsl_path) = std::fs::read_dir(r"\\wsl$") {
+                    for entry in wsl_path.flatten() {
+                        let distro_path = entry.path();
+                        if distro_path.is_dir() {
+                            // Scan all home directories in WSL distro
+                            let wsl_home = distro_path.join("home");
+                            if wsl_home.exists() && wsl_home.is_dir() {
+                                if let Ok(home_entries) = std::fs::read_dir(&wsl_home) {
+                                    for home_entry in home_entries.flatten() {
+                                        let user_home = home_entry.path();
+                                        if user_home.is_dir() {
+                                            let wsl_antigravity =
+                                                user_home.join(".gemini").join("antigravity");
+                                            // Check existence before locking to avoid holding lock during I/O check (though unlikely to block long)
+                                            if wsl_antigravity.exists() {
+                                                if let Ok(mut paths) = paths_clone.lock() {
+                                                    if !paths.contains(&wsl_antigravity) {
+                                                        paths.push(wsl_antigravity);
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -86,7 +97,7 @@ impl AntigravityExtractor {
                         }
                     }
                 }
-            }
+            });
         }
 
         Self { storage_paths }
@@ -94,7 +105,12 @@ impl AntigravityExtractor {
 
     /// Find conversations directory.
     fn find_conversations_dir(&self) -> Option<PathBuf> {
-        for base_path in &self.storage_paths {
+        let paths = self
+            .storage_paths
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        for base_path in paths.iter() {
             let conversations_dir = base_path.join("conversations");
             if conversations_dir.exists() && conversations_dir.is_dir() {
                 return Some(conversations_dir);
@@ -105,7 +121,12 @@ impl AntigravityExtractor {
 
     /// Find brain (artifacts) directory.
     fn find_brain_dir(&self) -> Option<PathBuf> {
-        for base_path in &self.storage_paths {
+        let paths = self
+            .storage_paths
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        for base_path in paths.iter() {
             let brain_dir = base_path.join("brain");
             if brain_dir.exists() && brain_dir.is_dir() {
                 return Some(brain_dir);
