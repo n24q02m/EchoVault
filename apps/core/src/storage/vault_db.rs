@@ -441,6 +441,20 @@ impl VaultDb {
         })
     }
 
+    /// Get mtimes for all sessions (for efficient sync checks).
+    pub fn get_all_session_mtimes(&self) -> Result<Vec<(String, u64)>> {
+        let mut stmt = self.conn.prepare("SELECT id, mtime FROM sessions")?;
+
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get::<_, i64>(1)? as u64)))?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+
+        Ok(result)
+    }
+
     /// Get all sessions from the database.
     pub fn get_all_sessions(&self) -> Result<Vec<SessionEntry>> {
         let mut stmt = self.conn.prepare(
