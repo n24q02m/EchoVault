@@ -17,7 +17,12 @@
                 "alwaysVerifyToken": false
             }
         ],
-        "@semantic-release/github",
+        [
+            "@semantic-release/github",
+            {
+                "draftRelease": true
+            }
+        ],
         [
             "@semantic-release/git",
             {
