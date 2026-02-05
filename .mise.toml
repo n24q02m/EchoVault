@@ -5,7 +5,8 @@
 
 [tools]
 node = "24"
-rust = "latest"
+python = "3.13"
+rust = "stable"
 pnpm = "latest"
 uv = "latest"
 
