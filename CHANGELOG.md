@@ -1,3 +1,10 @@
+# [1.16.0](https://github.com/n24q02m/EchoVault/compare/v1.15.4...v1.16.0) (2026-01-23)
+
+
+### Features
+
+* **cli:** add CLI support for unsupported OS and enhance build process ([92b4e27](https://github.com/n24q02m/EchoVault/commit/92b4e2732a0a3a9c796a6fb5424b7a29c338ac13))
+
 # [1.15.0-beta.7](https://github.com/n24q02m/EchoVault/compare/v1.15.0-beta.6...v1.15.0-beta.7) (2026-01-23)
 
 

@@ -141,20 +141,27 @@ impl Extractor for VSCodeCopilotExtractor {
 
             // Iterate through all workspace hash directories
             if let Ok(entries) = std::fs::read_dir(storage_path) {
-                for entry in entries.flatten() {
-                    let chat_sessions_dir = entry.path().join("chatSessions");
-                    if chat_sessions_dir.exists() && chat_sessions_dir.is_dir() {
-                        // Check if there are any JSON files
-                        if let Ok(sessions) = std::fs::read_dir(&chat_sessions_dir) {
-                            let has_json = sessions
-                                .flatten()
-                                .any(|e| e.path().extension().is_some_and(|ext| ext == "json"));
-                            if has_json {
-                                workspaces.push(entry.path());
+                let entries: Vec<_> = entries.flatten().collect();
+                let found_workspaces: Vec<PathBuf> = entries
+                    .par_iter()
+                    .filter_map(|entry| {
+                        let chat_sessions_dir = entry.path().join("chatSessions");
+                        if chat_sessions_dir.exists() && chat_sessions_dir.is_dir() {
+                            // Check if there are any JSON files
+                            if let Ok(sessions) = std::fs::read_dir(&chat_sessions_dir) {
+                                let has_json = sessions
+                                    .flatten()
+                                    .any(|e| e.path().extension().is_some_and(|ext| ext == "json"));
+                                if has_json {
+                                    return Some(entry.path());
+                                }
                             }
                         }
-                    }
-                }
+                        None
+                    })
+                    .collect();
+
+                workspaces.extend(found_workspaces);
             }
         }
 
