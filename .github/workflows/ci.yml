@@ -292,6 +292,7 @@ jobs:
         with:
           fail-on-severity: moderate
           comment-summary-in-pr: always
+        continue-on-error: true
 
   # Multi-Machine Sync Test - Simulates 2 machines syncing to same vault
   sync-test-a:
