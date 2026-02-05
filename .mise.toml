@@ -18,9 +18,9 @@ description = "Setup development environment"
 run = [
   "mise install",
   "pnpm install",
-  "node scripts/build-rust.mjs",
   "node scripts/download-rclone.mjs",
   "node scripts/download-crsqlite.mjs",
+  "node scripts/build-rust.mjs",
   "node scripts/clean-venv.mjs",
   "uv pip install pre-commit",
   "uv run pre-commit install",
