@@ -1,9 +1,9 @@
 {
     "name": "echovault",
+    "version": "1.15.0",
     "private": true,
     "type": "module",
     "scripts": {
-        "release": "semantic-release",
         "predev": "node scripts/download-rclone.mjs",
         "dev": "pnpm --filter echovault-web dev",
         "build": "pnpm --filter echovault-web build",
@@ -13,13 +13,6 @@
     },
     "packageManager": "pnpm@9.15.3",
     "devDependencies": {
-        "@semantic-release/changelog": "^6.0.3",
-        "@semantic-release/commit-analyzer": "^13.0.1",
-        "@semantic-release/git": "^10.0.1",
-        "@semantic-release/github": "^12.0.2",
-        "@semantic-release/release-notes-generator": "^14.1.0",
-        "semantic-release": "^25.0.2",
-        "semantic-release-cargo": "^2.4.2",
         "unzipper": "^0.12.3"
     }
 }

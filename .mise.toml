@@ -27,3 +27,21 @@ run = [
   "echo 'Setup complete!'",
 ]
 
+[tasks.lint]
+description = "Run all quality checks (cargo + biome + tsc)"
+run = [
+  "cargo fmt --all -- --check",
+  "cargo clippy -p echovault-core -- -D warnings",
+  "cd apps/web && pnpm typecheck && pnpm lint",
+]
+
+[tasks.test]
+description = "Run tests"
+run = "cargo test -p echovault-core"
+
+[tasks.fix]
+description = "Auto-fix formatting issues"
+run = [
+  "cargo fmt --all",
+  "cd apps/web && pnpm exec biome check --write src",
+]

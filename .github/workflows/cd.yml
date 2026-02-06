@@ -3,9 +3,6 @@ name: CD
 on:
   push:
     branches: [dev, main]
-  pull_request:
-    types: [closed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       action:
@@ -26,12 +23,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Job: Promote dev to main (manual trigger only)
+  # ============================================================
+  # Promote: Tạo PR từ dev -> main
+  # ============================================================
   promote:
     name: Promote to Stable
     if: github.event_name == 'workflow_dispatch' && inputs.action == 'promote-to-stable'
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -46,20 +44,10 @@ jobs:
           chmod +x .github/scripts/check-ci-cd-status.sh
           ./.github/scripts/check-ci-cd-status.sh --branch=dev
 
-      - name: Sync main into dev (resolve version conflicts)
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout dev
-          git fetch origin main
-          git merge origin/main --no-edit -X ours || true
-          git push origin dev
-
       - name: Create PR to promote dev to main
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          # Check if PR already exists
           EXISTING_PR=$(gh pr list --base main --head dev --json number --jq '.[0].number')
           if [ -n "$EXISTING_PR" ]; then
             echo "PR #$EXISTING_PR already exists for dev -> main"
@@ -67,7 +55,6 @@ jobs:
             exit 0
           fi
 
-          # Get latest release version from dev
           LATEST_TAG=$(git describe --tags --abbrev=0 origin/dev 2>/dev/null || echo "")
           if [ -z "$LATEST_TAG" ]; then
             PR_TITLE="feat: promote dev to main"
@@ -75,7 +62,6 @@ jobs:
             PR_TITLE="feat: promote dev to main ($LATEST_TAG)"
           fi
 
-          # Create PR
           gh pr create \
             --base main \
             --head dev \
@@ -85,121 +71,98 @@ jobs:
           This PR promotes the latest changes from \`dev\` branch to \`main\`.
 
           ### Pre-checks passed:
-          - ✅ CI workflow passed on dev
-          - ✅ CD workflow passed on dev
+          - CI workflow passed on dev
+          - CD workflow passed on dev
 
           ### Latest beta version: $LATEST_TAG"
 
-  restore-dev:
-    name: Restore Dev Branch
-    needs: [release]
-    if: |
-      (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout main
-        uses: actions/checkout@v6
-        with:
-          ref: main
-          fetch-depth: 0
-          token: ${{ secrets.GH_PAT }}
-
-      - name: Restore dev branch from main
-        run: |
-          if git ls-remote --exit-code --heads origin dev; then
-            echo "Dev branch already exists, skipping"
-            exit 0
-          fi
-
-          git checkout -b dev
-          git push origin dev
-          echo "✅ Dev branch restored from main"
-
-  # Job: Semantic Release (on push to dev or main)
-  release:
-    name: Semantic Release
-    if: |
-      (github.event_name == 'push') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'dev')
+  # ============================================================
+  # Release: release-please tạo Release PR + GitHub Release
+  # ============================================================
+  release-beta:
+    name: Release (Beta)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     outputs:
-      released: ${{ steps.semantic.outputs.new_release_published }}
-      version: ${{ steps.semantic.outputs.new_release_version }}
-      is_prerelease: ${{ contains(github.ref, 'dev') }}
-
+      released: ${{ steps.release.outputs.release_created }}
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag_name }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
+      - uses: googleapis/release-please-action@v4
+        id: release
         with:
-          fetch-depth: 0
           token: ${{ secrets.GH_PAT }}
-          ref: ${{ github.event_name == 'pull_request' && 'main' || github.ref }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          target-branch: dev
+          prerelease: true
+          prerelease-type: beta
 
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+  release-stable:
+    name: Release (Stable)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.release.outputs.release_created }}
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
         with:
-          package_json_file: package.json
+          token: ${{ secrets.GH_PAT }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          target-branch: main
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          cache: "pnpm"
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Create dummy binaries
+  # ============================================================
+  # Prepare: Mark release as draft before uploading Tauri assets
+  # ============================================================
+  prepare-release:
+    name: Prepare Release (Draft)
+    needs: [release-beta, release-stable]
+    if: |
+      always() && !cancelled() &&
+      (needs.release-beta.outputs.released == 'true' || needs.release-stable.outputs.released == 'true')
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.set.outputs.version }}
+      tag: ${{ steps.set.outputs.tag }}
+      is_prerelease: ${{ steps.set.outputs.is_prerelease }}
+    steps:
+      - name: Set release info
+        id: set
         run: |
-          mkdir -p apps/tauri/binaries
-          touch apps/tauri/binaries/rclone-x86_64-unknown-linux-gnu
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build frontend
-        run: pnpm build
-
-      - name: Semantic Release
-        id: semantic
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
-          GIT_AUTHOR_NAME: github-actions[bot]
-          GIT_AUTHOR_EMAIL: github-actions[bot]@users.noreply.github.com
-          GIT_COMMITTER_NAME: github-actions[bot]
-          GIT_COMMITTER_EMAIL: github-actions[bot]@users.noreply.github.com
-        run: |
-          npx semantic-release --dry-run > release-output.txt 2>&1 || true
-          if grep -q "Published release" release-output.txt || grep -q "Release notes" release-output.txt; then
-            pnpm release
-            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-            if [ -n "$LATEST_TAG" ]; then
-              echo "new_release_published=true" >> "$GITHUB_OUTPUT"
-              echo "new_release_version=${LATEST_TAG#v}" >> "$GITHUB_OUTPUT"
-            else
-              echo "new_release_published=false" >> "$GITHUB_OUTPUT"
-            fi
+          if [ "${{ needs.release-stable.outputs.released }}" = "true" ]; then
+            echo "version=${{ needs.release-stable.outputs.version }}" >> $GITHUB_OUTPUT
+            echo "tag=${{ needs.release-stable.outputs.tag }}" >> $GITHUB_OUTPUT
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
           else
-            echo "new_release_published=false" >> "$GITHUB_OUTPUT"
+            echo "version=${{ needs.release-beta.outputs.version }}" >> $GITHUB_OUTPUT
+            echo "tag=${{ needs.release-beta.outputs.tag }}" >> $GITHUB_OUTPUT
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
           fi
 
-  # Job: Build Tauri apps
+      - name: Mark release as draft
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          TAG="${{ steps.set.outputs.tag }}"
+          gh release edit "$TAG" \
+            --repo "${{ github.repository }}" \
+            --draft
+
+  # ============================================================
+  # Build: Tauri multi-platform
+  # ============================================================
   build-tauri:
     name: Build Tauri (${{ matrix.bundle_name }})
-    needs: release
-    if: needs.release.outputs.released == 'true'
+    needs: [prepare-release]
+    if: needs.prepare-release.result == 'success'
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux builds - separate jobs to ensure correct __TAURI_BUNDLE_TYPE patching
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             rclone_url: https://downloads.rclone.org/rclone-current-linux-amd64.zip
@@ -224,7 +187,6 @@ jobs:
             crsqlite_binary: crsqlite-x86_64-unknown-linux-gnu.so
             bundle_name: linux-appimage
             bundle_args: --bundles appimage
-          # Windows build
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             rclone_url: https://downloads.rclone.org/rclone-current-windows-amd64.zip
@@ -233,7 +195,6 @@ jobs:
             crsqlite_binary: crsqlite-x86_64-pc-windows-msvc.dll
             bundle_name: windows-nsis
             bundle_args: ""
-          # macOS builds
           - platform: macos-latest
             target: x86_64-apple-darwin
             rclone_url: https://downloads.rclone.org/rclone-current-osx-amd64.zip
@@ -250,9 +211,7 @@ jobs:
             crsqlite_binary: crsqlite-aarch64-apple-darwin.dylib
             bundle_name: macos-arm64
             bundle_args: ""
-
     runs-on: ${{ matrix.platform }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -345,15 +304,16 @@ jobs:
           chmod +x apps/tauri/binaries/${{ matrix.crsqlite_binary }}
 
       - name: Update version in tauri.conf.json
+        env:
+          RELEASE_VERSION: ${{ needs.prepare-release.outputs.version }}
         run: |
           node -e "
             const fs = require('fs');
             const path = 'apps/tauri/tauri.conf.json';
             const config = JSON.parse(fs.readFileSync(path, 'utf8'));
-            const version = '${{ needs.release.outputs.version }}';
-            config.version = version;
+            config.version = process.env.RELEASE_VERSION;
             fs.writeFileSync(path, JSON.stringify(config, null, 4) + '\n');
-            console.log('Updated version to: ' + version);
+            console.log('Updated version to: ' + process.env.RELEASE_VERSION);
           "
 
       - name: Build Tauri App
@@ -363,28 +323,55 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: v${{ needs.release.outputs.version }}
-          releaseName: "EchoVault v${{ needs.release.outputs.version }}"
+          tagName: ${{ needs.prepare-release.outputs.tag }}
+          releaseName: "EchoVault ${{ needs.prepare-release.outputs.tag }}"
           releaseBody: "See the assets section below to download the installer for your platform."
           releaseDraft: true
-          prerelease: ${{ needs.release.outputs.is_prerelease == 'true' }}
+          prerelease: ${{ needs.prepare-release.outputs.is_prerelease == 'true' }}
           projectPath: apps/tauri
           args: --target ${{ matrix.target }} ${{ matrix.bundle_args }}
           tauriScript: pnpm tauri
           includeUpdaterJson: true
 
+  # ============================================================
+  # Publish: Undraft the release after all builds complete
+  # ============================================================
   publish-release:
     name: Publish Release
-    needs: [release, build-tauri]
-    if: needs.release.outputs.released == 'true'
+    needs: [prepare-release, build-tauri]
+    if: needs.build-tauri.result == 'success'
     runs-on: ubuntu-latest
-
     steps:
       - name: Publish draft release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          gh release edit "v${{ needs.release.outputs.version }}" \
+          gh release edit "${{ needs.prepare-release.outputs.tag }}" \
             --repo "${{ github.repository }}" \
             --draft=false \
-            --prerelease=${{ needs.release.outputs.is_prerelease }}
+            --prerelease=${{ needs.prepare-release.outputs.is_prerelease }}
+
+  # ============================================================
+  # Sync: Tái tạo dev branch từ main sau stable release
+  # ============================================================
+  sync-dev:
+    name: Sync Dev from Main
+    needs: [release-stable, publish-release]
+    if: |
+      always() && !cancelled() &&
+      needs.release-stable.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Recreate dev branch from main
+        run: |
+          git push origin --delete dev || true
+          git checkout -b dev
+          git push origin dev
+          echo "Dev branch recreated from main"
