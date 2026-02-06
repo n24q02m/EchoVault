@@ -161,7 +161,7 @@ jobs:
   build-tauri:
     name: Build Tauri (${{ matrix.bundle_name }})
     needs: [prepare-release]
-    if: needs.prepare-release.result == 'success'
+    if: always() && !cancelled() && needs.prepare-release.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -342,7 +342,7 @@ jobs:
   publish-release:
     name: Publish Release
     needs: [prepare-release, build-tauri]
-    if: needs.build-tauri.result == 'success'
+    if: always() && !cancelled() && needs.build-tauri.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Publish draft release
