@@ -141,14 +141,19 @@ jobs:
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Mark release as draft
+      - name: Verify release is draft
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           TAG="${{ steps.set.outputs.tag }}"
-          gh release edit "$TAG" \
-            --repo "${{ github.repository }}" \
-            --draft
+          IS_DRAFT=$(gh release view "$TAG" --repo "${{ github.repository }}" --json isDraft --jq '.isDraft')
+          echo "Release $TAG draft status: $IS_DRAFT"
+          if [ "$IS_DRAFT" != "true" ]; then
+            echo "::warning::Release $TAG is not a draft. Attempting to set as draft..."
+            gh release edit "$TAG" --repo "${{ github.repository }}" --draft || {
+              echo "::warning::Could not set release as draft (may be immutable). Tauri action will handle it."
+            }
+          fi
 
   # ============================================================
   # Build: Tauri multi-platform
