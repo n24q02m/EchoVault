@@ -74,7 +74,6 @@
   "packages": {
     ".": {}
   },
-  "draft": true,
   "prerelease": true,
   "prerelease-type": "beta",
   "versioning": "prerelease"

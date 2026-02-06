@@ -114,10 +114,10 @@ jobs:
           target-branch: main
 
   # ============================================================
-  # Prepare: Mark release as draft before uploading Tauri assets
+  # Prepare: Set release info for Tauri builds
   # ============================================================
   prepare-release:
-    name: Prepare Release (Draft)
+    name: Prepare Release Info
     needs: [release-beta, release-stable]
     if: |
       always() && !cancelled() &&
@@ -139,20 +139,6 @@ jobs:
             echo "version=${{ needs.release-beta.outputs.version }}" >> $GITHUB_OUTPUT
             echo "tag=${{ needs.release-beta.outputs.tag }}" >> $GITHUB_OUTPUT
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Verify release is draft
-        env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
-        run: |
-          TAG="${{ steps.set.outputs.tag }}"
-          IS_DRAFT=$(gh release view "$TAG" --repo "${{ github.repository }}" --json isDraft --jq '.isDraft')
-          echo "Release $TAG draft status: $IS_DRAFT"
-          if [ "$IS_DRAFT" != "true" ]; then
-            echo "::warning::Release $TAG is not a draft. Attempting to set as draft..."
-            gh release edit "$TAG" --repo "${{ github.repository }}" --draft || {
-              echo "::warning::Could not set release as draft (may be immutable). Tauri action will handle it."
-            }
           fi
 
   # ============================================================
@@ -329,7 +315,7 @@ jobs:
           tagName: ${{ needs.prepare-release.outputs.tag }}
           releaseName: "EchoVault ${{ needs.prepare-release.outputs.tag }}"
           releaseBody: "See the assets section below to download the installer for your platform."
-          releaseDraft: true
+          releaseDraft: false
           prerelease: ${{ needs.prepare-release.outputs.is_prerelease == 'true' }}
           projectPath: apps/tauri
           args: --target ${{ matrix.target }} ${{ matrix.bundle_args }}
@@ -337,29 +323,11 @@ jobs:
           includeUpdaterJson: true
 
   # ============================================================
-  # Publish: Undraft the release after all builds complete
-  # ============================================================
-  publish-release:
-    name: Publish Release
-    needs: [prepare-release, build-tauri]
-    if: always() && !cancelled() && needs.build-tauri.result == 'success'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Publish draft release
-        env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
-        run: |
-          gh release edit "${{ needs.prepare-release.outputs.tag }}" \
-            --repo "${{ github.repository }}" \
-            --draft=false \
-            --prerelease=${{ needs.prepare-release.outputs.is_prerelease }}
-
-  # ============================================================
-  # Sync: Tái tạo dev branch từ main sau stable release
+  # Sync: Tai tao dev branch tu main sau stable release
   # ============================================================
   sync-dev:
     name: Sync Dev from Main
-    needs: [release-stable, publish-release]
+    needs: [release-stable, build-tauri]
     if: |
       always() && !cancelled() &&
       needs.release-stable.outputs.released == 'true'
