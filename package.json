@@ -1,6 +1,6 @@
 {
     "name": "echovault",
-    "version": "1.16.0",
+    "version": "1.17.0-beta",
     "private": true,
     "type": "module",
     "scripts": {
