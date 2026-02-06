@@ -72,7 +72,9 @@
     }
   ],
   "packages": {
-    ".": {}
+    ".": {
+      "skip-github-release": true
+    }
   },
   "prerelease": true,
   "prerelease-type": "beta",

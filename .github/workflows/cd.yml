@@ -114,7 +114,8 @@ jobs:
           target-branch: main
 
   # ============================================================
-  # Prepare: Set release info for Tauri builds
+  # Prepare: Tạo draft release cho Tauri builds upload assets
+  # (release-please chỉ tạo tag, skip-github-release: true)
   # ============================================================
   prepare-release:
     name: Prepare Release Info
@@ -128,6 +129,11 @@ jobs:
       tag: ${{ steps.set.outputs.tag }}
       is_prerelease: ${{ steps.set.outputs.is_prerelease }}
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
       - name: Set release info
         id: set
         run: |
@@ -140,6 +146,27 @@ jobs:
             echo "tag=${{ needs.release-beta.outputs.tag }}" >> $GITHUB_OUTPUT
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
           fi
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.set.outputs.tag }}"
+          IS_PRE="${{ steps.set.outputs.is_prerelease }}"
+          PRE_FLAG=""
+          if [ "$IS_PRE" = "true" ]; then
+            PRE_FLAG="--prerelease"
+          fi
+
+          # Lấy changelog body từ CHANGELOG.md
+          BODY="See the assets section below to download the installer for your platform."
+
+          gh release create "$TAG" \
+            --title "EchoVault $TAG" \
+            --notes "$BODY" \
+            --draft \
+            $PRE_FLAG \
+            --verify-tag
 
   # ============================================================
   # Build: Tauri multi-platform
@@ -315,7 +342,7 @@ jobs:
           tagName: ${{ needs.prepare-release.outputs.tag }}
           releaseName: "EchoVault ${{ needs.prepare-release.outputs.tag }}"
           releaseBody: "See the assets section below to download the installer for your platform."
-          releaseDraft: false
+          releaseDraft: true
           prerelease: ${{ needs.prepare-release.outputs.is_prerelease == 'true' }}
           projectPath: apps/tauri
           args: --target ${{ matrix.target }} ${{ matrix.bundle_args }}
@@ -323,11 +350,36 @@ jobs:
           includeUpdaterJson: true
 
   # ============================================================
+  # Publish: Publish draft release sau khi tất cả builds hoàn thành
+  # ============================================================
+  publish-release:
+    name: Publish Release
+    needs: [prepare-release, build-tauri]
+    if: always() && !cancelled() && needs.prepare-release.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.prepare-release.outputs.tag }}"
+
+          # Kiểm tra tất cả build jobs có success không
+          BUILD_RESULT="${{ needs.build-tauri.result }}"
+          if [ "$BUILD_RESULT" != "success" ]; then
+            echo "::warning::Some Tauri builds failed (result: $BUILD_RESULT). Publishing release anyway with available assets."
+          fi
+
+          # Publish draft release
+          gh release edit "$TAG" --draft=false --repo ${{ github.repository }}
+          echo "Published release: $TAG"
+
+  # ============================================================
   # Sync: Tai tao dev branch tu main sau stable release
   # ============================================================
   sync-dev:
     name: Sync Dev from Main
-    needs: [release-stable, build-tauri]
+    needs: [release-stable, publish-release]
     if: |
       always() && !cancelled() &&
       needs.release-stable.outputs.released == 'true'
