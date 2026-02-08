@@ -277,6 +277,13 @@
 
 * Implement initial Tauri application structure with Rclone synchronization and capability schema. ([8fe9407](https://github.com/n24q02m/EchoVault/commit/8fe94074165a982618eb6f7e14f8fe531ac49e49))
 
+## [1.17.0-beta.6](https://github.com/n24q02m/EchoVault/compare/v1.17.0-beta.5...v1.17.0-beta.6) (2026-02-08)
+
+
+### Features
+
+* **extractors:** support JSONL format for session metadata extraction ([fd08d7a](https://github.com/n24q02m/EchoVault/commit/fd08d7a90db628e72f358cc7e421320281f13a8a))
+
 ## [1.17.0-beta.5](https://github.com/n24q02m/EchoVault/compare/v1.17.0-beta.4...v1.17.0-beta.5) (2026-02-08)
 
 
