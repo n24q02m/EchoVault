@@ -1,5 +1,9 @@
-# EchoVault Install Script for Windows
+# EchoVault Full Install Script for Windows (Desktop App + CLI)
 # Usage: irm https://raw.githubusercontent.com/n24q02m/EchoVault/main/install.ps1 | iex
+#
+# Installs:
+#   1. Desktop App (NSIS installer)
+#   2. CLI binary to %LOCALAPPDATA%\EchoVault (for MCP server, terminal usage)
 #
 # Parameters (set before running):
 #   $Version = "1.0.0"  # Install specific version
@@ -151,10 +155,66 @@ function Install-EchoVault {
     return $true
 }
 
+function Install-CLI {
+    $BinName = "echovault-cli"
+    $CliDir = Join-Path $env:LOCALAPPDATA "EchoVault"
+    $artifactName = "$BinName-windows-x64.exe"
+    $cliUrl = "https://github.com/$Repo/releases/download/v$($script:ReleaseVersion)/$artifactName"
+    $destPath = Join-Path $CliDir "$BinName.exe"
+
+    Info "Installing CLI to $destPath..."
+
+    if (-not (Test-Path $CliDir)) {
+        if ($DryRun) {
+            Write-ColorOutput "Yellow" "[DRY-RUN] New-Item -ItemType Directory -Path $CliDir"
+        } else {
+            New-Item -ItemType Directory -Force -Path $CliDir | Out-Null
+        }
+    }
+
+    if ($DryRun) {
+        Write-ColorOutput "Yellow" "[DRY-RUN] Invoke-WebRequest -Uri $cliUrl -OutFile $destPath"
+    } else {
+        try {
+            $ProgressPreference = 'Continue'
+            Invoke-WebRequest -Uri $cliUrl -OutFile $destPath -UseBasicParsing
+        } catch {
+            Warn "CLI download failed: $_"
+            Warn "Desktop app installed, but CLI is not available."
+            return $false
+        }
+
+        if (-not (Test-Path $destPath)) {
+            Warn "CLI binary not found after download. Skipping CLI."
+            return $false
+        }
+    }
+
+    Success "CLI installed to $destPath"
+
+    # Add to PATH
+    $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if ($currentPath -split ";" | Where-Object { $_ -eq $CliDir }) {
+        Info "$CliDir is already in PATH"
+    } else {
+        Info "Adding $CliDir to user PATH..."
+        if ($DryRun) {
+            Write-ColorOutput "Yellow" "[DRY-RUN] Add $CliDir to user PATH"
+        } else {
+            $newPath = "$CliDir;$currentPath"
+            [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
+            $env:Path = "$CliDir;$env:Path"
+        }
+        Success "Added to PATH (restart terminal for full effect)"
+    }
+
+    return $true
+}
+
 # Main
 Write-Host ""
 Write-ColorOutput "Cyan" "========================================"
-Write-ColorOutput "Cyan" "       $AppName Installer"
+Write-ColorOutput "Cyan" "    $AppName Full Installer"
 Write-ColorOutput "Cyan" "========================================"
 Write-Host ""
 
@@ -166,13 +226,26 @@ if (-not (Get-ReleaseVersion)) {
 # Step 2: Build download URL
 Get-DownloadUrl
 
-# Step 3: Download and install
+# Step 3: Download and install desktop app
 if (-not (Install-EchoVault)) {
     Wait-AndExit 1
 }
 
+# Step 4: Install CLI binary
+$cliResult = Install-CLI
+
 Write-Host ""
-Success "Installation complete! Launch $AppName from Start Menu."
+Success "Installation complete!"
+Write-Host ""
+Info "Desktop: Launch $AppName from Start Menu"
+if ($cliResult) {
+    Info "CLI:     Run 'echovault-cli --help' in terminal"
+    Info "MCP:     Run 'echovault-cli mcp' for AI assistants"
+    Write-Host ""
+    Info "MCP config (Claude Desktop, Copilot, Cursor):"
+    Write-Host '  { "command": "echovault-cli", "args": ["mcp"] }'
+}
+Write-Host ""
 
 # Only wait if running interactively (not in automated environment)
 if ($Host.Name -eq "ConsoleHost") {

@@ -15,8 +15,11 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 use echovault_core::{
     extractors::{
-        antigravity::AntigravityExtractor, cline::ClineExtractor, cursor::CursorExtractor,
-        vscode_copilot::VSCodeCopilotExtractor, Extractor, SessionFile,
+        aider::AiderExtractor, antigravity::AntigravityExtractor, claude_code::ClaudeCodeExtractor,
+        cline::ClineExtractor, codex::CodexExtractor, continue_dev::ContinueDevExtractor,
+        cursor::CursorExtractor, gemini_cli::GeminiCliExtractor, jetbrains::JetBrainsExtractor,
+        opencode::OpenCodeExtractor, vscode_copilot::VSCodeCopilotExtractor, zed::ZedExtractor,
+        Extractor, SessionFile,
     },
     storage::{SessionEntry, VaultDb},
     sync::{AuthStatus, RcloneProvider, SyncOptions, SyncProvider},
@@ -47,11 +50,37 @@ enum Commands {
     /// Authenticate with Google Drive (required before first sync)
     Auth,
 
-    /// Sync vault with cloud (pull → extract → push)
+    /// Sync vault with cloud (pull -> extract -> push)
     Sync,
 
     /// Extract sessions from IDE into vault (without syncing to cloud)
     Extract,
+
+    /// Parse raw sessions into clean Markdown
+    Parse,
+
+    /// Start interceptor proxy for capturing API traffic
+    Intercept {
+        /// Port to listen on (default: 18080)
+        #[arg(short, long, default_value = "18080")]
+        port: u16,
+    },
+
+    /// Embed parsed conversations for semantic search
+    Embed,
+
+    /// Semantic search across embedded conversations
+    Search {
+        /// Search query text
+        query: String,
+
+        /// Maximum number of results
+        #[arg(short, long, default_value = "10")]
+        limit: usize,
+    },
+
+    /// Start MCP (Model Context Protocol) server on stdio
+    Mcp,
 
     /// Show current status (auth, last sync, etc.)
     Status,
@@ -75,6 +104,11 @@ fn main() -> Result<()> {
         Commands::Auth => cmd_auth(),
         Commands::Sync => cmd_sync(),
         Commands::Extract => cmd_extract(),
+        Commands::Parse => cmd_parse(),
+        Commands::Intercept { port } => cmd_intercept(port),
+        Commands::Embed => cmd_embed(),
+        Commands::Search { query, limit } => cmd_search(&query, limit),
+        Commands::Mcp => cmd_mcp(),
         Commands::Status => cmd_status(),
     }
 }
@@ -255,6 +289,286 @@ fn cmd_extract() -> Result<()> {
         println!("{}", "✓ All sessions already up-to-date".green());
     }
 
+    Ok(())
+}
+
+// ============ PARSE COMMAND ============
+
+fn cmd_parse() -> Result<()> {
+    println!("{}", "📝 EchoVault Parse".bold().cyan());
+    println!();
+
+    let config = ensure_config()?;
+    let vault_dir = &config.vault_path;
+    let sessions_dir = vault_dir.join("sessions");
+
+    if !sessions_dir.exists() {
+        println!(
+            "{}",
+            "No sessions found. Run 'echovault-cli extract' first.".yellow()
+        );
+        return Ok(());
+    }
+
+    println!("Vault: {}", vault_dir.display().to_string().dimmed());
+    println!();
+
+    use echovault_core::parsers::{all_parsers, markdown_writer, parse_vault_source};
+
+    let parsers = all_parsers();
+    let parsed_dir = vault_dir.join("parsed");
+
+    let mut total_parsed = 0usize;
+    let mut total_errors = 0usize;
+    let mut total_skipped = 0usize;
+
+    for parser in &parsers {
+        let source_dir = sessions_dir.join(parser.source_name());
+        if !source_dir.exists() {
+            continue;
+        }
+
+        print!("  Parsing {}...", parser.source_name());
+
+        let (conversations, errors) = parse_vault_source(parser.as_ref(), &sessions_dir);
+
+        let mut source_parsed = 0;
+        for (path, err) in &errors {
+            tracing::warn!("Error parsing {:?}: {}", path, err);
+        }
+
+        for conv in &conversations {
+            let output_path = parsed_dir
+                .join(&conv.source)
+                .join(format!("{}.md", conv.id));
+
+            // Skip if already parsed and source hasn't changed
+            if output_path.exists() {
+                total_skipped += 1;
+                continue;
+            }
+
+            match markdown_writer::write_markdown(conv, &output_path) {
+                Ok(()) => {
+                    source_parsed += 1;
+                    total_parsed += 1;
+                }
+                Err(e) => {
+                    tracing::warn!("Error writing {:?}: {}", output_path, e);
+                    total_errors += 1;
+                }
+            }
+        }
+
+        total_errors += errors.len();
+
+        println!(
+            " {} parsed, {} errors",
+            source_parsed.to_string().green(),
+            errors.len().to_string().red()
+        );
+    }
+
+    println!();
+    println!(
+        "{}",
+        format!(
+            "Complete: {} parsed, {} skipped, {} errors",
+            total_parsed, total_skipped, total_errors
+        )
+        .green()
+        .bold()
+    );
+
+    Ok(())
+}
+
+// ============ INTERCEPT COMMAND ============
+
+fn cmd_intercept(port: u16) -> Result<()> {
+    use echovault_core::interceptor::{self, InterceptorConfig, InterceptorState};
+
+    println!("{}", "Interceptor Proxy".bold().cyan());
+    println!();
+
+    let config = InterceptorConfig {
+        port,
+        ..Default::default()
+    };
+
+    // Show setup instructions
+    let instructions = interceptor::proxy_setup_instructions(&config);
+    println!("{}", instructions);
+
+    println!("Target domains:");
+    for domain in &config.target_domains {
+        println!("  - {}", domain.yellow());
+    }
+    println!();
+    println!("Starting proxy on port {}...", port.to_string().cyan());
+    println!("{}", "Press Ctrl+C to stop.".dimmed());
+    println!();
+
+    // Run the async proxy in a tokio runtime
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let handle = interceptor::start(config).await?;
+
+        match handle.state() {
+            InterceptorState::Running { port } => {
+                println!(
+                    "{}",
+                    format!("Proxy running on http://127.0.0.1:{}", port)
+                        .green()
+                        .bold()
+                );
+            }
+            InterceptorState::Error(e) => {
+                println!("{}", format!("Error: {}", e).red());
+                return Ok(());
+            }
+            InterceptorState::Stopped => {
+                println!("{}", "Proxy stopped unexpectedly".red());
+                return Ok(());
+            }
+        }
+
+        // Wait for Ctrl+C
+        tokio::signal::ctrl_c().await?;
+        println!();
+        println!("Shutting down...");
+        handle.stop();
+        // Give proxy a moment to clean up
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        println!("{}", "Proxy stopped.".green());
+
+        Ok::<(), anyhow::Error>(())
+    })?;
+
+    Ok(())
+}
+
+// ============ EMBED COMMAND ============
+
+fn cmd_embed() -> Result<()> {
+    println!("{}", "Embedding Sessions".bold().cyan());
+    println!();
+
+    let config = ensure_config()?;
+    let vault_dir = &config.vault_path;
+
+    println!("Vault: {}", vault_dir.display().to_string().dimmed());
+    println!(
+        "API:   {} ({})",
+        config.embedding.api_base.dimmed(),
+        config.embedding.model.yellow()
+    );
+    println!();
+
+    let embedding_config = echovault_core::embedding::EmbeddingConfig {
+        api_base: config.embedding.api_base,
+        api_key: config.embedding.api_key,
+        model: config.embedding.model,
+        chunk_size: config.embedding.chunk_size,
+        chunk_overlap: config.embedding.chunk_overlap,
+        batch_size: config.embedding.batch_size,
+    };
+
+    println!("Processing conversations...");
+    match echovault_core::embedding::embed_vault(&embedding_config, vault_dir) {
+        Ok(result) => {
+            println!();
+            println!(
+                "{}",
+                format!(
+                    "Complete: {} processed, {} chunks, {} skipped, {} errors",
+                    result.sessions_processed,
+                    result.chunks_created,
+                    result.sessions_skipped,
+                    result.errors.len()
+                )
+                .green()
+                .bold()
+            );
+
+            if !result.errors.is_empty() {
+                println!();
+                println!("{}", "Errors:".red());
+                for (id, err) in &result.errors {
+                    println!("  {} - {}", id.dimmed(), err);
+                }
+            }
+        }
+        Err(e) => {
+            println!("{}", format!("Embedding failed: {}", e).red());
+        }
+    }
+
+    Ok(())
+}
+
+// ============ SEARCH COMMAND ============
+
+fn cmd_search(query: &str, limit: usize) -> Result<()> {
+    println!("{}", "Semantic Search".bold().cyan());
+    println!();
+
+    let config = ensure_config()?;
+    let vault_dir = &config.vault_path;
+
+    let embedding_config = echovault_core::embedding::EmbeddingConfig {
+        api_base: config.embedding.api_base,
+        api_key: config.embedding.api_key,
+        model: config.embedding.model,
+        chunk_size: config.embedding.chunk_size,
+        chunk_overlap: config.embedding.chunk_overlap,
+        batch_size: config.embedding.batch_size,
+    };
+
+    println!("Query: {}", query.yellow());
+    println!();
+
+    match echovault_core::embedding::search_similar(&embedding_config, vault_dir, query, limit) {
+        Ok(results) => {
+            if results.is_empty() {
+                println!(
+                    "{}",
+                    "No results found. Run 'echovault-cli embed' first.".yellow()
+                );
+                return Ok(());
+            }
+
+            for (i, r) in results.iter().enumerate() {
+                let title = r.title.as_deref().unwrap_or("(untitled)");
+                println!(
+                    "{}. {} [{}] (score: {:.3})",
+                    (i + 1).to_string().bold(),
+                    title.green(),
+                    r.source.dimmed(),
+                    r.score
+                );
+                // Show snippet (first 200 chars)
+                let snippet: String = r.chunk_content.chars().take(200).collect();
+                println!("   {}", snippet.dimmed());
+                println!("   ID: {}", r.session_id.dimmed());
+                println!();
+            }
+        }
+        Err(e) => {
+            println!("{}", format!("Search failed: {}", e).red());
+        }
+    }
+
+    Ok(())
+}
+
+// ============ MCP COMMAND ============
+
+fn cmd_mcp() -> Result<()> {
+    // MCP server runs on stdio - no user output to stdout (it's protocol data)
+    // Log to stderr only
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async { echovault_core::mcp::run_server().await })?;
     Ok(())
 }
 
@@ -539,6 +853,86 @@ fn ingest_sessions(vault_dir: &Path) -> Result<bool> {
     if let Ok(locations) = cline_extractor.find_storage_locations() {
         for location in &locations {
             if let Ok(files) = cline_extractor.list_session_files(location) {
+                all_sessions.extend(files);
+            }
+        }
+    }
+
+    println!("  Scanning Gemini CLI...");
+    let gemini_extractor = GeminiCliExtractor::new();
+    if let Ok(locations) = gemini_extractor.find_storage_locations() {
+        for location in &locations {
+            if let Ok(files) = gemini_extractor.list_session_files(location) {
+                all_sessions.extend(files);
+            }
+        }
+    }
+
+    println!("  Scanning Claude Code...");
+    let claude_extractor = ClaudeCodeExtractor::new();
+    if let Ok(locations) = claude_extractor.find_storage_locations() {
+        for location in &locations {
+            if let Ok(files) = claude_extractor.list_session_files(location) {
+                all_sessions.extend(files);
+            }
+        }
+    }
+
+    println!("  Scanning Aider...");
+    let aider_extractor = AiderExtractor::new();
+    if let Ok(locations) = aider_extractor.find_storage_locations() {
+        for location in &locations {
+            if let Ok(files) = aider_extractor.list_session_files(location) {
+                all_sessions.extend(files);
+            }
+        }
+    }
+
+    println!("  Scanning Codex...");
+    let codex_extractor = CodexExtractor::new();
+    if let Ok(locations) = codex_extractor.find_storage_locations() {
+        for location in &locations {
+            if let Ok(files) = codex_extractor.list_session_files(location) {
+                all_sessions.extend(files);
+            }
+        }
+    }
+
+    println!("  Scanning Continue.dev...");
+    let continue_dev_extractor = ContinueDevExtractor::new();
+    if let Ok(locations) = continue_dev_extractor.find_storage_locations() {
+        for location in &locations {
+            if let Ok(files) = continue_dev_extractor.list_session_files(location) {
+                all_sessions.extend(files);
+            }
+        }
+    }
+
+    println!("  Scanning OpenCode...");
+    let opencode_extractor = OpenCodeExtractor::new();
+    if let Ok(locations) = opencode_extractor.find_storage_locations() {
+        for location in &locations {
+            if let Ok(files) = opencode_extractor.list_session_files(location) {
+                all_sessions.extend(files);
+            }
+        }
+    }
+
+    println!("  Scanning Zed...");
+    let zed_extractor = ZedExtractor::new();
+    if let Ok(locations) = zed_extractor.find_storage_locations() {
+        for location in &locations {
+            if let Ok(files) = zed_extractor.list_session_files(location) {
+                all_sessions.extend(files);
+            }
+        }
+    }
+
+    println!("  Scanning JetBrains AI...");
+    let jetbrains_extractor = JetBrainsExtractor::new();
+    if let Ok(locations) = jetbrains_extractor.find_storage_locations() {
+        for location in &locations {
+            if let Ok(files) = jetbrains_extractor.list_session_files(location) {
                 all_sessions.extend(files);
             }
         }

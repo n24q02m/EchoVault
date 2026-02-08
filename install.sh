@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# EchoVault Install Script
+# EchoVault Full Install Script (Desktop App + CLI)
 # Usage: curl -fsSL https://raw.githubusercontent.com/n24q02m/EchoVault/main/install.sh | bash
+#
+# Installs:
+#   1. Desktop App (system package or AppImage)
+#   2. CLI binary to ~/.local/bin (for MCP server, terminal usage)
 #
 # Environment variables:
 #   VERSION     - Install specific version (e.g., "1.0.0"), default: latest
@@ -190,6 +194,62 @@ download_installer() {
     success "Downloaded to $DOWNLOAD_PATH"
 }
 
+# Download and install CLI binary
+install_cli() {
+    local cli_install_dir="${HOME}/.local/bin"
+    local cli_name="echovault-cli"
+
+    # Determine CLI artifact name
+    local cli_arch_suffix
+    case "$ARCH" in
+        x64)    cli_arch_suffix="x64" ;;
+        arm64)  cli_arch_suffix="arm64" ;;
+    esac
+
+    local cli_artifact="${cli_name}-${PLATFORM}-${cli_arch_suffix}"
+    local cli_url="https://github.com/${REPO}/releases/download/v${RELEASE_VERSION}/${cli_artifact}"
+    local cli_dest="${cli_install_dir}/${cli_name}"
+
+    info "Installing CLI to ${cli_dest}..."
+    run mkdir -p "$cli_install_dir"
+
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        run curl -fSL --progress-bar -o "$cli_dest" "$cli_url"
+        run chmod +x "$cli_dest"
+    else
+        curl -fSL --progress-bar -o "$cli_dest" "$cli_url"
+        if [[ ! -f "$cli_dest" ]]; then
+            warn "CLI download failed (URL: $cli_url). Desktop app installed without CLI."
+            return
+        fi
+        chmod +x "$cli_dest"
+    fi
+
+    success "CLI installed to $cli_dest"
+
+    # Ensure ~/.local/bin is in PATH
+    if [[ ":$PATH:" != *":${cli_install_dir}:"* ]]; then
+        local shell_name rc_file export_line
+        shell_name="$(basename "${SHELL:-/bin/bash}")"
+        case "$shell_name" in
+            zsh)  rc_file="$HOME/.zshrc" ;;
+            fish) rc_file="$HOME/.config/fish/config.fish" ;;
+            *)    rc_file="$HOME/.bashrc" ;;
+        esac
+
+        export_line="export PATH=\"${cli_install_dir}:\$PATH\""
+        [[ "$shell_name" == "fish" ]] && export_line="fish_add_path ${cli_install_dir}"
+
+        if [[ -f "$rc_file" ]] && grep -qF "$cli_install_dir" "$rc_file" 2>/dev/null; then
+            info "PATH entry already in $rc_file"
+        else
+            run echo "$export_line" >> "$rc_file"
+            info "Added ${cli_install_dir} to PATH in $rc_file"
+        fi
+        warn "Run: source $rc_file  (or restart terminal) to use 'echovault-cli'"
+    fi
+}
+
 # Install on Linux
 install_linux() {
     info "Installing ${APP_NAME}..."
@@ -279,8 +339,15 @@ main() {
         macos) install_macos ;;
     esac
 
+    # Also install CLI binary for terminal/MCP usage
+    install_cli
+
     echo ""
-    success "Installation complete! Run '${APP_NAME}' to get started."
+    success "Installation complete!"
+    echo ""
+    info "Desktop: Run 'EchoVault' from your app launcher"
+    info "CLI:     Run 'echovault-cli --help' in terminal"
+    info "MCP:     Run 'echovault-cli mcp' for AI assistants"
 }
 
 main "$@"

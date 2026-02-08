@@ -8,57 +8,72 @@
 //! - macOS: ~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks
 //! - Linux: ~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks
 
-use super::{Extractor, SessionFile, SessionMetadata};
+use super::{Extractor, ExtractorKind, SessionFile, SessionMetadata};
+use crate::utils::wsl;
 use anyhow::Result;
 use chrono::{TimeZone, Utc};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-/// Cline VS Code Extension Extractor
+/// Cline VS Code Extension Extractor.
+/// Also supports Roo Code (fork of Cline) with extension ID `rooveterinaryinc.roo-cline`.
 pub struct ClineExtractor {
     /// Paths that may contain globalStorage
     storage_paths: Vec<PathBuf>,
 }
+
+/// Extension IDs for Cline and its forks.
+const CLINE_EXTENSION_IDS: &[&str] = &[
+    "saoudrizwan.claude-dev",     // Cline
+    "rooveterinaryinc.roo-cline", // Roo Code (Cline fork)
+];
+
+/// VS Code variants that may host Cline.
+const VSCODE_VARIANTS: &[&str] = &["Code", "Code - Insiders", "Cursor", "Cursor - Insiders"];
 
 impl ClineExtractor {
     /// Create new extractor with default paths per platform.
     pub fn new() -> Self {
         let mut storage_paths = Vec::new();
 
+        // Build all possible paths from: IDE variant x Extension ID
+        let add_paths = |base: &PathBuf, paths: &mut Vec<PathBuf>| {
+            for variant in VSCODE_VARIANTS {
+                for ext_id in CLINE_EXTENSION_IDS {
+                    let path =
+                        base.join(format!("{}/User/globalStorage/{}/tasks", variant, ext_id));
+                    if !paths.contains(&path) {
+                        paths.push(path);
+                    }
+                }
+            }
+        };
+
         // Prefer reading from HOME env variable
         if let Ok(home) = std::env::var("HOME") {
-            let home_path = PathBuf::from(home);
-            // Linux: ~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks
-            storage_paths.push(
-                home_path.join(".config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks"),
-            );
-            // Code Insiders
-            storage_paths.push(
-                home_path.join(
-                    ".config/Code - Insiders/User/globalStorage/saoudrizwan.claude-dev/tasks",
-                ),
-            );
+            let home_config = PathBuf::from(home).join(".config");
+            add_paths(&home_config, &mut storage_paths);
         }
 
         // Fallback: Get path per platform via dirs crate
         if let Some(config_dir) = dirs::config_dir() {
-            // macOS: ~/Library/Application Support/Code/User/globalStorage/...
-            let cline_path =
-                config_dir.join("Code/User/globalStorage/saoudrizwan.claude-dev/tasks");
-            if !storage_paths.contains(&cline_path) {
-                storage_paths.push(cline_path);
-            }
-
-            let cline_insiders =
-                config_dir.join("Code - Insiders/User/globalStorage/saoudrizwan.claude-dev/tasks");
-            if !storage_paths.contains(&cline_insiders) {
-                storage_paths.push(cline_insiders);
-            }
+            add_paths(&config_dir, &mut storage_paths);
         }
 
         // NOTE: On Windows, dirs::config_dir() already returns %APPDATA% (Roaming)
         // which is the correct location for VS Code extensions' globalStorage.
-        // dirs::data_dir() returns %LOCALAPPDATA% (Local) which is NOT where VS Code stores data.
+
+        // Windows: Scan WSL for Cline installations
+        for variant in VSCODE_VARIANTS {
+            for ext_id in CLINE_EXTENSION_IDS {
+                let subpath = format!(".config/{}/User/globalStorage/{}/tasks", variant, ext_id);
+                for wsl_path in wsl::find_wsl_paths(&subpath) {
+                    if !storage_paths.contains(&wsl_path) {
+                        storage_paths.push(wsl_path);
+                    }
+                }
+            }
+        }
 
         Self { storage_paths }
     }
@@ -131,6 +146,7 @@ impl ClineExtractor {
             original_path: task_dir.to_path_buf(),
             file_size,
             workspace_name: None,
+            ide_origin: None,
         })
     }
 }
@@ -144,6 +160,14 @@ impl Default for ClineExtractor {
 impl Extractor for ClineExtractor {
     fn source_name(&self) -> &'static str {
         "cline"
+    }
+
+    fn extractor_kind(&self) -> ExtractorKind {
+        ExtractorKind::Extension
+    }
+
+    fn supported_ides(&self) -> &'static [&'static str] {
+        &["VS Code", "VS Code Insiders", "Cursor"]
     }
 
     fn find_storage_locations(&self) -> Result<Vec<PathBuf>> {

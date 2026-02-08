@@ -324,11 +324,80 @@ jobs:
           includeUpdaterJson: true
 
   # ============================================================
+  # Build: CLI multi-platform (standalone binary for MCP server)
+  # ============================================================
+  build-cli:
+    name: Build CLI (${{ matrix.name }})
+    needs: [prepare-release]
+    if: always() && !cancelled() && needs.prepare-release.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            name: linux-x64
+            artifact: echovault-cli-linux-x64
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            name: macos-x64
+            artifact: echovault-cli-macos-x64
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            name: macos-arm64
+            artifact: echovault-cli-macos-arm64
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: windows-x64
+            artifact: echovault-cli-windows-x64.exe
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: cli-${{ matrix.platform }}-${{ matrix.target }}
+
+      - name: Build CLI
+        run: cargo build -p echovault-cli --release --target ${{ matrix.target }}
+
+      - name: Rename artifact (Unix)
+        if: matrix.platform != 'windows-latest'
+        run: |
+          cp target/${{ matrix.target }}/release/echovault-cli ${{ matrix.artifact }}
+          chmod +x ${{ matrix.artifact }}
+
+      - name: Rename artifact (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          Copy-Item "target/${{ matrix.target }}/release/echovault-cli.exe" "${{ matrix.artifact }}"
+
+      - name: Upload CLI to Release
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh release upload ${{ needs.prepare-release.outputs.tag }} ${{ matrix.artifact }} --clobber
+
+  # ============================================================
   # Sync: Tai tao dev branch tu main sau stable release
   # ============================================================
   sync-dev:
     name: Sync Dev from Main
-    needs: [release-stable, build-tauri]
+    needs: [release-stable, build-tauri, build-cli]
     if: |
       always() && !cancelled() &&
       needs.release-stable.outputs.released == 'true'

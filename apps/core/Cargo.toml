@@ -14,6 +14,9 @@ path = "src/lib.rs"
 [features]
 default = []
 ci-sync-test = []
+interceptor = ["hudsucker", "http-body-util", "tokio", "rustls-pemfile"]
+embedding = ["ureq"]
+mcp = ["rmcp", "tokio", "schemars"]
 
 [dependencies]
 # SQLite for reading IDE databases and index
@@ -56,6 +59,22 @@ notify = "7"
 
 # Structured logging
 tracing = "0.1"
+
+# MITM proxy for API interception (optional, feature-gated)
+hudsucker = { version = "0.24", features = ["rcgen-ca", "rustls-client"], optional = true }
+http-body-util = { version = "0.1", optional = true }
+tokio = { version = "1", features = ["full"], optional = true }
+rustls-pemfile = { version = "2", optional = true }
+
+# Zstd decompression (for Zed Agent threads.db)
+zstd = "0.13"
+
+# HTTP client for embedding API (optional, feature-gated)
+ureq = { version = "3", features = ["json"], optional = true }
+
+# MCP server SDK (optional, feature-gated)
+rmcp = { version = "0.14", features = ["server", "transport-io", "macros"], optional = true }
+schemars = { version = "1", optional = true }
 
 [dev-dependencies]
 tempfile = "3.14"

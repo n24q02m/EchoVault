@@ -448,6 +448,7 @@ impl From<SessionMetadataRow> for SessionMetadata {
             original_path: PathBuf::from(row.original_path),
             file_size: row.file_size as u64,
             workspace_name: row.workspace_name,
+            ide_origin: None,
         }
     }
 }
@@ -467,6 +468,7 @@ mod tests {
             original_path: PathBuf::from(format!("/original/{}.json", id)),
             file_size: 1024,
             workspace_name: Some("test-project".to_string()),
+            ide_origin: None,
         }
     }
 

@@ -159,6 +159,7 @@ pub fn run() {
             None,
         ))
         .manage(commands::AppState::default())
+        .manage(commands::InterceptorAppState::default())
         .setup(|app| {
             setup_tray(app)?;
 
@@ -189,6 +190,9 @@ pub fn run() {
             commands::sync_vault,
             commands::open_url,
             commands::read_file_content,
+            // Parse commands
+            commands::parse_sessions,
+            commands::read_parsed_session,
             // Settings commands
             commands::get_app_info,
             commands::get_autostart_status,
@@ -199,6 +203,19 @@ pub fn run() {
             commands::open_logs_folder,
             commands::check_update_manual,
             commands::install_update,
+            // Interceptor commands
+            commands::start_interceptor,
+            commands::stop_interceptor,
+            commands::interceptor_status,
+            commands::interceptor_setup_guide,
+            // Embedding commands
+            commands::embed_sessions,
+            commands::search_semantic,
+            commands::embedding_stats,
+            commands::save_embedding_config,
+            commands::test_embedding_connection,
+            commands::check_ollama,
+            commands::get_embedding_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

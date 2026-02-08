@@ -3,7 +3,8 @@
 //! Extracts chat history from GitHub Copilot in VS Code.
 //! ONLY COPY raw JSON files, DO NOT parse/transform content.
 
-use super::{Extractor, SessionFile, SessionMetadata};
+use super::{Extractor, ExtractorKind, SessionFile, SessionMetadata};
+use crate::utils::wsl;
 use anyhow::Result;
 use chrono::{TimeZone, Utc};
 use rayon::prelude::*;
@@ -17,6 +18,12 @@ pub struct VSCodeCopilotExtractor {
     storage_paths: Vec<PathBuf>,
 }
 
+/// VS Code workspace storage relative paths (from home dir).
+const VSCODE_WORKSPACE_SUBPATHS: &[&str] = &[
+    ".config/Code/User/workspaceStorage",
+    ".config/Code - Insiders/User/workspaceStorage",
+];
+
 impl VSCodeCopilotExtractor {
     /// Create new extractor with default paths per platform.
     pub fn new() -> Self {
@@ -25,9 +32,9 @@ impl VSCodeCopilotExtractor {
         // Prefer reading from HOME env variable (for testing with HOME override)
         if let Ok(home) = std::env::var("HOME") {
             let home_path = PathBuf::from(home);
-            // Linux: $HOME/.config/Code/User/workspaceStorage
-            storage_paths.push(home_path.join(".config/Code/User/workspaceStorage"));
-            storage_paths.push(home_path.join(".config/Code - Insiders/User/workspaceStorage"));
+            for subpath in VSCODE_WORKSPACE_SUBPATHS {
+                storage_paths.push(home_path.join(subpath));
+            }
         }
 
         // Fallback: Get path per platform via dirs crate
@@ -47,6 +54,18 @@ impl VSCodeCopilotExtractor {
         // NOTE: On Windows, dirs::config_dir() already returns %APPDATA% (Roaming)
         // which is the correct location for VS Code storage.
         // dirs::data_dir() returns %LOCALAPPDATA% (Local) which is NOT where VS Code stores data.
+
+        // Windows: Scan WSL distributions for VS Code storage (Remote-WSL scenario).
+        // When VS Code connects to WSL, CLI tools like Claude Code, Gemini CLI
+        // store data inside WSL filesystem, but VS Code workspace storage stays on Windows.
+        // However, users may have native VS Code inside WSL too.
+        for subpath in VSCODE_WORKSPACE_SUBPATHS {
+            for wsl_path in wsl::find_wsl_paths(subpath) {
+                if !storage_paths.contains(&wsl_path) {
+                    storage_paths.push(wsl_path);
+                }
+            }
+        }
 
         Self { storage_paths }
     }
@@ -152,6 +171,7 @@ impl VSCodeCopilotExtractor {
             original_path: path.clone(),
             file_size,
             workspace_name: Some(workspace_name.to_string()),
+            ide_origin: None,
         })
     }
 }
@@ -165,6 +185,14 @@ impl Default for VSCodeCopilotExtractor {
 impl Extractor for VSCodeCopilotExtractor {
     fn source_name(&self) -> &'static str {
         "vscode-copilot"
+    }
+
+    fn extractor_kind(&self) -> ExtractorKind {
+        ExtractorKind::Extension
+    }
+
+    fn supported_ides(&self) -> &'static [&'static str] {
+        &["VS Code", "VS Code Insiders"]
     }
 
     fn find_storage_locations(&self) -> Result<Vec<PathBuf>> {

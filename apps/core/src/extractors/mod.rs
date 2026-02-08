@@ -1,18 +1,54 @@
-//! Extractors module - Extract chat history from various IDEs.
+//! Extractors module - Extract chat history from various IDEs and AI tools.
 //!
 //! Principle: ONLY COPY raw files, DO NOT format/transform data.
 //! This ensures no information loss when IDE changes format.
+//!
+//! ## Supported sources (12)
+//!
+//! ### Extensions (plugins inside host IDEs)
+//! - `vscode-copilot`: GitHub Copilot Chat (VS Code, VS Code Insiders)
+//! - `cline`: Cline (Claude Dev) and Roo Code fork (VS Code, Cursor)
+//! - `continue-dev`: Continue.dev (VS Code, JetBrains)
+//!
+//! ### Standalone IDEs
+//! - `cursor`: Cursor AI Editor (VS Code fork)
+//! - `jetbrains`: JetBrains AI Assistant (IntelliJ, PyCharm, WebStorm, etc.)
+//! - `zed`: Zed Editor (built-in AI)
+//! - `antigravity`: Google Antigravity IDE
+//!
+//! ### CLI tools
+//! - `gemini-cli`: Google Gemini CLI
+//! - `claude-code`: Claude Code CLI (Anthropic)
+//! - `aider`: Aider AI coding assistant
+//! - `codex`: OpenAI Codex CLI
+//! - `opencode`: OpenCode terminal AI
 
-// NOTE: Antigravity artifacts now supported (conversations still encrypted)
+pub mod aider;
 pub mod antigravity;
+pub mod claude_code;
 pub mod cline;
+pub mod codex;
+pub mod continue_dev;
 pub mod cursor;
+pub mod gemini_cli;
+pub mod jetbrains;
+pub mod opencode;
 pub mod vscode_copilot;
+pub mod zed;
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+
+/// Distinguishes whether a source is a standalone IDE/CLI or a plugin inside another IDE.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ExtractorKind {
+    /// Standalone IDE or CLI tool with its own storage.
+    Ide,
+    /// Extension/plugin that runs inside one or more host IDEs.
+    Extension,
+}
 
 /// Session file metadata (for indexing).
 /// Contains only basic information, NOT content.
@@ -34,6 +70,10 @@ pub struct SessionMetadata {
     pub file_size: u64,
     /// Workspace name (project name)
     pub workspace_name: Option<String>,
+    /// Host IDE that the extension was running in (only for Extension kind).
+    /// e.g., "VS Code", "VS Code Insiders", "Cursor", "IntelliJ IDEA"
+    #[serde(default)]
+    pub ide_origin: Option<String>,
 }
 
 /// Information about a session file to copy.
@@ -50,6 +90,17 @@ pub struct SessionFile {
 pub trait Extractor: Sync {
     /// Source name (vscode-copilot, cursor, etc.)
     fn source_name(&self) -> &'static str;
+
+    /// Whether this is a standalone IDE/CLI or an extension inside another IDE.
+    fn extractor_kind(&self) -> ExtractorKind {
+        ExtractorKind::Ide
+    }
+
+    /// For Extension kind: which host IDEs this extension can run in.
+    /// Returns empty slice for Ide kind.
+    fn supported_ides(&self) -> &'static [&'static str] {
+        &[]
+    }
 
     /// Find all directories containing chat sessions.
     fn find_storage_locations(&self) -> Result<Vec<PathBuf>>;
@@ -102,4 +153,23 @@ pub trait Extractor: Sync {
             Ok(None) // File unchanged
         }
     }
+}
+
+/// Create all extractors.
+/// Centralizes the extractor registry so CLI and Tauri don't duplicate the list.
+pub fn all_extractors() -> Vec<Box<dyn Extractor>> {
+    vec![
+        Box::new(vscode_copilot::VSCodeCopilotExtractor::new()),
+        Box::new(cursor::CursorExtractor::new()),
+        Box::new(cline::ClineExtractor::new()),
+        Box::new(continue_dev::ContinueDevExtractor::new()),
+        Box::new(jetbrains::JetBrainsExtractor::new()),
+        Box::new(zed::ZedExtractor::new()),
+        Box::new(antigravity::AntigravityExtractor::new()),
+        Box::new(gemini_cli::GeminiCliExtractor::new()),
+        Box::new(claude_code::ClaudeCodeExtractor::new()),
+        Box::new(aider::AiderExtractor::new()),
+        Box::new(codex::CodexExtractor::new()),
+        Box::new(opencode::OpenCodeExtractor::new()),
+    ]
 }

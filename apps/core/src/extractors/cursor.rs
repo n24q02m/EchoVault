@@ -10,6 +10,7 @@
 //! - Linux: ~/.config/Cursor/User/workspaceStorage
 
 use super::{Extractor, SessionFile, SessionMetadata};
+use crate::utils::wsl;
 use anyhow::Result;
 use chrono::{TimeZone, Utc};
 use rayon::prelude::*;
@@ -23,6 +24,12 @@ pub struct CursorExtractor {
     storage_paths: Vec<PathBuf>,
 }
 
+/// Cursor workspace storage relative paths (from home dir).
+const CURSOR_WORKSPACE_SUBPATHS: &[&str] = &[
+    ".config/Cursor/User/workspaceStorage",
+    ".config/Cursor - Insiders/User/workspaceStorage",
+];
+
 impl CursorExtractor {
     /// Create new extractor with default paths per platform.
     pub fn new() -> Self {
@@ -31,8 +38,9 @@ impl CursorExtractor {
         // Prefer reading from HOME env variable (for testing with HOME override)
         if let Ok(home) = std::env::var("HOME") {
             let home_path = PathBuf::from(home);
-            // Linux: $HOME/.config/Cursor/User/workspaceStorage
-            storage_paths.push(home_path.join(".config/Cursor/User/workspaceStorage"));
+            for subpath in CURSOR_WORKSPACE_SUBPATHS {
+                storage_paths.push(home_path.join(subpath));
+            }
         }
 
         // Fallback: Get path per platform via dirs crate
@@ -43,11 +51,25 @@ impl CursorExtractor {
             if !storage_paths.contains(&cursor_path) {
                 storage_paths.push(cursor_path);
             }
+            // Cursor Insiders
+            let insiders_path = config_dir.join("Cursor - Insiders/User/workspaceStorage");
+            if !storage_paths.contains(&insiders_path) {
+                storage_paths.push(insiders_path);
+            }
         }
 
         // NOTE: On Windows, dirs::config_dir() already returns %APPDATA% (Roaming)
         // which is the correct location for Cursor storage.
         // dirs::data_dir() returns %LOCALAPPDATA% (Local) which is NOT where Cursor stores data.
+
+        // Windows: Scan WSL for Cursor installations
+        for subpath in CURSOR_WORKSPACE_SUBPATHS {
+            for wsl_path in wsl::find_wsl_paths(subpath) {
+                if !storage_paths.contains(&wsl_path) {
+                    storage_paths.push(wsl_path);
+                }
+            }
+        }
 
         Self { storage_paths }
     }
@@ -149,6 +171,7 @@ impl CursorExtractor {
             original_path: path.clone(),
             file_size,
             workspace_name: Some(workspace_name.to_string()),
+            ide_origin: None,
         })
     }
 }

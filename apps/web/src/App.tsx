@@ -257,21 +257,59 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
 
 // ==================== SETTINGS OVERLAY ====================
 
+type EmbeddingPreset = "ollama" | "openai" | "custom";
+
+interface EmbeddingConfig {
+  preset: EmbeddingPreset;
+  api_base: string;
+  api_key: string | null;
+  model: string;
+}
+
+interface ProviderStatusInfo {
+  status: "available" | "model_not_found" | "unavailable";
+  dimension: number | null;
+  message: string | null;
+}
+
+const PRESET_DEFAULTS: Record<EmbeddingPreset, { api_base: string; model: string }> = {
+  ollama: { api_base: "http://localhost:11434/v1", model: "nomic-embed-text" },
+  openai: { api_base: "https://api.openai.com/v1", model: "text-embedding-3-small" },
+  custom: { api_base: "http://localhost:8000/v1", model: "nomic-embed-text" },
+};
+
 function SettingsOverlay({ onClose }: { onClose: () => void }) {
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [autoLaunch, setAutoLaunch] = useState(false);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Embedding config state
+  const [embeddingConfig, setEmbeddingConfig] = useState<EmbeddingConfig>({
+    preset: "ollama",
+    api_base: "http://localhost:11434/v1",
+    api_key: null,
+    model: "nomic-embed-text",
+  });
+  const [providerStatus, setProviderStatus] = useState<ProviderStatusInfo | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
+  const [configDirty, setConfigDirty] = useState(false);
+  const [ollamaAvailable, setOllamaAvailable] = useState<boolean | null>(null);
+
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const [info, autostart] = await Promise.all([
+        const [info, autostart, embConfig, ollamaCheck] = await Promise.all([
           invoke<AppInfo>("get_app_info"),
           invoke<boolean>("get_autostart_status"),
+          invoke<EmbeddingConfig>("get_embedding_config"),
+          invoke<{ available: boolean; models: string[] }>("check_ollama"),
         ]);
         setAppInfo(info);
         setAutoLaunch(autostart);
+        setEmbeddingConfig(embConfig);
+        setOllamaAvailable(ollamaCheck.available);
       } catch (err) {
         toast.error(`Failed to load settings: ${String(err)}`);
       } finally {
@@ -338,6 +376,61 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
       await invoke("open_url", { url: "https://github.com/n24q02m/EchoVault" });
     } catch (err) {
       toast.error(`Failed to open GitHub: ${String(err)}`);
+    }
+  };
+
+  const handlePresetChange = (preset: EmbeddingPreset) => {
+    const defaults = PRESET_DEFAULTS[preset];
+    setEmbeddingConfig((prev) => ({
+      ...prev,
+      preset,
+      api_base: defaults.api_base,
+      model: defaults.model,
+      api_key: preset === "ollama" ? null : prev.api_key,
+    }));
+    setConfigDirty(true);
+    setProviderStatus(null);
+  };
+
+  const handleSaveEmbeddingConfig = async () => {
+    setIsSavingConfig(true);
+    try {
+      await invoke("save_embedding_config", {
+        request: {
+          preset: embeddingConfig.preset,
+          api_base: embeddingConfig.api_base,
+          api_key: embeddingConfig.api_key || null,
+          model: embeddingConfig.model,
+        },
+      });
+      setConfigDirty(false);
+      toast.success("Embedding config saved");
+    } catch (err) {
+      toast.error(`Failed to save config: ${String(err)}`);
+    } finally {
+      setIsSavingConfig(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    // Save first if dirty
+    if (configDirty) {
+      await handleSaveEmbeddingConfig();
+    }
+    setIsTesting(true);
+    setProviderStatus(null);
+    try {
+      const result = await invoke<ProviderStatusInfo>("test_embedding_connection");
+      setProviderStatus(result);
+      if (result.status === "available") {
+        toast.success(`Connected (dim=${result.dimension})`);
+      } else {
+        toast.error(result.message || "Connection failed");
+      }
+    } catch (err) {
+      toast.error(`Test failed: ${String(err)}`);
+    } finally {
+      setIsTesting(false);
     }
   };
 
@@ -424,6 +517,138 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
               </div>
             </div>
 
+            {/* Embedding Provider Section */}
+            <div className="mb-4">
+              <h3 className="mb-2 text-xs font-medium uppercase text-[var(--text-secondary)]">
+                Embedding Provider
+              </h3>
+              <div className="space-y-3 rounded-lg bg-[var(--bg-card)] p-3">
+                {/* Preset selector */}
+                <div>
+                  <label className="mb-1.5 block text-xs text-[var(--text-secondary)]">
+                    Provider
+                  </label>
+                  <div className="flex gap-1.5">
+                    {(["ollama", "openai", "custom"] as EmbeddingPreset[]).map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => handlePresetChange(p)}
+                        className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium capitalize transition-colors ${
+                          embeddingConfig.preset === p
+                            ? "bg-[var(--accent)] text-white"
+                            : "bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:text-white"
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                  {embeddingConfig.preset === "ollama" && ollamaAvailable !== null && (
+                    <p
+                      className={`mt-1 text-xs ${ollamaAvailable ? "text-[var(--success)]" : "text-red-400"}`}
+                    >
+                      {ollamaAvailable ? "Ollama detected" : "Ollama not running"}
+                    </p>
+                  )}
+                </div>
+
+                {/* API Base */}
+                <div>
+                  <label className="mb-1 block text-xs text-[var(--text-secondary)]">
+                    API Base
+                  </label>
+                  <input
+                    type="text"
+                    value={embeddingConfig.api_base}
+                    onChange={(e) => {
+                      setEmbeddingConfig((prev) => ({ ...prev, api_base: e.target.value }));
+                      setConfigDirty(true);
+                    }}
+                    className="w-full rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-xs focus:border-[var(--accent)] focus:outline-none"
+                  />
+                </div>
+
+                {/* Model */}
+                <div>
+                  <label className="mb-1 block text-xs text-[var(--text-secondary)]">Model</label>
+                  <input
+                    type="text"
+                    value={embeddingConfig.model}
+                    onChange={(e) => {
+                      setEmbeddingConfig((prev) => ({ ...prev, model: e.target.value }));
+                      setConfigDirty(true);
+                    }}
+                    className="w-full rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-xs focus:border-[var(--accent)] focus:outline-none"
+                  />
+                </div>
+
+                {/* API Key (only for openai/custom) */}
+                {embeddingConfig.preset !== "ollama" && (
+                  <div>
+                    <label className="mb-1 block text-xs text-[var(--text-secondary)]">
+                      API Key {embeddingConfig.preset === "openai" ? "(required)" : "(optional)"}
+                    </label>
+                    <input
+                      type="password"
+                      value={embeddingConfig.api_key || ""}
+                      onChange={(e) => {
+                        setEmbeddingConfig((prev) => ({
+                          ...prev,
+                          api_key: e.target.value || null,
+                        }));
+                        setConfigDirty(true);
+                      }}
+                      placeholder="sk-..."
+                      className="w-full rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-xs focus:border-[var(--accent)] focus:outline-none"
+                    />
+                  </div>
+                )}
+
+                {/* Status indicator */}
+                {providerStatus && (
+                  <div
+                    className={`flex items-center gap-1.5 text-xs ${
+                      providerStatus.status === "available"
+                        ? "text-[var(--success)]"
+                        : "text-red-400"
+                    }`}
+                  >
+                    <div
+                      className={`h-2 w-2 rounded-full ${
+                        providerStatus.status === "available" ? "bg-[var(--success)]" : "bg-red-400"
+                      }`}
+                    />
+                    {providerStatus.status === "available"
+                      ? `Connected (dim=${providerStatus.dimension})`
+                      : providerStatus.message || "Connection failed"}
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleTestConnection}
+                    disabled={isTesting}
+                    className="flex-1 rounded-md border border-[var(--border)] py-1.5 text-xs font-medium hover:bg-[var(--bg-primary)] disabled:opacity-50"
+                  >
+                    {isTesting ? "Testing..." : "Test Connection"}
+                  </button>
+                  {configDirty && (
+                    <button
+                      type="button"
+                      onClick={handleSaveEmbeddingConfig}
+                      disabled={isSavingConfig}
+                      className="flex-1 rounded-md bg-[var(--accent)] py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                    >
+                      {isSavingConfig ? "Saving..." : "Save"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {/* Actions Section */}
             <div>
               <h3 className="mb-2 text-xs font-medium uppercase text-[var(--text-secondary)]">
@@ -460,6 +685,25 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
 
 // ==================== MAIN APP ====================
 
+// Tabs
+type MainTab = "sessions" | "search";
+
+// Search result type matching Tauri SearchResultResponse
+interface SearchResult {
+  session_id: string;
+  source: string;
+  title: string | null;
+  chunk_content: string;
+  score: number;
+}
+
+interface EmbedResponse {
+  sessions_processed: number;
+  chunks_created: number;
+  sessions_skipped: number;
+  errors: number;
+}
+
 // Cache keys for localStorage
 const CACHE_KEY = "echovault_sessions_cache";
 const CACHE_TIMESTAMP_KEY = "echovault_cache_timestamp";
@@ -493,6 +737,18 @@ function MainApp() {
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
   const [viewingSession, setViewingSession] = useState<SessionInfo | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+
+  // Tab & search state
+  const [activeTab, setActiveTab] = useState<MainTab>("sessions");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isEmbedding, setIsEmbedding] = useState(false);
+  const [embedStats, setEmbedStats] = useState<{
+    total_chunks: number;
+    total_sessions: number;
+  } | null>(null);
+
   const ITEMS_PER_PAGE = 10;
 
   const groupedSessions = sessions.reduce(
@@ -512,6 +768,7 @@ function MainApp() {
         // Config is still loaded to check setup, but not saved to state because UI has removed Settings
         await invoke<AppConfig>("get_config");
         await loadSessions();
+        loadEmbedStats();
       } catch (err) {
         toast.error(`Initialization failed: ${String(err)}`);
       }
@@ -548,6 +805,58 @@ function MainApp() {
 
   const handleOpenFile = (session: SessionInfo) => {
     setViewingSession(session);
+  };
+
+  // Search handler
+  const handleSearch = async () => {
+    const q = searchQuery.trim();
+    if (!q) return;
+    setIsSearching(true);
+    try {
+      const results = await invoke<SearchResult[]>("search_semantic", {
+        query: q,
+        limit: 20,
+      });
+      setSearchResults(results);
+      if (results.length === 0) {
+        toast.info("No results found. Try embedding sessions first.");
+      }
+    } catch (err) {
+      toast.error(`Search failed: ${String(err)}`);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Embed handler
+  const handleEmbed = async () => {
+    if (isEmbedding) return;
+    setIsEmbedding(true);
+    toast.info("Embedding sessions... This may take a while.");
+    try {
+      const result = await invoke<EmbedResponse>("embed_sessions");
+      toast.success(
+        `Embedded ${result.sessions_processed} sessions (${result.chunks_created} chunks)`
+      );
+      // Refresh stats
+      loadEmbedStats();
+    } catch (err) {
+      toast.error(`Embedding failed: ${String(err)}`);
+    } finally {
+      setIsEmbedding(false);
+    }
+  };
+
+  // Load embedding stats
+  const loadEmbedStats = async () => {
+    try {
+      const stats = await invoke<{ total_chunks: number; total_sessions: number }>(
+        "embedding_stats"
+      );
+      setEmbedStats(stats);
+    } catch {
+      // Ignore - stats are optional
+    }
   };
 
   const formatFileSize = (bytes: number): string => {
@@ -609,159 +918,318 @@ function MainApp() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-        <div className="flex items-center gap-2">
-          <img src="/logo.png" alt="EchoVault" className="h-8 w-8 rounded-lg" />
-          <span className="font-semibold">EchoVault</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-sm">
-            {isSyncing ? (
-              <>
-                <div className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
-                <span className="text-[var(--text-secondary)]">Syncing...</span>
-              </>
-            ) : (
-              <>
-                <div className="h-2 w-2 rounded-full bg-[var(--success)]" />
-                <span className="text-[var(--text-secondary)]">Synced</span>
-              </>
-            )}
+      <div className="border-b border-[var(--border)]">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-2">
+            <img src="/logo.png" alt="EchoVault" className="h-8 w-8 rounded-lg" />
+            <span className="font-semibold">EchoVault</span>
           </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-sm">
+              {isSyncing ? (
+                <>
+                  <div className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+                  <span className="text-[var(--text-secondary)]">Syncing...</span>
+                </>
+              ) : (
+                <>
+                  <div className="h-2 w-2 rounded-full bg-[var(--success)]" />
+                  <span className="text-[var(--text-secondary)]">Synced</span>
+                </>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowSettings(true)}
+              className="rounded-lg p-1.5 hover:bg-[var(--bg-card)]"
+              title="Settings"
+            >
+              <svg
+                className="h-5 w-5 text-[var(--text-secondary)]"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <title>Settings</title>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-0 px-4">
           <button
             type="button"
-            onClick={() => setShowSettings(true)}
-            className="rounded-lg p-1.5 hover:bg-[var(--bg-card)]"
-            title="Settings"
+            onClick={() => setActiveTab("sessions")}
+            className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === "sessions"
+                ? "border-[var(--accent)] text-[var(--accent)]"
+                : "border-transparent text-[var(--text-secondary)] hover:text-white"
+            }`}
           >
-            <svg
-              className="h-5 w-5 text-[var(--text-secondary)]"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <title>Settings</title>
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-              />
-            </svg>
+            Sessions
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("search")}
+            className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === "search"
+                ? "border-[var(--accent)] text-[var(--accent)]"
+                : "border-transparent text-[var(--text-secondary)] hover:text-white"
+            }`}
+          >
+            Search
           </button>
         </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="space-y-4">
-          {isScanning && sessions.length === 0 && (
-            <div className="flex items-center justify-center py-8">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
-            </div>
-          )}
+        {/* ===== Sessions Tab ===== */}
+        {activeTab === "sessions" && (
+          <div className="space-y-4">
+            {isScanning && sessions.length === 0 && (
+              <div className="flex items-center justify-center py-8">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+              </div>
+            )}
 
-          {!isScanning && sessions.length === 0 && (
-            <div className="py-8 text-center text-[var(--text-secondary)]">
-              <p>No sessions found.</p>
-              <p className="mt-2 text-sm">
-                Open VS Code with GitHub Copilot to create chat sessions.
-              </p>
-            </div>
-          )}
+            {!isScanning && sessions.length === 0 && (
+              <div className="py-8 text-center text-[var(--text-secondary)]">
+                <p>No sessions found.</p>
+                <p className="mt-2 text-sm">
+                  Open VS Code with GitHub Copilot to create chat sessions.
+                </p>
+              </div>
+            )}
 
-          {Object.entries(groupedSessions).map(([source, sourceSessions]) => {
-            const isExpanded = expandedSources.has(source);
-            const visibleCount = visibleCounts[source] || ITEMS_PER_PAGE;
-            const visibleSessions = sourceSessions.slice(0, visibleCount);
-            const hasMore = sourceSessions.length > visibleCount;
+            {Object.entries(groupedSessions).map(([source, sourceSessions]) => {
+              const isExpanded = expandedSources.has(source);
+              const visibleCount = visibleCounts[source] || ITEMS_PER_PAGE;
+              const visibleSessions = sourceSessions.slice(0, visibleCount);
+              const hasMore = sourceSessions.length > visibleCount;
 
-            return (
-              <div key={source} className="glass rounded-xl">
-                <button
-                  onClick={() => toggleSource(source)}
-                  className="flex w-full items-center justify-between px-4 py-3"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{source}</span>
-                    <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs text-white">
-                      {sourceSessions.length}
-                    </span>
-                  </div>
-                  <svg
-                    className={`h-5 w-5 transition-transform ${isExpanded ? "rotate-180" : ""}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+              return (
+                <div key={source} className="glass rounded-xl">
+                  <button
+                    onClick={() => toggleSource(source)}
+                    className="flex w-full items-center justify-between px-4 py-3"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </button>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{source}</span>
+                      <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs text-white">
+                        {sourceSessions.length}
+                      </span>
+                    </div>
+                    <svg
+                      className={`h-5 w-5 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </button>
 
-                {isExpanded && (
-                  <div className="border-t border-[var(--border)]">
-                    {visibleSessions.map((session) => (
-                      <button
-                        type="button"
-                        key={session.id}
-                        onClick={() => handleOpenFile(session)}
-                        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-[var(--bg-card)]"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">
-                            {session.title || session.workspace_name || session.id}
-                          </p>
-                          <p className="text-xs text-[var(--text-secondary)]">
-                            {formatDate(session.created_at)} - {formatFileSize(session.file_size)}
-                          </p>
-                        </div>
-                        <svg
-                          className="h-4 w-4 text-[var(--text-secondary)]"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
+                  {isExpanded && (
+                    <div className="border-t border-[var(--border)]">
+                      {visibleSessions.map((session) => (
+                        <button
+                          type="button"
+                          key={session.id}
+                          onClick={() => handleOpenFile(session)}
+                          className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-[var(--bg-card)]"
                         >
-                          <title>Open</title>
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 5l7 7-7 7"
-                          />
-                        </svg>
-                      </button>
-                    ))}
-                    {hasMore && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setVisibleCounts((prev) => ({
-                            ...prev,
-                            [source]: visibleCount + ITEMS_PER_PAGE,
-                          }))
-                        }
-                        className="block w-full py-2 text-center text-sm text-[var(--accent)]"
-                      >
-                        Show more ({sourceSessions.length - visibleCount} remaining)
-                      </button>
-                    )}
-                  </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">
+                              {session.title || session.workspace_name || session.id}
+                            </p>
+                            <p className="text-xs text-[var(--text-secondary)]">
+                              {formatDate(session.created_at)} - {formatFileSize(session.file_size)}
+                            </p>
+                          </div>
+                          <svg
+                            className="h-4 w-4 text-[var(--text-secondary)]"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <title>Open</title>
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                        </button>
+                      ))}
+                      {hasMore && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setVisibleCounts((prev) => ({
+                              ...prev,
+                              [source]: visibleCount + ITEMS_PER_PAGE,
+                            }))
+                          }
+                          className="block w-full py-2 text-center text-sm text-[var(--accent)]"
+                        >
+                          Show more ({sourceSessions.length - visibleCount} remaining)
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ===== Search Tab ===== */}
+        {activeTab === "search" && (
+          <div className="space-y-4">
+            {/* Search Input */}
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <svg
+                  className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-secondary)]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <title>Search</title>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  placeholder="Semantic search across all conversations..."
+                  className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-card)] py-2 pl-9 pr-3 text-sm placeholder:text-[var(--text-secondary)] focus:border-[var(--accent)] focus:outline-none"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleSearch}
+                disabled={isSearching || !searchQuery.trim()}
+                className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {isSearching ? (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                ) : (
+                  "Search"
+                )}
+              </button>
+            </div>
+
+            {/* Embed Controls */}
+            <div className="glass flex items-center justify-between rounded-xl px-4 py-3">
+              <div className="text-sm">
+                <span className="text-[var(--text-secondary)]">Embedding index: </span>
+                {embedStats ? (
+                  <span>
+                    {embedStats.total_chunks} chunks from {embedStats.total_sessions} sessions
+                  </span>
+                ) : (
+                  <span className="text-[var(--text-secondary)]">Not indexed</span>
                 )}
               </div>
-            );
-          })}
-        </div>
+              <button
+                type="button"
+                onClick={handleEmbed}
+                disabled={isEmbedding}
+                className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--bg-card)] disabled:opacity-50"
+              >
+                {isEmbedding ? (
+                  <span className="flex items-center gap-1.5">
+                    <div className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+                    Embedding...
+                  </span>
+                ) : (
+                  "Build Index"
+                )}
+              </button>
+            </div>
+
+            {/* Search Results */}
+            {searchResults.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs text-[var(--text-secondary)]">
+                  {searchResults.length} result{searchResults.length !== 1 ? "s" : ""}
+                </p>
+                {searchResults.map((result, index) => (
+                  <div
+                    key={`${result.session_id}-${index}`}
+                    className="glass cursor-default rounded-xl p-4"
+                  >
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">
+                          {result.title || result.session_id}
+                        </p>
+                        <p className="text-xs text-[var(--text-secondary)]">{result.source}</p>
+                      </div>
+                      <span className="shrink-0 rounded bg-[var(--accent)]/20 px-1.5 py-0.5 text-xs text-[var(--accent)]">
+                        {(result.score * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <p className="line-clamp-4 text-xs leading-relaxed text-[var(--text-secondary)]">
+                      {result.chunk_content}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Empty state */}
+            {!isSearching && searchResults.length === 0 && searchQuery.trim() === "" && (
+              <div className="py-12 text-center text-[var(--text-secondary)]">
+                <svg
+                  className="mx-auto mb-3 h-12 w-12 opacity-30"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <title>Search</title>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+                <p className="text-sm">Search your AI conversation history</p>
+                <p className="mt-1 text-xs">
+                  Build the index first, then search semantically across all sessions.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* TextEditor Overlay */}
