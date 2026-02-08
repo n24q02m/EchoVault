@@ -762,6 +762,7 @@ function MainApp() {
     {} as Record<string, SessionInfo[]>
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: init-once effect — loadSessions and loadEmbedStats are stable functions
   useEffect(() => {
     const initialize = async () => {
       try {
