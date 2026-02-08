@@ -114,8 +114,8 @@ jobs:
           target-branch: main
 
   # ============================================================
-  # Prepare: Xóa release immutable, tạo lại dạng draft (mutable)
-  # để Tauri builds có thể upload assets
+  # Prepare: Set release info cho Tauri builds
+  # (release-please tạo release bằng GH_PAT → không bị immutable)
   # ============================================================
   prepare-release:
     name: Prepare Release Info
@@ -141,35 +141,6 @@ jobs:
             echo "tag=${{ needs.release-beta.outputs.tag }}" >> $GITHUB_OUTPUT
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
           fi
-
-      - name: Convert to draft release for Tauri asset uploads
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ steps.set.outputs.tag }}"
-          IS_PRE="${{ steps.set.outputs.is_prerelease }}"
-
-          # Luu release notes truoc khi xoa
-          NOTES=$(gh release view "$TAG" --json body -q '.body' --repo ${{ github.repository }})
-
-          # Xoa release immutable (giu tag)
-          gh release delete "$TAG" --yes --repo ${{ github.repository }}
-          echo "Deleted immutable release: $TAG"
-
-          # Tao lai dang draft (mutable cho asset uploads)
-          PRE_FLAG=""
-          if [ "$IS_PRE" = "true" ]; then
-            PRE_FLAG="--prerelease"
-          fi
-
-          gh release create "$TAG" \
-            --title "EchoVault $TAG" \
-            --notes "$NOTES" \
-            --draft \
-            $PRE_FLAG \
-            --verify-tag \
-            --repo ${{ github.repository }}
-          echo "Created draft release: $TAG"
 
   # ============================================================
   # Build: Tauri multi-platform
@@ -338,14 +309,14 @@ jobs:
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ needs.prepare-release.outputs.tag }}
           releaseName: "EchoVault ${{ needs.prepare-release.outputs.tag }}"
           releaseBody: "See the assets section below to download the installer for your platform."
-          releaseDraft: true
+          releaseDraft: false
           prerelease: ${{ needs.prepare-release.outputs.is_prerelease == 'true' }}
           projectPath: apps/tauri
           args: --target ${{ matrix.target }} ${{ matrix.bundle_args }}
@@ -353,36 +324,11 @@ jobs:
           includeUpdaterJson: true
 
   # ============================================================
-  # Publish: Publish draft release sau khi tất cả builds hoàn thành
-  # ============================================================
-  publish-release:
-    name: Publish Release
-    needs: [prepare-release, build-tauri]
-    if: always() && !cancelled() && needs.prepare-release.result == 'success'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Publish release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ needs.prepare-release.outputs.tag }}"
-
-          # Kiểm tra tất cả build jobs có success không
-          BUILD_RESULT="${{ needs.build-tauri.result }}"
-          if [ "$BUILD_RESULT" != "success" ]; then
-            echo "::warning::Some Tauri builds failed (result: $BUILD_RESULT). Publishing release anyway with available assets."
-          fi
-
-          # Publish draft release
-          gh release edit "$TAG" --draft=false --repo ${{ github.repository }}
-          echo "Published release: $TAG"
-
-  # ============================================================
   # Sync: Tai tao dev branch tu main sau stable release
   # ============================================================
   sync-dev:
     name: Sync Dev from Main
-    needs: [release-stable, publish-release]
+    needs: [release-stable, build-tauri]
     if: |
       always() && !cancelled() &&
       needs.release-stable.outputs.released == 'true'
