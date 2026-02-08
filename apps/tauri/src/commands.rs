@@ -205,8 +205,11 @@ pub async fn complete_auth(state: State<'_, AppState>) -> Result<AuthStatusRespo
 #[tauri::command]
 pub async fn scan_sessions() -> Result<ScanResult, String> {
     use echovault_core::extractors::{
-        antigravity::AntigravityExtractor, cline::ClineExtractor, cursor::CursorExtractor,
-        vscode_copilot::VSCodeCopilotExtractor, Extractor,
+        aider::AiderExtractor, antigravity::AntigravityExtractor, claude_code::ClaudeCodeExtractor,
+        cline::ClineExtractor, codex::CodexExtractor, continue_dev::ContinueDevExtractor,
+        cursor::CursorExtractor, gemini_cli::GeminiCliExtractor, jetbrains::JetBrainsExtractor,
+        opencode::OpenCodeExtractor, vscode_copilot::VSCodeCopilotExtractor, zed::ZedExtractor,
+        Extractor,
     };
     use std::collections::HashSet;
 
@@ -214,97 +217,48 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
         let mut all_sessions = Vec::new();
         let mut seen_ids: HashSet<String> = HashSet::new();
 
-        // 1. Scan local sessions từ VSCodeCopilotExtractor
-        let extractor = VSCodeCopilotExtractor::new();
-        if let Ok(locations) = extractor.find_storage_locations() {
-            for location in locations {
-                if let Ok(files) = extractor.list_session_files(&location) {
-                    for file in files {
-                        let id = file.metadata.id.clone();
-                        if seen_ids.insert(id) {
-                            all_sessions.push(SessionInfo {
-                                id: file.metadata.id,
-                                source: file.metadata.source,
-                                title: file.metadata.title,
-                                workspace_name: file.metadata.workspace_name,
-                                created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
-                                file_size: file.metadata.file_size,
-                                path: file.source_path.to_string_lossy().to_string(),
-                            });
+        // Helper macro to scan an extractor
+        macro_rules! scan_extractor {
+            ($extractor:expr) => {
+                if let Ok(locations) = $extractor.find_storage_locations() {
+                    for location in locations {
+                        if let Ok(files) = $extractor.list_session_files(&location) {
+                            for file in files {
+                                let id = file.metadata.id.clone();
+                                if seen_ids.insert(id) {
+                                    all_sessions.push(SessionInfo {
+                                        id: file.metadata.id,
+                                        source: file.metadata.source,
+                                        title: file.metadata.title,
+                                        workspace_name: file.metadata.workspace_name,
+                                        created_at: file
+                                            .metadata
+                                            .created_at
+                                            .map(|d| d.to_rfc3339()),
+                                        file_size: file.metadata.file_size,
+                                        path: file.source_path.to_string_lossy().to_string(),
+                                    });
+                                }
+                            }
                         }
                     }
                 }
-            }
+            };
         }
 
-        // 2. Scan Antigravity artifacts
-        let antigravity_extractor = AntigravityExtractor::new();
-        if let Ok(locations) = antigravity_extractor.find_storage_locations() {
-            for location in locations {
-                if let Ok(files) = antigravity_extractor.list_session_files(&location) {
-                    for file in files {
-                        let id = file.metadata.id.clone();
-                        if seen_ids.insert(id) {
-                            all_sessions.push(SessionInfo {
-                                id: file.metadata.id,
-                                source: file.metadata.source,
-                                title: file.metadata.title,
-                                workspace_name: file.metadata.workspace_name,
-                                created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
-                                file_size: file.metadata.file_size,
-                                path: file.source_path.to_string_lossy().to_string(),
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        // 3. Scan Cursor sessions
-        let cursor_extractor = CursorExtractor::new();
-        if let Ok(locations) = cursor_extractor.find_storage_locations() {
-            for location in locations {
-                if let Ok(files) = cursor_extractor.list_session_files(&location) {
-                    for file in files {
-                        let id = file.metadata.id.clone();
-                        if seen_ids.insert(id) {
-                            all_sessions.push(SessionInfo {
-                                id: file.metadata.id,
-                                source: file.metadata.source,
-                                title: file.metadata.title,
-                                workspace_name: file.metadata.workspace_name,
-                                created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
-                                file_size: file.metadata.file_size,
-                                path: file.source_path.to_string_lossy().to_string(),
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        // 4. Scan Cline sessions
-        let cline_extractor = ClineExtractor::new();
-        if let Ok(locations) = cline_extractor.find_storage_locations() {
-            for location in locations {
-                if let Ok(files) = cline_extractor.list_session_files(&location) {
-                    for file in files {
-                        let id = file.metadata.id.clone();
-                        if seen_ids.insert(id) {
-                            all_sessions.push(SessionInfo {
-                                id: file.metadata.id,
-                                source: file.metadata.source,
-                                title: file.metadata.title,
-                                workspace_name: file.metadata.workspace_name,
-                                created_at: file.metadata.created_at.map(|d| d.to_rfc3339()),
-                                file_size: file.metadata.file_size,
-                                path: file.source_path.to_string_lossy().to_string(),
-                            });
-                        }
-                    }
-                }
-            }
-        }
+        // Scan all supported extractors
+        scan_extractor!(VSCodeCopilotExtractor::new());
+        scan_extractor!(CursorExtractor::new());
+        scan_extractor!(ClineExtractor::new());
+        scan_extractor!(AntigravityExtractor::new());
+        scan_extractor!(GeminiCliExtractor::new());
+        scan_extractor!(ClaudeCodeExtractor::new());
+        scan_extractor!(AiderExtractor::new());
+        scan_extractor!(CodexExtractor::new());
+        scan_extractor!(ContinueDevExtractor::new());
+        scan_extractor!(OpenCodeExtractor::new());
+        scan_extractor!(ZedExtractor::new());
+        scan_extractor!(JetBrainsExtractor::new());
 
         // 5. Read sessions from vault.db (synced from other machines)
         // Use inner scope to ensure VaultDb connection is dropped before returning
@@ -399,14 +353,15 @@ fn find_vault_session_info(
             display_title = Some(clean_name.replace('_', " "));
             vec![format!("{}.md", clean_name), file_name.to_string()]
         } else {
-            // Normal session
+            // Normal session - try both .json and .jsonl extensions
             let extension = if source == "antigravity" {
                 "pb"
             } else {
-                "json"
+                "json" // Will try jsonl as fallback below
             };
             vec![
                 format!("{}.{}", session_id, extension),
+                format!("{}.jsonl", session_id), // JSONL fallback for vscode-copilot/cursor
                 session_id.to_string(),
             ]
         };
@@ -505,14 +460,17 @@ fn import_vault_sessions(vault_dir: &std::path::Path) -> Result<usize, String> {
                 .unwrap_or("unknown")
                 .to_string();
 
-            // Scan session files in this source directory (supports .json, .pb, .md)
+            // Scan session files in this source directory (supports .json, .jsonl, .pb, .md)
             if let Ok(files) = fs::read_dir(&source_dir) {
                 for file in files.filter_map(|f| f.ok()) {
                     let file_path = file.path();
 
                     // Check for supported extensions
                     let extension = file_path.extension().and_then(|e| e.to_str());
-                    if !matches!(extension, Some("json") | Some("pb") | Some("md")) {
+                    if !matches!(
+                        extension,
+                        Some("json") | Some("jsonl") | Some("pb") | Some("md")
+                    ) {
                         continue;
                     }
 
@@ -548,34 +506,85 @@ fn import_vault_sessions(vault_dir: &std::path::Path) -> Result<usize, String> {
                     }
 
                     // Extract metadata based on file type
-                    let (title, workspace_name, created_at) = if extension == Some("json") {
-                        // Parse JSON to extract metadata
-                        match fs::read_to_string(&file_path) {
-                            Ok(content) => {
-                                if let Ok(json) =
-                                    serde_json::from_str::<serde_json::Value>(&content)
-                                {
-                                    let title = json
-                                        .get("title")
-                                        .or_else(|| json.get("name"))
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string());
-                                    let workspace = json
-                                        .get("workspace_name")
-                                        .or_else(|| json.get("workspaceName"))
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string());
-                                    let created = json
-                                        .get("created_at")
-                                        .or_else(|| json.get("createdAt"))
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string());
-                                    (title, workspace, created)
-                                } else {
-                                    (None, None, None)
+                    let (title, workspace_name, created_at) = if extension == Some("json")
+                        || extension == Some("jsonl")
+                    {
+                        // Parse JSON/JSONL to extract metadata
+                        match extension {
+                            Some("jsonl") => {
+                                // JSONL: read first line, parse v.customTitle/v.creationDate
+                                use std::io::BufRead;
+                                match std::fs::File::open(&file_path) {
+                                    Ok(file) => {
+                                        let reader = std::io::BufReader::new(file);
+                                        if let Some(Ok(first_line)) = reader.lines().next() {
+                                            if let Ok(obj) = serde_json::from_str::<serde_json::Value>(
+                                                &first_line,
+                                            ) {
+                                                let v = obj.get("v");
+                                                let title = v
+                                                    .and_then(|v| v.get("customTitle"))
+                                                    .and_then(|v| v.as_str())
+                                                    .map(|s| s.to_string());
+                                                let created = v
+                                                    .and_then(|v| v.get("creationDate"))
+                                                    .and_then(|v| v.as_i64())
+                                                    .map(|ts| {
+                                                        // Convert epoch millis to RFC3339 string
+                                                        let secs = ts / 1000;
+                                                        let nanos =
+                                                            ((ts % 1000) * 1_000_000) as u32;
+                                                        if let Some(dt) = chrono::DateTime::<
+                                                            chrono::Utc,
+                                                        >::from_timestamp(
+                                                            secs, nanos
+                                                        ) {
+                                                            dt.to_rfc3339()
+                                                        } else {
+                                                            String::new()
+                                                        }
+                                                    });
+                                                (title, None, created)
+                                            } else {
+                                                (None, None, None)
+                                            }
+                                        } else {
+                                            (None, None, None)
+                                        }
+                                    }
+                                    Err(_) => (None, None, None),
                                 }
                             }
-                            Err(_) => (None, None, None),
+                            _ => {
+                                // Standard JSON
+                                match fs::read_to_string(&file_path) {
+                                    Ok(content) => {
+                                        if let Ok(json) =
+                                            serde_json::from_str::<serde_json::Value>(&content)
+                                        {
+                                            let title = json
+                                                .get("title")
+                                                .or_else(|| json.get("name"))
+                                                .and_then(|v| v.as_str())
+                                                .map(|s| s.to_string());
+                                            let workspace = json
+                                                .get("workspace_name")
+                                                .or_else(|| json.get("workspaceName"))
+                                                .and_then(|v| v.as_str())
+                                                .map(|s| s.to_string());
+                                            let created = json
+                                                .get("created_at")
+                                                .or_else(|| json.get("createdAt"))
+                                                .and_then(|v| v.as_str())
+                                                .map(|s| s.to_string());
+                                            (title, workspace, created)
+                                        } else {
+                                            (None, None, None)
+                                        }
+                                    }
+                                    Err(_) => (None, None, None),
+                                }
+                            }
                         }
                     } else {
                         // For .pb and .md files, no metadata extraction
@@ -625,8 +634,11 @@ fn import_vault_sessions(vault_dir: &std::path::Path) -> Result<usize, String> {
 /// Ingest sessions từ local extractors vào vault
 fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     use echovault_core::extractors::{
-        antigravity::AntigravityExtractor, cline::ClineExtractor, cursor::CursorExtractor,
-        vscode_copilot::VSCodeCopilotExtractor, Extractor,
+        aider::AiderExtractor, antigravity::AntigravityExtractor, claude_code::ClaudeCodeExtractor,
+        cline::ClineExtractor, codex::CodexExtractor, continue_dev::ContinueDevExtractor,
+        cursor::CursorExtractor, gemini_cli::GeminiCliExtractor, jetbrains::JetBrainsExtractor,
+        opencode::OpenCodeExtractor, vscode_copilot::VSCodeCopilotExtractor, zed::ZedExtractor,
+        Extractor,
     };
     use rayon::prelude::*;
 
@@ -651,75 +663,39 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
 
     let mut sessions = Vec::new();
 
-    // 1. Scan VS Code Copilot sessions
-    let vscode_extractor = VSCodeCopilotExtractor::new();
-    if let Ok(locations) = vscode_extractor.find_storage_locations() {
-        info!(
-            "[ingest_sessions] VS Code Copilot: {} locations",
-            locations.len()
-        );
-        for location in &locations {
-            if let Ok(files) = vscode_extractor.list_session_files(location) {
-                info!(
-                    "[ingest_sessions] Location {:?}: {} files",
-                    location,
-                    files.len()
-                );
-                sessions.extend(files);
+    // Helper macro to scan an extractor into sessions vec
+    macro_rules! ingest_extractor {
+        ($extractor:expr, $name:literal) => {
+            if let Ok(locations) = $extractor.find_storage_locations() {
+                info!("[ingest_sessions] {}: {} locations", $name, locations.len());
+                for location in &locations {
+                    if let Ok(files) = $extractor.list_session_files(location) {
+                        info!(
+                            "[ingest_sessions] {} {:?}: {} files",
+                            $name,
+                            location.file_name().unwrap_or_default(),
+                            files.len()
+                        );
+                        sessions.extend(files);
+                    }
+                }
             }
-        }
+        };
     }
 
-    // 2. Scan Antigravity artifacts
-    let antigravity_extractor = AntigravityExtractor::new();
-    if let Ok(locations) = antigravity_extractor.find_storage_locations() {
-        info!(
-            "[ingest_sessions] Antigravity: {} locations",
-            locations.len()
-        );
-        for location in &locations {
-            if let Ok(files) = antigravity_extractor.list_session_files(location) {
-                info!(
-                    "[ingest_sessions] Antigravity {:?}: {} files",
-                    location.file_name().unwrap_or_default(),
-                    files.len()
-                );
-                sessions.extend(files);
-            }
-        }
-    }
-
-    // 3. Scan Cursor sessions
-    let cursor_extractor = CursorExtractor::new();
-    if let Ok(locations) = cursor_extractor.find_storage_locations() {
-        info!("[ingest_sessions] Cursor: {} locations", locations.len());
-        for location in &locations {
-            if let Ok(files) = cursor_extractor.list_session_files(location) {
-                info!(
-                    "[ingest_sessions] Cursor {:?}: {} files",
-                    location.file_name().unwrap_or_default(),
-                    files.len()
-                );
-                sessions.extend(files);
-            }
-        }
-    }
-
-    // 4. Scan Cline sessions
-    let cline_extractor = ClineExtractor::new();
-    if let Ok(locations) = cline_extractor.find_storage_locations() {
-        info!("[ingest_sessions] Cline: {} locations", locations.len());
-        for location in &locations {
-            if let Ok(files) = cline_extractor.list_session_files(location) {
-                info!(
-                    "[ingest_sessions] Cline {:?}: {} files",
-                    location.file_name().unwrap_or_default(),
-                    files.len()
-                );
-                sessions.extend(files);
-            }
-        }
-    }
+    // Scan all extractors
+    ingest_extractor!(VSCodeCopilotExtractor::new(), "VS Code Copilot");
+    ingest_extractor!(CursorExtractor::new(), "Cursor");
+    ingest_extractor!(ClineExtractor::new(), "Cline");
+    ingest_extractor!(AntigravityExtractor::new(), "Antigravity");
+    ingest_extractor!(GeminiCliExtractor::new(), "Gemini CLI");
+    ingest_extractor!(ClaudeCodeExtractor::new(), "Claude Code");
+    ingest_extractor!(AiderExtractor::new(), "Aider");
+    ingest_extractor!(CodexExtractor::new(), "Codex");
+    ingest_extractor!(ContinueDevExtractor::new(), "Continue.dev");
+    ingest_extractor!(OpenCodeExtractor::new(), "OpenCode");
+    ingest_extractor!(ZedExtractor::new(), "Zed");
+    ingest_extractor!(JetBrainsExtractor::new(), "JetBrains AI");
 
     let total_sessions = sessions.len();
     info!(
@@ -1018,7 +994,46 @@ pub async fn sync_vault(state: State<'_, AppState>) -> Result<String, String> {
         .map_err(|e| e.to_string())??;
     info!("[sync_vault] Ingest complete: changes={}", ingest_result);
 
-    // 3. Push to Remote
+    // 3.5 Parse raw sessions to Markdown (non-blocking, best-effort)
+    info!("[sync_vault] Parsing sessions...");
+    let vault_dir_for_parse = vault_dir.clone();
+    let parse_result = tokio::task::spawn_blocking(move || {
+        use echovault_core::parsers::{all_parsers, markdown_writer, parse_vault_source};
+
+        let parsers = all_parsers();
+        let sessions_dir = vault_dir_for_parse.join("sessions");
+        let parsed_dir = vault_dir_for_parse.join("parsed");
+        let mut parsed_count = 0usize;
+
+        if !sessions_dir.exists() {
+            return parsed_count;
+        }
+
+        for parser in &parsers {
+            let (conversations, _errors) = parse_vault_source(parser.as_ref(), &sessions_dir);
+
+            for conv in &conversations {
+                let output_path = parsed_dir
+                    .join(&conv.source)
+                    .join(format!("{}.md", conv.id));
+
+                if output_path.exists() {
+                    continue;
+                }
+
+                if markdown_writer::write_markdown(conv, &output_path).is_ok() {
+                    parsed_count += 1;
+                }
+            }
+        }
+
+        parsed_count
+    })
+    .await
+    .unwrap_or(0);
+    info!("[sync_vault] Parse complete: {} new", parse_result);
+
+    // 4. Push to Remote
     info!("[sync_vault] Pushing to remote...");
     let options = SyncOptions::default();
     let vault_dir_clone = vault_dir.clone();
@@ -1251,6 +1266,137 @@ pub struct UpdateCheckResult {
     pub new_version: Option<String>,
 }
 
+// ============ PARSE COMMANDS ============
+
+/// Kết quả parse sessions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParseResult {
+    pub parsed: usize,
+    pub errors: usize,
+    pub skipped: usize,
+}
+
+/// Parse tất cả raw sessions trong vault thành clean Markdown.
+/// Output: vault/parsed/<source>/<session_id>.md
+#[tauri::command]
+pub async fn parse_sessions() -> Result<ParseResult, String> {
+    let config = Config::load_default().map_err(|e| e.to_string())?;
+    let vault_dir = config.vault_path.clone();
+    let sessions_dir = vault_dir.join("sessions");
+
+    if !sessions_dir.exists() {
+        return Ok(ParseResult {
+            parsed: 0,
+            errors: 0,
+            skipped: 0,
+        });
+    }
+
+    let result = tokio::task::spawn_blocking(move || {
+        use echovault_core::parsers::{all_parsers, markdown_writer};
+
+        let parsers = all_parsers();
+        let parsed_dir = vault_dir.join("parsed");
+
+        let mut total_parsed = 0usize;
+        let mut total_errors = 0usize;
+        let mut total_skipped = 0usize;
+
+        for parser in &parsers {
+            let source_dir = sessions_dir.join(parser.source_name());
+            if !source_dir.exists() {
+                continue;
+            }
+
+            let (conversations, errors) =
+                echovault_core::parsers::parse_vault_source(parser.as_ref(), &sessions_dir);
+
+            total_errors += errors.len();
+            for (path, err) in &errors {
+                warn!("[parse_sessions] Error parsing {:?}: {}", path, err);
+            }
+
+            for conv in &conversations {
+                // Output path: parsed/<source>/<id>.md
+                let output_path = parsed_dir
+                    .join(&conv.source)
+                    .join(format!("{}.md", conv.id));
+
+                // Skip if already parsed and source hasn't changed
+                if output_path.exists() {
+                    let source_path = sessions_dir
+                        .join(&conv.source)
+                        .join(format!("{}.json", conv.id));
+                    let source_jsonl = sessions_dir
+                        .join(&conv.source)
+                        .join(format!("{}.jsonl", conv.id));
+
+                    let source_mtime = std::fs::metadata(&source_path)
+                        .or_else(|_| std::fs::metadata(&source_jsonl))
+                        .ok()
+                        .and_then(|m| m.modified().ok());
+                    let parsed_mtime = std::fs::metadata(&output_path)
+                        .ok()
+                        .and_then(|m| m.modified().ok());
+
+                    if let (Some(src_t), Some(dst_t)) = (source_mtime, parsed_mtime) {
+                        if dst_t >= src_t {
+                            total_skipped += 1;
+                            continue;
+                        }
+                    }
+                }
+
+                match markdown_writer::write_markdown(conv, &output_path) {
+                    Ok(()) => {
+                        total_parsed += 1;
+                    }
+                    Err(e) => {
+                        warn!("[parse_sessions] Error writing {:?}: {}", output_path, e);
+                        total_errors += 1;
+                    }
+                }
+            }
+        }
+
+        info!(
+            "[parse_sessions] Complete: {} parsed, {} errors, {} skipped",
+            total_parsed, total_errors, total_skipped
+        );
+
+        ParseResult {
+            parsed: total_parsed,
+            errors: total_errors,
+            skipped: total_skipped,
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(result)
+}
+
+/// Đọc nội dung parsed Markdown cho một session
+#[tauri::command]
+pub async fn read_parsed_session(source: String, session_id: String) -> Result<String, String> {
+    let config = Config::load_default().map_err(|e| e.to_string())?;
+    let parsed_path = config
+        .vault_path
+        .join("parsed")
+        .join(&source)
+        .join(format!("{}.md", session_id));
+
+    if !parsed_path.exists() {
+        return Err(format!(
+            "Parsed session not found: {}/{}",
+            source, session_id
+        ));
+    }
+
+    std::fs::read_to_string(&parsed_path)
+        .map_err(|e| format!("Failed to read parsed session: {}", e))
+}
+
 /// Kiểm tra update thủ công
 #[tauri::command]
 pub async fn check_update_manual(app: tauri::AppHandle) -> Result<UpdateCheckResult, String> {
@@ -1315,4 +1461,390 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
 
     tracing::info!("Update installed, app will restart");
     Ok(())
+}
+
+// ============ INTERCEPTOR COMMANDS ============
+
+/// Trạng thái interceptor để lưu trong Tauri state
+pub struct InterceptorAppState {
+    pub handle: std::sync::Mutex<Option<echovault_core::interceptor::InterceptorHandle>>,
+}
+
+impl Default for InterceptorAppState {
+    fn default() -> Self {
+        Self {
+            handle: std::sync::Mutex::new(None),
+        }
+    }
+}
+
+/// Response cho interceptor status
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InterceptorStatusResponse {
+    pub running: bool,
+    pub port: Option<u16>,
+    pub error: Option<String>,
+    pub ca_cert_path: Option<String>,
+}
+
+/// Khởi động interceptor proxy
+#[tauri::command]
+pub async fn start_interceptor(
+    state: State<'_, InterceptorAppState>,
+    port: Option<u16>,
+) -> Result<InterceptorStatusResponse, String> {
+    use echovault_core::interceptor::{InterceptorConfig, InterceptorState};
+
+    // Check if already running
+    {
+        let guard = state.handle.lock().unwrap();
+        if let Some(ref h) = *guard {
+            if matches!(h.state(), InterceptorState::Running { .. }) {
+                return Err("Interceptor is already running".to_string());
+            }
+        }
+    }
+
+    let mut config = InterceptorConfig::default();
+    if let Some(p) = port {
+        config.port = p;
+    }
+
+    let ca_cert_path = config.cert_dir.join("echovault-ca.crt");
+
+    let handle = echovault_core::interceptor::start(config)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let response = match handle.state() {
+        InterceptorState::Running { port } => InterceptorStatusResponse {
+            running: true,
+            port: Some(port),
+            error: None,
+            ca_cert_path: Some(ca_cert_path.to_string_lossy().to_string()),
+        },
+        InterceptorState::Error(e) => InterceptorStatusResponse {
+            running: false,
+            port: None,
+            error: Some(e),
+            ca_cert_path: None,
+        },
+        InterceptorState::Stopped => InterceptorStatusResponse {
+            running: false,
+            port: None,
+            error: None,
+            ca_cert_path: None,
+        },
+    };
+
+    *state.handle.lock().unwrap() = Some(handle);
+
+    Ok(response)
+}
+
+/// Dừng interceptor proxy
+#[tauri::command]
+pub async fn stop_interceptor(
+    state: State<'_, InterceptorAppState>,
+) -> Result<InterceptorStatusResponse, String> {
+    let guard = state.handle.lock().unwrap();
+    if let Some(ref h) = *guard {
+        h.stop();
+    }
+
+    Ok(InterceptorStatusResponse {
+        running: false,
+        port: None,
+        error: None,
+        ca_cert_path: None,
+    })
+}
+
+/// Kiểm tra trạng thái interceptor
+#[tauri::command]
+pub async fn interceptor_status(
+    state: State<'_, InterceptorAppState>,
+) -> Result<InterceptorStatusResponse, String> {
+    use echovault_core::interceptor::InterceptorState;
+
+    let guard = state.handle.lock().unwrap();
+    let resp = match &*guard {
+        Some(h) => match h.state() {
+            InterceptorState::Running { port } => {
+                let config = echovault_core::interceptor::InterceptorConfig::default();
+                InterceptorStatusResponse {
+                    running: true,
+                    port: Some(port),
+                    error: None,
+                    ca_cert_path: Some(
+                        config
+                            .cert_dir
+                            .join("echovault-ca.crt")
+                            .to_string_lossy()
+                            .to_string(),
+                    ),
+                }
+            }
+            InterceptorState::Error(e) => InterceptorStatusResponse {
+                running: false,
+                port: None,
+                error: Some(e),
+                ca_cert_path: None,
+            },
+            InterceptorState::Stopped => InterceptorStatusResponse {
+                running: false,
+                port: None,
+                error: None,
+                ca_cert_path: None,
+            },
+        },
+        None => InterceptorStatusResponse {
+            running: false,
+            port: None,
+            error: None,
+            ca_cert_path: None,
+        },
+    };
+
+    Ok(resp)
+}
+
+/// Lấy hướng dẫn cài đặt proxy cho OS hiện tại
+#[tauri::command]
+pub async fn interceptor_setup_guide(port: Option<u16>) -> Result<String, String> {
+    let mut config = echovault_core::interceptor::InterceptorConfig::default();
+    if let Some(p) = port {
+        config.port = p;
+    }
+    Ok(echovault_core::interceptor::proxy_setup_instructions(
+        &config,
+    ))
+}
+
+// ============ EMBEDDING COMMANDS ============
+
+/// Kết quả embedding
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbedResponse {
+    pub sessions_processed: usize,
+    pub chunks_created: usize,
+    pub sessions_skipped: usize,
+    pub errors: usize,
+}
+
+/// Request lưu embedding config từ frontend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SaveEmbeddingConfigRequest {
+    pub preset: String,
+    pub api_base: String,
+    pub api_key: Option<String>,
+    pub model: String,
+}
+
+/// Lưu embedding config
+#[tauri::command]
+pub async fn save_embedding_config(request: SaveEmbeddingConfigRequest) -> Result<(), String> {
+    use echovault_core::config::{default_config_path, EmbeddingPreset};
+
+    let preset = match request.preset.as_str() {
+        "ollama" => EmbeddingPreset::Ollama,
+        "openai" => EmbeddingPreset::OpenAI,
+        "custom" => EmbeddingPreset::Custom,
+        other => return Err(format!("Unknown preset: {}", other)),
+    };
+
+    let mut config = Config::load_default().map_err(|e| e.to_string())?;
+    config.embedding.preset = preset;
+    config.embedding.api_base = request.api_base;
+    config.embedding.api_key = request.api_key;
+    config.embedding.model = request.model;
+
+    config
+        .save(&default_config_path())
+        .map_err(|e| e.to_string())?;
+
+    info!(
+        "[save_embedding_config] Saved preset={:?}, model={}",
+        preset, config.embedding.model
+    );
+    Ok(())
+}
+
+/// Provider status response cho frontend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderStatusResponse {
+    pub status: String,
+    pub dimension: Option<usize>,
+    pub message: Option<String>,
+}
+
+/// Test embedding connection với config hiện tại
+#[tauri::command]
+pub async fn test_embedding_connection() -> Result<ProviderStatusResponse, String> {
+    use echovault_core::embedding::provider::{EmbeddingProvider, ProviderStatus};
+
+    let config = Config::load_default().map_err(|e| e.to_string())?;
+
+    let result = tokio::task::spawn_blocking(move || {
+        let provider = EmbeddingProvider::new(
+            &config.embedding.api_base,
+            config.embedding.api_key.as_deref(),
+            &config.embedding.model,
+        );
+        provider.check_provider_status()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(match result {
+        ProviderStatus::Available { dimension } => ProviderStatusResponse {
+            status: "available".to_string(),
+            dimension: Some(dimension),
+            message: None,
+        },
+        ProviderStatus::ModelNotFound { message } => ProviderStatusResponse {
+            status: "model_not_found".to_string(),
+            dimension: None,
+            message: Some(message),
+        },
+        ProviderStatus::Unavailable { reason } => ProviderStatusResponse {
+            status: "unavailable".to_string(),
+            dimension: None,
+            message: Some(reason),
+        },
+    })
+}
+
+/// Kiểm tra Ollama đang chạy hay không + list models
+#[tauri::command]
+pub async fn check_ollama() -> Result<serde_json::Value, String> {
+    let result = tokio::task::spawn_blocking(|| {
+        echovault_core::embedding::provider::check_ollama_available()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(match result {
+        Some(models) => serde_json::json!({
+            "available": true,
+            "models": models,
+        }),
+        None => serde_json::json!({
+            "available": false,
+            "models": [],
+        }),
+    })
+}
+
+/// Get current embedding config for frontend
+#[tauri::command]
+pub async fn get_embedding_config() -> Result<serde_json::Value, String> {
+    let config = Config::load_default().map_err(|e| e.to_string())?;
+    let preset = match config.embedding.preset {
+        echovault_core::config::EmbeddingPreset::Ollama => "ollama",
+        echovault_core::config::EmbeddingPreset::OpenAI => "openai",
+        echovault_core::config::EmbeddingPreset::Custom => "custom",
+    };
+
+    Ok(serde_json::json!({
+        "preset": preset,
+        "api_base": config.embedding.api_base,
+        "api_key": config.embedding.api_key,
+        "model": config.embedding.model,
+    }))
+}
+
+/// Embed tất cả parsed conversations trong vault
+#[tauri::command]
+pub async fn embed_sessions() -> Result<EmbedResponse, String> {
+    let config = Config::load_default().map_err(|e| e.to_string())?;
+    let vault_dir = config.vault_path.clone();
+    let embedding_config = echovault_core::embedding::EmbeddingConfig {
+        api_base: config.embedding.api_base,
+        api_key: config.embedding.api_key,
+        model: config.embedding.model,
+        chunk_size: config.embedding.chunk_size,
+        chunk_overlap: config.embedding.chunk_overlap,
+        batch_size: config.embedding.batch_size,
+    };
+
+    let result = tokio::task::spawn_blocking(move || {
+        echovault_core::embedding::embed_vault(&embedding_config, &vault_dir)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    Ok(EmbedResponse {
+        sessions_processed: result.sessions_processed,
+        chunks_created: result.chunks_created,
+        sessions_skipped: result.sessions_skipped,
+        errors: result.errors.len(),
+    })
+}
+
+/// Semantic search result cho frontend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResultResponse {
+    pub session_id: String,
+    pub source: String,
+    pub title: Option<String>,
+    pub chunk_content: String,
+    pub score: f32,
+}
+
+/// Tìm kiếm semantic trong vault
+#[tauri::command]
+pub async fn search_semantic(
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<SearchResultResponse>, String> {
+    let config = Config::load_default().map_err(|e| e.to_string())?;
+    let vault_dir = config.vault_path.clone();
+    let embedding_config = echovault_core::embedding::EmbeddingConfig {
+        api_base: config.embedding.api_base,
+        api_key: config.embedding.api_key,
+        model: config.embedding.model,
+        chunk_size: config.embedding.chunk_size,
+        chunk_overlap: config.embedding.chunk_overlap,
+        batch_size: config.embedding.batch_size,
+    };
+    let limit = limit.unwrap_or(10);
+
+    let results = tokio::task::spawn_blocking(move || {
+        echovault_core::embedding::search_similar(&embedding_config, &vault_dir, &query, limit)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    Ok(results
+        .into_iter()
+        .map(|r| SearchResultResponse {
+            session_id: r.session_id,
+            source: r.source,
+            title: r.title,
+            chunk_content: r.chunk_content,
+            score: r.score,
+        })
+        .collect())
+}
+
+/// Lấy thống kê embedding store
+#[tauri::command]
+pub async fn embedding_stats() -> Result<serde_json::Value, String> {
+    let config = Config::load_default().map_err(|e| e.to_string())?;
+    let vault_dir = config.vault_path.clone();
+
+    let stats =
+        tokio::task::spawn_blocking(move || echovault_core::embedding::get_stats(&vault_dir))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "total_chunks": stats.total_chunks,
+        "total_sessions": stats.total_sessions,
+        "dimension": stats.dimension,
+    }))
 }

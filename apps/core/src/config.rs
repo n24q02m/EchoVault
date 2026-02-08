@@ -56,6 +56,131 @@ pub struct Config {
     /// Export path for session exports
     #[serde(default)]
     pub export_path: Option<PathBuf>,
+
+    /// Embedding configuration
+    #[serde(default)]
+    pub embedding: EmbeddingConfigToml,
+}
+
+/// Embedding provider preset.
+///
+/// Presets auto-fill api_base and model defaults so users only
+/// need to pick a provider and optionally enter an API key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EmbeddingPreset {
+    /// Local Ollama (default, no API key needed)
+    #[default]
+    Ollama,
+    /// OpenAI API (requires API key)
+    OpenAI,
+    /// Any OpenAI-compatible endpoint (LiteLLM, vLLM, TGI, etc.)
+    Custom,
+}
+
+impl EmbeddingPreset {
+    /// Default API base URL for this preset.
+    pub fn default_api_base(&self) -> &'static str {
+        match self {
+            Self::Ollama => "http://localhost:11434/v1",
+            Self::OpenAI => "https://api.openai.com/v1",
+            Self::Custom => "http://localhost:8000/v1",
+        }
+    }
+
+    /// Default model name for this preset.
+    pub fn default_model(&self) -> &'static str {
+        match self {
+            Self::Ollama => "nomic-embed-text",
+            Self::OpenAI => "text-embedding-3-small",
+            Self::Custom => "nomic-embed-text",
+        }
+    }
+
+    /// Whether this preset requires an API key.
+    pub fn requires_api_key(&self) -> bool {
+        matches!(self, Self::OpenAI)
+    }
+}
+
+/// Embedding configuration in TOML.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingConfigToml {
+    /// Provider preset (ollama, openai, custom)
+    #[serde(default)]
+    pub preset: EmbeddingPreset,
+
+    /// API base URL (e.g., "http://localhost:11434/v1" for Ollama)
+    #[serde(default = "default_embedding_api_base")]
+    pub api_base: String,
+
+    /// Optional API key
+    #[serde(default)]
+    pub api_key: Option<String>,
+
+    /// Model name (e.g., "nomic-embed-text")
+    #[serde(default = "default_embedding_model")]
+    pub model: String,
+
+    /// Target characters per chunk
+    #[serde(default = "default_embedding_chunk_size")]
+    pub chunk_size: usize,
+
+    /// Overlap characters between chunks
+    #[serde(default = "default_embedding_chunk_overlap")]
+    pub chunk_overlap: usize,
+
+    /// Batch size for API calls
+    #[serde(default = "default_embedding_batch_size")]
+    pub batch_size: usize,
+}
+
+fn default_embedding_api_base() -> String {
+    "http://localhost:11434/v1".to_string()
+}
+
+fn default_embedding_model() -> String {
+    "nomic-embed-text".to_string()
+}
+
+fn default_embedding_chunk_size() -> usize {
+    1000
+}
+
+fn default_embedding_chunk_overlap() -> usize {
+    200
+}
+
+fn default_embedding_batch_size() -> usize {
+    32
+}
+
+impl Default for EmbeddingConfigToml {
+    fn default() -> Self {
+        let preset = EmbeddingPreset::default();
+        Self {
+            preset,
+            api_base: preset.default_api_base().to_string(),
+            api_key: None,
+            model: preset.default_model().to_string(),
+            chunk_size: default_embedding_chunk_size(),
+            chunk_overlap: default_embedding_chunk_overlap(),
+            batch_size: default_embedding_batch_size(),
+        }
+    }
+}
+
+impl EmbeddingConfigToml {
+    /// Create config from a preset, applying its defaults.
+    pub fn from_preset(preset: EmbeddingPreset) -> Self {
+        Self {
+            preset,
+            api_base: preset.default_api_base().to_string(),
+            api_key: None,
+            model: preset.default_model().to_string(),
+            ..Self::default()
+        }
+    }
 }
 
 fn default_version() -> u32 {
@@ -71,6 +196,7 @@ impl Default for Config {
             sync: SyncConfig::default(),
             extractors: ExtractorsConfig::default(),
             export_path: None,
+            embedding: EmbeddingConfigToml::default(),
         }
     }
 }

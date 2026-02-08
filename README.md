@@ -2,30 +2,179 @@
 
 **Black box for all your AI conversations.**
 
-EchoVault extracts and syncs chat history from GitHub Copilot, Cursor, Antigravity, and other AI tools - ensuring you never lose valuable insights.
+EchoVault extracts, indexes, and searches chat history from 12+ AI coding tools — ensuring you never lose valuable insights. Works as a desktop app, CLI, or MCP server for AI assistants.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## Features
 
-- **Multi-source Extraction**: Supports VS Code Copilot, Cursor AI, Cline, Antigravity
-- **Cloud Sync via Rclone**: Auto-sync with Google Drive
-- **Desktop App**: Mini window with system tray background sync
+- **12 Source Extractors**: VS Code Copilot, Cursor, Cline, Continue.dev, JetBrains AI, Zed, Antigravity, Gemini CLI, Claude Code, Aider, Codex, OpenCode
+- **Hybrid Search**: Vector semantic search + FTS5 keyword search with RRF fusion
+- **MCP Server**: Expose your vault to Claude Desktop, Copilot, Cursor, and other AI assistants
+- **Cloud Sync**: Auto-sync with Google Drive via Rclone
+- **Desktop App**: Mini window with system tray, background sync, auto-update
+- **Embedding Presets**: Built-in Ollama/OpenAI support — no external proxy needed
 - **Cross-platform**: Windows, Linux, macOS
-- **Future-proof**: Stores raw JSON files without transformation
+- **Future-proof**: Stores raw files without transformation
+
+## Architecture
+
+```
+IDE Sources (12)          EchoVault Pipeline              AI Assistants
++-----------------+     +-------------------------+     +----------------+
+| VS Code Copilot |     |                         |     | Claude Desktop |
+| Cursor          | --> | Extract --> Parse -->    |     | VS Code Copilot|
+| Cline           |     |   Embed --> Index -->    | --> | Cursor         |
+| Continue.dev    |     |     Search (Hybrid)      |     | Any MCP Client |
+| JetBrains AI    |     |                         |     +----------------+
+| Zed             |     +----+----+----+----------+
+| Gemini CLI      |          |    |    |
+| Claude Code     |       vault.db  index.db  embeddings.db
+| Aider           |          |
+| Codex           |       Google Drive (Rclone sync)
+| OpenCode        |
+| Antigravity     |
++-----------------+
+```
 
 ## Privacy Notice
 
 > [!WARNING]
-> EchoVault syncs your AI chat history to cloud storage. This data may contain:
+> EchoVault accesses your AI chat history. This data may contain:
 >
 > - Code snippets and file paths
 > - API keys or secrets mentioned in conversations
 > - Personal information
+>
+> Cloud sync is optional. All data stays local unless you explicitly connect Google Drive.
 
-## Download & Install
+---
 
-### Quick Install (Recommended)
+## MCP Server
 
-One command to download and install the latest version:
+The MCP server exposes your vault to AI assistants via 2 tools:
+
+| Tool | Description |
+|------|-------------|
+| `vault` | Unified interface: `list`, `search` (FTS5), `read`, `semantic_search` (hybrid) |
+| `help` | On-demand documentation (saves tokens — only called when needed) |
+
+### Setup
+
+#### 1. Install CLI
+
+**Quick install (recommended):**
+
+```bash
+# Linux/macOS
+curl -fsSL https://raw.githubusercontent.com/n24q02m/EchoVault/main/install-cli.sh | bash
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/n24q02m/EchoVault/main/install-cli.ps1 | iex
+```
+
+> [!TIP]
+> The [full install script](#quick-install-recommended) (Desktop App) also includes the CLI.
+> Only use `install-cli` if you need CLI/MCP only (e.g., servers, CI, headless).
+
+**Build from source:**
+
+```bash
+git clone https://github.com/n24q02m/EchoVault.git
+cd EchoVault
+cargo build -p echovault-cli --release
+# Binary at: target/release/echovault-cli
+```
+
+#### 2. Prepare Vault Data
+
+```bash
+# Extract sessions from all detected IDEs
+echovault-cli extract
+
+# Parse raw files into clean Markdown
+echovault-cli parse
+
+# (Optional) Build embedding index for semantic search
+# Requires Ollama running locally, or set OpenAI API key in config
+echovault-cli embed
+```
+
+#### 3. Configure MCP Client
+
+**Claude Desktop** (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "echovault": {
+      "command": "echovault-cli",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+**VS Code Copilot** (`.vscode/mcp.json`):
+
+```json
+{
+  "servers": {
+    "echovault": {
+      "type": "stdio",
+      "command": "echovault-cli",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+**Cursor** (`~/.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "echovault": {
+      "command": "echovault-cli",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+> [!NOTE]
+> The install scripts add `echovault-cli` to your PATH automatically.
+> If you built from source, use the full path: `"command": "/path/to/target/release/echovault-cli"`
+
+### MCP Usage Examples
+
+Once configured, your AI assistant can:
+
+```
+"List my recent AI chat sessions"
+→ vault(action="list", limit=20)
+
+"Find sessions about authentication"
+→ vault(action="search", query="authentication")
+
+"Show me the full conversation from that Cursor session"
+→ vault(action="read", source="cursor", session_id="abc123")
+
+"Find code related to database migrations"
+→ vault(action="semantic_search", query="database migration setup")
+```
+
+---
+
+## Desktop App
+
+### Download & Install
+
+#### Quick Install (Recommended)
+
+Installs both the Desktop App and CLI (including MCP server).
 
 **Linux/macOS:**
 
@@ -39,142 +188,189 @@ curl -fsSL https://raw.githubusercontent.com/n24q02m/EchoVault/main/install.sh |
 irm https://raw.githubusercontent.com/n24q02m/EchoVault/main/install.ps1 | iex
 ```
 
-### Manual Download
+> [!TIP]
+> Need CLI only (no desktop app)? See [MCP Server > Install CLI](#1-install-cli).
 
-Download installers directly from [Releases](https://github.com/n24q02m/EchoVault/releases):
+#### Manual Download
 
-| Platform                  | File                             |
-| ------------------------- | -------------------------------- |
-| **Windows (x64)**         | `EchoVault_x.x.x_x64-setup.exe`  |
-| **macOS (Intel)**         | `EchoVault_x.x.x_x64.dmg`        |
-| **macOS (Apple Silicon)** | `EchoVault_x.x.x_aarch64.dmg`    |
-| **Linux (Debian/Ubuntu)** | `EchoVault_x.x.x_amd64.deb`      |
-| **Linux (Fedora/RHEL)**   | `EchoVault-x.x.x-1.x86_64.rpm`   |
-| **Linux (Universal)**     | `EchoVault_x.x.x_amd64.AppImage` |
+Download from [Releases](https://github.com/n24q02m/EchoVault/releases):
 
-#### Manual Installation Steps
+| Platform | File |
+|----------|------|
+| **Windows (x64)** | `EchoVault_x.x.x_x64-setup.exe` |
+| **macOS (Intel)** | `EchoVault_x.x.x_x64.dmg` |
+| **macOS (Apple Silicon)** | `EchoVault_x.x.x_aarch64.dmg` |
+| **Linux (Debian/Ubuntu)** | `EchoVault_x.x.x_amd64.deb` |
+| **Linux (Fedora/RHEL)** | `EchoVault-x.x.x-1.x86_64.rpm` |
+| **Linux (Universal)** | `EchoVault_x.x.x_amd64.AppImage` |
 
-**Windows:**
+The desktop app provides a GUI for extraction, parsing, embedding, search, cloud sync, and settings.
 
-1. Download and run `EchoVault_x.x.x_x64-setup.exe`
-2. Follow the installer prompts
-3. Launch from Start Menu
+#### CLI-only Release Binaries
 
-**macOS:**
+Pre-built CLI binaries are also attached to each release:
 
-1. Download the `.dmg` matching your chip (Intel = `x64`, M-series = `aarch64`)
-2. Open DMG and drag EchoVault to Applications
-3. First launch: Right-click > Open (to bypass Gatekeeper)
+| Platform | File |
+|----------|------|
+| **Linux (x64)** | `echovault-cli-linux-x64` |
+| **macOS (Intel)** | `echovault-cli-macos-x64` |
+| **macOS (Apple Silicon)** | `echovault-cli-macos-arm64` |
+| **Windows (x64)** | `echovault-cli-windows-x64.exe` |
 
-**Linux:**
+---
 
-```bash
-# Debian/Ubuntu
-sudo dpkg -i EchoVault_x.x.x_amd64.deb
+## CLI Reference
 
-# Fedora/RHEL
-sudo rpm -i EchoVault-x.x.x-1.x86_64.rpm
-
-# AppImage (Universal)
-chmod +x EchoVault_x.x.x_amd64.AppImage
-./EchoVault_x.x.x_amd64.AppImage
-```
-
-### CLI for Unsupported OS
-
-For older Linux distributions (e.g., Ubuntu 20.04) where the desktop app doesn't work, use the CLI:
+For servers, CI environments, or headless usage. Install via [quick install](#1-install-cli) or download from [Releases](https://github.com/n24q02m/EchoVault/releases).
 
 ```bash
-# Build CLI from source
-cargo build -p echovault-cli --release
+echovault-cli <COMMAND>
 
-# First time: authenticate with Google Drive
-./target/release/echovault-cli auth
-
-# Sync your AI chat history
-./target/release/echovault-cli sync
-
-# Other commands
-./target/release/echovault-cli status   # Show status
-./target/release/echovault-cli extract  # Extract only (no cloud sync)
+Commands:
+  auth       Authenticate with Google Drive
+  sync       Sync vault (pull -> extract -> push)
+  extract    Extract sessions from all detected IDEs
+  parse      Parse raw sessions into clean Markdown
+  embed      Build embedding index for semantic search
+  search     Semantic search across embedded conversations
+  mcp        Start MCP server on stdio
+  intercept  Start interceptor proxy for API traffic capture
+  status     Show current status (auth, sync, vault info)
 ```
 
-## Quick Setup
-
-**Prerequisites:** [mise](https://mise.jdx.dev/) only.
+### Key Workflows
 
 ```bash
-# Clone repository
-git clone https://github.com/n24q02m/EchoVault.git
-cd EchoVault
+# Full pipeline: extract -> parse -> embed -> ready for search/MCP
+echovault-cli extract
+echovault-cli parse
+echovault-cli embed
 
-# Setup (auto-install tools + dependencies)
-mise run setup
+# Quick search
+echovault-cli search "how to setup fastapi middleware" --limit 5
+
+# Cloud sync (requires auth first)
+echovault-cli auth
+echovault-cli sync
 ```
 
-The setup will **AUTOMATICALLY** install:
+---
 
-1. **mise tools** - Rust, Node.js, pnpm, uv
-2. **Node dependencies** - All required packages
-3. **Cargo build** - Rust compilation
-4. **Rclone binary** - Sync engine for Google Drive
-5. **Pre-commit hooks** - Automatic quality checks
+## Supported Sources
 
-> **Note for Linux**: Install [Tauri dependencies](#linux-tauri-dependencies) first.
+### Extensions (plugins inside host IDEs)
 
-## Running the App
+| Source | IDE Support | Storage Format |
+|--------|-------------|----------------|
+| `vscode-copilot` | VS Code, VS Code Insiders | JSON/JSONL per workspace |
+| `cline` | VS Code, Cursor | JSON tasks in globalStorage |
+| `continue-dev` | VS Code, JetBrains | JSON sessions in `~/.continue/` |
 
-```bash
-# Development mode (full app)
-cargo tauri dev
+### Standalone IDEs
 
-# Development mode (web only)
-pnpm dev
+| Source | Description | Storage Format |
+|--------|-------------|----------------|
+| `cursor` | Cursor AI Editor | SQLite database |
+| `jetbrains` | IntelliJ, PyCharm, WebStorm, GoLand, etc. | XML workspace files |
+| `zed` | Zed Editor | SQLite (zstd compressed) |
+| `antigravity` | Google Antigravity IDE | Protobuf + Markdown |
 
-# Production build
-cargo tauri build
+### CLI Tools
 
-# Reset app (delete config to re-setup)
-pnpm reset
-pnpm reset --all
+| Source | Description | Storage Format |
+|--------|-------------|----------------|
+| `gemini-cli` | Google Gemini CLI | JSON sessions |
+| `claude-code` | Claude Code (Anthropic) | JSONL sessions |
+| `aider` | Aider AI assistant | Markdown history |
+| `codex` | OpenAI Codex CLI | JSONL rollout |
+| `opencode` | OpenCode terminal AI | JSON sessions |
+
+---
+
+## Embedding & Search
+
+EchoVault supports hybrid search combining vector similarity and keyword matching.
+
+### Embedding Providers
+
+Configure via Desktop App (Settings) or `~/.config/echovault/echovault.toml`:
+
+| Preset | API Base | Default Model | API Key Required |
+|--------|----------|---------------|------------------|
+| **Ollama** (default) | `http://localhost:11434/v1` | `nomic-embed-text` | No |
+| **OpenAI** | `https://api.openai.com/v1` | `text-embedding-3-small` | Yes |
+| **Custom** | Any OpenAI-compatible endpoint | User-defined | Depends |
+
+```toml
+# ~/.config/echovault/echovault.toml
+[embedding]
+preset = "ollama"
+api_base = "http://localhost:11434/v1"
+model = "nomic-embed-text"
+# api_key = ""  # Only needed for OpenAI/custom
 ```
+
+### Search Pipeline
+
+1. **FTS5 keyword search** — SQLite full-text search on chunks (BM25 ranking)
+2. **Vector similarity** — Cosine similarity on embeddings
+3. **RRF fusion** — Reciprocal Rank Fusion merges both result sets (alpha=0.6 vector bias)
+
+---
 
 ## Development
 
-### Rust
+### Prerequisites
+
+- [mise](https://mise.jdx.dev/) (auto-installs Rust, Node.js, pnpm, uv)
 
 ```bash
-cargo build                # Debug build
-cargo test --workspace     # Run tests
-cargo clippy --workspace   # Lint
-cargo fmt --all            # Format code
+git clone https://github.com/n24q02m/EchoVault.git
+cd EchoVault
+mise run setup
 ```
 
-### TypeScript (Frontend)
+### Build & Test
 
 ```bash
+# Rust
+cargo build --workspace          # Debug build (all crates)
+cargo test --workspace           # Run tests (36 tests)
+cargo clippy --workspace         # Lint
+cargo fmt --all                  # Format
+
+# Frontend (apps/web)
 cd apps/web
-pnpm dev                   # Dev server with HMR
-pnpm build                 # Production build
-pnpm lint                  # Biome lint
-pnpm format                # Biome format
+pnpm dev                         # Dev server with HMR
+pnpm build                       # Production build
+pnpm lint                        # Biome lint
+
+# Desktop app
+cargo tauri dev                  # Development mode
+cargo tauri build                # Production build
 ```
 
-### Pre-commit hooks
+### Project Structure
 
-Pre-commit hooks are automatically installed via setup script. To run manually:
-
-```bash
-uv run pre-commit run --all-files
+```
+EchoVault/
+  apps/
+    core/           # Core library (extractors, parsers, embedding, MCP, storage)
+    cli/            # CLI binary (echovault-cli)
+    tauri/          # Desktop app (Tauri + React)
+    web/            # Frontend (React + TypeScript + Tailwind)
+  scripts/          # Build scripts (download rclone, setup dev, etc.)
 ```
 
-## Sync Provider
+### Crate Features
 
-EchoVault uses **Rclone** as sync engine to sync with **Google Drive**:
+| Feature | Description | Used By |
+|---------|-------------|---------|
+| `embedding` | Vector embeddings + hybrid search | CLI, Tauri |
+| `mcp` | MCP server (rmcp + stdio transport) | CLI |
+| `interceptor` | MITM proxy for API traffic capture | CLI, Tauri |
 
-- **No complex OAuth setup**: Rclone comes with verified credentials
-- **User-friendly**: Just click Connect and login in browser
-- **Reliable**: Rclone is a widely-used sync tool with 40k+ stars on GitHub
+---
 
 ## Contributing
 

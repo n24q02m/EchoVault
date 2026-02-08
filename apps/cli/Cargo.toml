@@ -13,7 +13,10 @@ path = "src/main.rs"
 
 [dependencies]
 # Core library - reuse all sync and extractor logic
-echovault-core = { path = "../core" }
+echovault-core = { path = "../core", features = ["interceptor", "embedding", "mcp"] }
+
+# Async runtime for interceptor
+tokio = { version = "1", features = ["full"] }
 
 # CLI argument parsing
 clap = { version = "4", features = ["derive"] }

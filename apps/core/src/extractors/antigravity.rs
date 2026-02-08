@@ -1,6 +1,6 @@
 //! Antigravity Extractor
 //!
-//! Extracts chat history and artifacts from Google Antigravity.
+//! Extracts chat history and artifacts from Google Antigravity (IDE).
 //! ONLY COPY raw files, DO NOT parse/transform content.
 //!
 //! Storage locations:
@@ -8,13 +8,15 @@
 //! - Artifacts: ~/.gemini/antigravity/brain/{uuid}/*.md
 
 use super::{Extractor, SessionFile, SessionMetadata};
+use crate::utils::wsl;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use rayon::prelude::*;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
-/// Antigravity Extractor
+/// Antigravity (Google IDE) Extractor.
+/// Handles .pb conversations (opaque) and brain artifacts (.md).
 pub struct AntigravityExtractor {
     /// Paths that may contain Antigravity data
     storage_paths: Vec<PathBuf>,
@@ -48,44 +50,10 @@ impl AntigravityExtractor {
             }
         }
 
-        // Windows: %USERPROFILE%\.gemini\antigravity\
-        #[cfg(target_os = "windows")]
-        if let Some(home) = dirs::home_dir() {
-            let path = home.join(".gemini").join("antigravity");
-            if !storage_paths.contains(&path) {
-                storage_paths.push(path);
-            }
-        }
-
-        // Windows: Add WSL support (\\wsl$\<distro>\home\<user>\.gemini\antigravity\)
-        #[cfg(target_os = "windows")]
-        {
-            // Get Windows username to create WSL path
-            // In WSL, username is usually same as Windows or needs to scan home directories
-            if let Ok(wsl_path) = std::fs::read_dir(r"\\wsl$") {
-                for entry in wsl_path.flatten() {
-                    let distro_path = entry.path();
-                    if distro_path.is_dir() {
-                        // Scan all home directories in WSL distro
-                        let wsl_home = distro_path.join("home");
-                        if wsl_home.exists() && wsl_home.is_dir() {
-                            if let Ok(home_entries) = std::fs::read_dir(&wsl_home) {
-                                for home_entry in home_entries.flatten() {
-                                    let user_home = home_entry.path();
-                                    if user_home.is_dir() {
-                                        let wsl_antigravity =
-                                            user_home.join(".gemini").join("antigravity");
-                                        if wsl_antigravity.exists()
-                                            && !storage_paths.contains(&wsl_antigravity)
-                                        {
-                                            storage_paths.push(wsl_antigravity);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+        // Windows: Scan WSL for Antigravity data (Gemini CLI often runs inside WSL)
+        for wsl_path in wsl::find_wsl_paths(".gemini/antigravity") {
+            if !storage_paths.contains(&wsl_path) {
+                storage_paths.push(wsl_path);
             }
         }
 
@@ -142,6 +110,7 @@ impl AntigravityExtractor {
             original_path: path.clone(),
             file_size,
             workspace_name: None, // Antigravity is not tied to specific workspace
+            ide_origin: None,
         })
     }
 
@@ -228,6 +197,7 @@ impl AntigravityExtractor {
                     original_path: path.clone(),
                     file_size,
                     workspace_name: None,
+                    ide_origin: None,
                 });
             }
         }

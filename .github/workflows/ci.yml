@@ -105,30 +105,6 @@ jobs:
         working-directory: apps/web
         run: pnpm lint
 
-      - name: Comment PR on success
-        if: success() && github.event_name == 'pull_request'
-        uses: actions/github-script@v8
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '✅ **Frontend CI Checks Passed**\n\n- Type Check: ✓\n- Linting: ✓\n\nReady for review!'
-            })
-
-      - name: Comment PR on failure
-        if: failure() && github.event_name == 'pull_request'
-        uses: actions/github-script@v8
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '❌ **Frontend CI Checks Failed**\n\nPlease fix the issues:\n- Run `pnpm typecheck && pnpm lint` locally\n- Check the workflow logs for details'
-            })
-
   test:
     name: Test
     runs-on: ${{ matrix.os }}

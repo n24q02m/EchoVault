@@ -10,10 +10,12 @@
 //! - Linux: ~/.config/Cursor/User/workspaceStorage
 
 use super::{Extractor, SessionFile, SessionMetadata};
+use crate::utils::wsl;
 use anyhow::Result;
 use chrono::{TimeZone, Utc};
 use rayon::prelude::*;
 use serde_json::Value;
+use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
 /// Cursor AI Editor Extractor
@@ -21,6 +23,12 @@ pub struct CursorExtractor {
     /// Paths that may contain workspaceStorage
     storage_paths: Vec<PathBuf>,
 }
+
+/// Cursor workspace storage relative paths (from home dir).
+const CURSOR_WORKSPACE_SUBPATHS: &[&str] = &[
+    ".config/Cursor/User/workspaceStorage",
+    ".config/Cursor - Insiders/User/workspaceStorage",
+];
 
 impl CursorExtractor {
     /// Create new extractor with default paths per platform.
@@ -30,8 +38,9 @@ impl CursorExtractor {
         // Prefer reading from HOME env variable (for testing with HOME override)
         if let Ok(home) = std::env::var("HOME") {
             let home_path = PathBuf::from(home);
-            // Linux: $HOME/.config/Cursor/User/workspaceStorage
-            storage_paths.push(home_path.join(".config/Cursor/User/workspaceStorage"));
+            for subpath in CURSOR_WORKSPACE_SUBPATHS {
+                storage_paths.push(home_path.join(subpath));
+            }
         }
 
         // Fallback: Get path per platform via dirs crate
@@ -42,25 +51,48 @@ impl CursorExtractor {
             if !storage_paths.contains(&cursor_path) {
                 storage_paths.push(cursor_path);
             }
+            // Cursor Insiders
+            let insiders_path = config_dir.join("Cursor - Insiders/User/workspaceStorage");
+            if !storage_paths.contains(&insiders_path) {
+                storage_paths.push(insiders_path);
+            }
         }
 
-        #[cfg(target_os = "windows")]
-        if let Some(appdata) = dirs::data_dir() {
-            // Windows: %APPDATA%\Cursor\User\workspaceStorage
-            storage_paths.push(appdata.join("Cursor/User/workspaceStorage"));
+        // NOTE: On Windows, dirs::config_dir() already returns %APPDATA% (Roaming)
+        // which is the correct location for Cursor storage.
+        // dirs::data_dir() returns %LOCALAPPDATA% (Local) which is NOT where Cursor stores data.
+
+        // Windows: Scan WSL for Cursor installations
+        for subpath in CURSOR_WORKSPACE_SUBPATHS {
+            for wsl_path in wsl::find_wsl_paths(subpath) {
+                if !storage_paths.contains(&wsl_path) {
+                    storage_paths.push(wsl_path);
+                }
+            }
         }
 
         Self { storage_paths }
     }
 
-    /// Quick metadata extraction from JSON file (only read required fields).
+    /// Quick metadata extraction from JSON/JSONL file (only read required fields).
     fn extract_quick_metadata(
         &self,
         path: &PathBuf,
         workspace_name: &str,
     ) -> Option<SessionMetadata> {
-        let content = std::fs::read_to_string(path).ok()?;
-        let json: Value = serde_json::from_str(&content).ok()?;
+        let is_jsonl = path.extension().is_some_and(|ext| ext == "jsonl");
+
+        let json = if is_jsonl {
+            // JSONL format: first line is kind=0 (session header), data in "v" field
+            let file = std::fs::File::open(path).ok()?;
+            let reader = std::io::BufReader::new(file);
+            let first_line = reader.lines().next()?.ok()?;
+            let wrapper: Value = serde_json::from_str(&first_line).ok()?;
+            wrapper.get("v")?.clone()
+        } else {
+            let content = std::fs::read_to_string(path).ok()?;
+            serde_json::from_str(&content).ok()?
+        };
 
         // Get session ID from filename or JSON
         let session_id = json
@@ -80,7 +112,6 @@ impl CursorExtractor {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .or_else(|| {
-                // Fallback: get text from first request
                 json.get("requests")
                     .and_then(|r| r.as_array())
                     .and_then(|arr| arr.first())
@@ -88,7 +119,6 @@ impl CursorExtractor {
                     .and_then(|msg| msg.get("text"))
                     .and_then(|t| t.as_str())
                     .map(|s| {
-                        // Truncate title
                         let truncated: String = s.chars().take(60).collect();
                         if s.chars().count() > 60 {
                             format!("{}...", truncated)
@@ -96,6 +126,31 @@ impl CursorExtractor {
                             truncated
                         }
                     })
+            })
+            .or_else(|| {
+                // Fallback for JSONL: read subsequent lines for first user message
+                if !is_jsonl {
+                    return None;
+                }
+                let file = std::fs::File::open(path).ok()?;
+                let reader = std::io::BufReader::new(file);
+                for line in reader.lines().skip(1).take(20).flatten() {
+                    if let Ok(obj) = serde_json::from_str::<Value>(&line) {
+                        if obj.get("kind").and_then(|k| k.as_i64()) == Some(1) {
+                            if let Some(text) = obj.get("v").and_then(|v| v.as_str()) {
+                                if !text.is_empty() && text.len() > 5 {
+                                    let truncated: String = text.chars().take(60).collect();
+                                    return if text.chars().count() > 60 {
+                                        Some(format!("{}...", truncated))
+                                    } else {
+                                        Some(truncated)
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
+                None
             });
 
         // Get timestamp
@@ -112,10 +167,11 @@ impl CursorExtractor {
             source: "cursor".to_string(),
             title,
             created_at,
-            vault_path: PathBuf::new(), // Will be set after copy
+            vault_path: PathBuf::new(),
             original_path: path.clone(),
             file_size,
             workspace_name: Some(workspace_name.to_string()),
+            ide_origin: None,
         })
     }
 }
@@ -144,12 +200,14 @@ impl Extractor for CursorExtractor {
                 for entry in entries.flatten() {
                     let chat_sessions_dir = entry.path().join("chatSessions");
                     if chat_sessions_dir.exists() && chat_sessions_dir.is_dir() {
-                        // Check if there are any JSON files
+                        // Check if there are any JSON or JSONL files
                         if let Ok(sessions) = std::fs::read_dir(&chat_sessions_dir) {
-                            let has_json = sessions
-                                .flatten()
-                                .any(|e| e.path().extension().is_some_and(|ext| ext == "json"));
-                            if has_json {
+                            let has_sessions = sessions.flatten().any(|e| {
+                                e.path()
+                                    .extension()
+                                    .is_some_and(|ext| ext == "json" || ext == "jsonl")
+                            });
+                            if has_sessions {
                                 workspaces.push(entry.path());
                             }
                         }
@@ -188,11 +246,14 @@ impl Extractor for CursorExtractor {
 
         let workspace_name = self.get_workspace_name(location);
 
-        // Collect all JSON paths first
+        // Collect all JSON and JSONL paths
         let json_paths: Vec<PathBuf> = std::fs::read_dir(&chat_sessions_dir)?
             .flatten()
             .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|ext| ext == "json"))
+            .filter(|p| {
+                p.extension()
+                    .is_some_and(|ext| ext == "json" || ext == "jsonl")
+            })
             .collect();
 
         // Extract metadata in parallel with rayon
@@ -219,10 +280,14 @@ impl Extractor for CursorExtractor {
             return Ok(0);
         }
 
-        // Only count JSON files, don't parse metadata
+        // Count JSON and JSONL files, don't parse metadata
         let count = std::fs::read_dir(&chat_sessions_dir)?
             .flatten()
-            .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .is_some_and(|ext| ext == "json" || ext == "jsonl")
+            })
             .count();
 
         Ok(count)
