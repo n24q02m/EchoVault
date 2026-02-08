@@ -56,15 +56,9 @@ impl ClineExtractor {
             }
         }
 
-        #[cfg(target_os = "windows")]
-        if let Some(appdata) = dirs::data_dir() {
-            // Windows: %APPDATA%/Code/User/globalStorage/saoudrizwan.claude-dev/tasks
-            storage_paths
-                .push(appdata.join("Code/User/globalStorage/saoudrizwan.claude-dev/tasks"));
-            storage_paths.push(
-                appdata.join("Code - Insiders/User/globalStorage/saoudrizwan.claude-dev/tasks"),
-            );
-        }
+        // NOTE: On Windows, dirs::config_dir() already returns %APPDATA% (Roaming)
+        // which is the correct location for VS Code extensions' globalStorage.
+        // dirs::data_dir() returns %LOCALAPPDATA% (Local) which is NOT where VS Code stores data.
 
         Self { storage_paths }
     }

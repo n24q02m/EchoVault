@@ -366,7 +366,10 @@ fn import_vault_sessions(vault_dir: &Path) -> Result<usize> {
                     let file_path = file.path();
 
                     let extension = file_path.extension().and_then(|e| e.to_str());
-                    if !matches!(extension, Some("json") | Some("pb") | Some("md")) {
+                    if !matches!(
+                        extension,
+                        Some("json") | Some("jsonl") | Some("pb") | Some("md")
+                    ) {
                         continue;
                     }
 
@@ -398,33 +401,71 @@ fn import_vault_sessions(vault_dir: &Path) -> Result<usize> {
                         }
                     }
 
-                    let (title, workspace_name, created_at) = if extension == Some("json") {
-                        match fs::read_to_string(&file_path) {
-                            Ok(content) => {
-                                if let Ok(json) =
-                                    serde_json::from_str::<serde_json::Value>(&content)
-                                {
-                                    let title = json
-                                        .get("title")
-                                        .or_else(|| json.get("name"))
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string());
-                                    let workspace = json
-                                        .get("workspace_name")
-                                        .or_else(|| json.get("workspaceName"))
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string());
-                                    let created = json
-                                        .get("created_at")
-                                        .or_else(|| json.get("createdAt"))
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string());
-                                    (title, workspace, created)
-                                } else {
-                                    (None, None, None)
+                    let (title, workspace_name, created_at) = if extension == Some("json")
+                        || extension == Some("jsonl")
+                    {
+                        match extension {
+                            Some("jsonl") => {
+                                // JSONL: read first line, parse v.customTitle/v.creationDate
+                                use std::io::BufRead;
+                                match std::fs::File::open(&file_path) {
+                                    Ok(file) => {
+                                        let reader = std::io::BufReader::new(file);
+                                        if let Some(Ok(first_line)) = reader.lines().next() {
+                                            if let Ok(obj) = serde_json::from_str::<serde_json::Value>(
+                                                &first_line,
+                                            ) {
+                                                let v = obj.get("v");
+                                                let title = v
+                                                    .and_then(|v| v.get("customTitle"))
+                                                    .and_then(|v| v.as_str())
+                                                    .map(|s| s.to_string());
+                                                let created = v
+                                                        .and_then(|v| v.get("creationDate"))
+                                                        .and_then(|v| v.as_i64())
+                                                        .map(|ts| {
+                                                            chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ts)
+                                                                .map(|d| d.to_rfc3339())
+                                                                .unwrap_or_default()
+                                                        });
+                                                (title, None, created)
+                                            } else {
+                                                (None, None, None)
+                                            }
+                                        } else {
+                                            (None, None, None)
+                                        }
+                                    }
+                                    Err(_) => (None, None, None),
                                 }
                             }
-                            Err(_) => (None, None, None),
+                            _ => match fs::read_to_string(&file_path) {
+                                Ok(content) => {
+                                    if let Ok(json) =
+                                        serde_json::from_str::<serde_json::Value>(&content)
+                                    {
+                                        let title = json
+                                            .get("title")
+                                            .or_else(|| json.get("name"))
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string());
+                                        let workspace = json
+                                            .get("workspace_name")
+                                            .or_else(|| json.get("workspaceName"))
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string());
+                                        let created = json
+                                            .get("created_at")
+                                            .or_else(|| json.get("createdAt"))
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string());
+                                        (title, workspace, created)
+                                    } else {
+                                        (None, None, None)
+                                    }
+                                }
+                                Err(_) => (None, None, None),
+                            },
                         }
                     } else {
                         (None, None, None)

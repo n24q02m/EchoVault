@@ -399,14 +399,15 @@ fn find_vault_session_info(
             display_title = Some(clean_name.replace('_', " "));
             vec![format!("{}.md", clean_name), file_name.to_string()]
         } else {
-            // Normal session
+            // Normal session - try both .json and .jsonl extensions
             let extension = if source == "antigravity" {
                 "pb"
             } else {
-                "json"
+                "json" // Will try jsonl as fallback below
             };
             vec![
                 format!("{}.{}", session_id, extension),
+                format!("{}.jsonl", session_id), // JSONL fallback for vscode-copilot/cursor
                 session_id.to_string(),
             ]
         };
@@ -505,14 +506,17 @@ fn import_vault_sessions(vault_dir: &std::path::Path) -> Result<usize, String> {
                 .unwrap_or("unknown")
                 .to_string();
 
-            // Scan session files in this source directory (supports .json, .pb, .md)
+            // Scan session files in this source directory (supports .json, .jsonl, .pb, .md)
             if let Ok(files) = fs::read_dir(&source_dir) {
                 for file in files.filter_map(|f| f.ok()) {
                     let file_path = file.path();
 
                     // Check for supported extensions
                     let extension = file_path.extension().and_then(|e| e.to_str());
-                    if !matches!(extension, Some("json") | Some("pb") | Some("md")) {
+                    if !matches!(
+                        extension,
+                        Some("json") | Some("jsonl") | Some("pb") | Some("md")
+                    ) {
                         continue;
                     }
 
@@ -548,34 +552,85 @@ fn import_vault_sessions(vault_dir: &std::path::Path) -> Result<usize, String> {
                     }
 
                     // Extract metadata based on file type
-                    let (title, workspace_name, created_at) = if extension == Some("json") {
-                        // Parse JSON to extract metadata
-                        match fs::read_to_string(&file_path) {
-                            Ok(content) => {
-                                if let Ok(json) =
-                                    serde_json::from_str::<serde_json::Value>(&content)
-                                {
-                                    let title = json
-                                        .get("title")
-                                        .or_else(|| json.get("name"))
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string());
-                                    let workspace = json
-                                        .get("workspace_name")
-                                        .or_else(|| json.get("workspaceName"))
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string());
-                                    let created = json
-                                        .get("created_at")
-                                        .or_else(|| json.get("createdAt"))
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string());
-                                    (title, workspace, created)
-                                } else {
-                                    (None, None, None)
+                    let (title, workspace_name, created_at) = if extension == Some("json")
+                        || extension == Some("jsonl")
+                    {
+                        // Parse JSON/JSONL to extract metadata
+                        match extension {
+                            Some("jsonl") => {
+                                // JSONL: read first line, parse v.customTitle/v.creationDate
+                                use std::io::BufRead;
+                                match std::fs::File::open(&file_path) {
+                                    Ok(file) => {
+                                        let reader = std::io::BufReader::new(file);
+                                        if let Some(Ok(first_line)) = reader.lines().next() {
+                                            if let Ok(obj) = serde_json::from_str::<serde_json::Value>(
+                                                &first_line,
+                                            ) {
+                                                let v = obj.get("v");
+                                                let title = v
+                                                    .and_then(|v| v.get("customTitle"))
+                                                    .and_then(|v| v.as_str())
+                                                    .map(|s| s.to_string());
+                                                let created = v
+                                                    .and_then(|v| v.get("creationDate"))
+                                                    .and_then(|v| v.as_i64())
+                                                    .map(|ts| {
+                                                        // Convert epoch millis to RFC3339 string
+                                                        let secs = ts / 1000;
+                                                        let nanos =
+                                                            ((ts % 1000) * 1_000_000) as u32;
+                                                        if let Some(dt) = chrono::DateTime::<
+                                                            chrono::Utc,
+                                                        >::from_timestamp(
+                                                            secs, nanos
+                                                        ) {
+                                                            dt.to_rfc3339()
+                                                        } else {
+                                                            String::new()
+                                                        }
+                                                    });
+                                                (title, None, created)
+                                            } else {
+                                                (None, None, None)
+                                            }
+                                        } else {
+                                            (None, None, None)
+                                        }
+                                    }
+                                    Err(_) => (None, None, None),
                                 }
                             }
-                            Err(_) => (None, None, None),
+                            _ => {
+                                // Standard JSON
+                                match fs::read_to_string(&file_path) {
+                                    Ok(content) => {
+                                        if let Ok(json) =
+                                            serde_json::from_str::<serde_json::Value>(&content)
+                                        {
+                                            let title = json
+                                                .get("title")
+                                                .or_else(|| json.get("name"))
+                                                .and_then(|v| v.as_str())
+                                                .map(|s| s.to_string());
+                                            let workspace = json
+                                                .get("workspace_name")
+                                                .or_else(|| json.get("workspaceName"))
+                                                .and_then(|v| v.as_str())
+                                                .map(|s| s.to_string());
+                                            let created = json
+                                                .get("created_at")
+                                                .or_else(|| json.get("createdAt"))
+                                                .and_then(|v| v.as_str())
+                                                .map(|s| s.to_string());
+                                            (title, workspace, created)
+                                        } else {
+                                            (None, None, None)
+                                        }
+                                    }
+                                    Err(_) => (None, None, None),
+                                }
+                            }
                         }
                     } else {
                         // For .pb and .md files, no metadata extraction

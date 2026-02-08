@@ -8,6 +8,7 @@ use anyhow::Result;
 use chrono::{TimeZone, Utc};
 use rayon::prelude::*;
 use serde_json::Value;
+use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
 /// VS Code Copilot Extractor
@@ -43,24 +44,34 @@ impl VSCodeCopilotExtractor {
             }
         }
 
-        #[cfg(target_os = "windows")]
-        if let Some(appdata) = dirs::data_dir() {
-            // Windows: %APPDATA%\Code\User\workspaceStorage
-            storage_paths.push(appdata.join("Code/User/workspaceStorage"));
-            storage_paths.push(appdata.join("Code - Insiders/User/workspaceStorage"));
-        }
+        // NOTE: On Windows, dirs::config_dir() already returns %APPDATA% (Roaming)
+        // which is the correct location for VS Code storage.
+        // dirs::data_dir() returns %LOCALAPPDATA% (Local) which is NOT where VS Code stores data.
 
         Self { storage_paths }
     }
 
-    /// Quick metadata extraction from JSON file (only read required fields).
+    /// Quick metadata extraction from JSON/JSONL file (only read required fields).
     fn extract_quick_metadata(
         &self,
         path: &PathBuf,
         workspace_name: &str,
     ) -> Option<SessionMetadata> {
-        let content = std::fs::read_to_string(path).ok()?;
-        let json: Value = serde_json::from_str(&content).ok()?;
+        let is_jsonl = path.extension().is_some_and(|ext| ext == "jsonl");
+
+        let json = if is_jsonl {
+            // JSONL format: first line is kind=0 (session header), data in "v" field
+            let file = std::fs::File::open(path).ok()?;
+            let reader = std::io::BufReader::new(file);
+            let first_line = reader.lines().next()?.ok()?;
+            let wrapper: Value = serde_json::from_str(&first_line).ok()?;
+            // Extract the "v" object which contains session metadata
+            wrapper.get("v")?.clone()
+        } else {
+            // Legacy JSON format: entire file is the session object
+            let content = std::fs::read_to_string(path).ok()?;
+            serde_json::from_str(&content).ok()?
+        };
 
         // Get session ID from filename or JSON
         let session_id = json
@@ -80,7 +91,7 @@ impl VSCodeCopilotExtractor {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .or_else(|| {
-                // Fallback: get text from first request
+                // Fallback: get text from first request (works for legacy JSON)
                 json.get("requests")
                     .and_then(|r| r.as_array())
                     .and_then(|arr| arr.first())
@@ -88,7 +99,6 @@ impl VSCodeCopilotExtractor {
                     .and_then(|msg| msg.get("text"))
                     .and_then(|t| t.as_str())
                     .map(|s| {
-                        // Truncate title
                         let truncated: String = s.chars().take(60).collect();
                         if s.chars().count() > 60 {
                             format!("{}...", truncated)
@@ -96,6 +106,32 @@ impl VSCodeCopilotExtractor {
                             truncated
                         }
                     })
+            })
+            .or_else(|| {
+                // Fallback for JSONL: read subsequent lines to find first user message
+                if !is_jsonl {
+                    return None;
+                }
+                let file = std::fs::File::open(path).ok()?;
+                let reader = std::io::BufReader::new(file);
+                // Skip first line (header), look for kind=1 with string value (user message)
+                for line in reader.lines().skip(1).take(20).flatten() {
+                    if let Ok(obj) = serde_json::from_str::<Value>(&line) {
+                        if obj.get("kind").and_then(|k| k.as_i64()) == Some(1) {
+                            if let Some(text) = obj.get("v").and_then(|v| v.as_str()) {
+                                if !text.is_empty() && text.len() > 5 {
+                                    let truncated: String = text.chars().take(60).collect();
+                                    return if text.chars().count() > 60 {
+                                        Some(format!("{}...", truncated))
+                                    } else {
+                                        Some(truncated)
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
+                None
             });
 
         // Get timestamp
@@ -144,12 +180,14 @@ impl Extractor for VSCodeCopilotExtractor {
                 for entry in entries.flatten() {
                     let chat_sessions_dir = entry.path().join("chatSessions");
                     if chat_sessions_dir.exists() && chat_sessions_dir.is_dir() {
-                        // Check if there are any JSON files
+                        // Check if there are any JSON or JSONL files
                         if let Ok(sessions) = std::fs::read_dir(&chat_sessions_dir) {
-                            let has_json = sessions
-                                .flatten()
-                                .any(|e| e.path().extension().is_some_and(|ext| ext == "json"));
-                            if has_json {
+                            let has_sessions = sessions.flatten().any(|e| {
+                                e.path()
+                                    .extension()
+                                    .is_some_and(|ext| ext == "json" || ext == "jsonl")
+                            });
+                            if has_sessions {
                                 workspaces.push(entry.path());
                             }
                         }
@@ -188,11 +226,14 @@ impl Extractor for VSCodeCopilotExtractor {
 
         let workspace_name = self.get_workspace_name(location);
 
-        // Collect all JSON paths first
+        // Collect all JSON and JSONL paths
         let json_paths: Vec<PathBuf> = std::fs::read_dir(&chat_sessions_dir)?
             .flatten()
             .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|ext| ext == "json"))
+            .filter(|p| {
+                p.extension()
+                    .is_some_and(|ext| ext == "json" || ext == "jsonl")
+            })
             .collect();
 
         // Extract metadata in parallel with rayon
@@ -219,10 +260,14 @@ impl Extractor for VSCodeCopilotExtractor {
             return Ok(0);
         }
 
-        // Only count JSON files, don't parse metadata
+        // Count JSON and JSONL files, don't parse metadata
         let count = std::fs::read_dir(&chat_sessions_dir)?
             .flatten()
-            .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .is_some_and(|ext| ext == "json" || ext == "jsonl")
+            })
             .count();
 
         Ok(count)
