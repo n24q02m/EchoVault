@@ -114,8 +114,8 @@ jobs:
           target-branch: main
 
   # ============================================================
-  # Prepare: Tạo draft release cho Tauri builds upload assets
-  # (release-please chỉ tạo tag, skip-github-release: true)
+  # Prepare: Xóa release immutable, tạo lại dạng draft (mutable)
+  # để Tauri builds có thể upload assets
   # ============================================================
   prepare-release:
     name: Prepare Release Info
@@ -129,11 +129,6 @@ jobs:
       tag: ${{ steps.set.outputs.tag }}
       is_prerelease: ${{ steps.set.outputs.is_prerelease }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
       - name: Set release info
         id: set
         run: |
@@ -147,26 +142,34 @@ jobs:
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create draft release
+      - name: Convert to draft release for Tauri asset uploads
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.set.outputs.tag }}"
           IS_PRE="${{ steps.set.outputs.is_prerelease }}"
+
+          # Luu release notes truoc khi xoa
+          NOTES=$(gh release view "$TAG" --json body -q '.body' --repo ${{ github.repository }})
+
+          # Xoa release immutable (giu tag)
+          gh release delete "$TAG" --yes --repo ${{ github.repository }}
+          echo "Deleted immutable release: $TAG"
+
+          # Tao lai dang draft (mutable cho asset uploads)
           PRE_FLAG=""
           if [ "$IS_PRE" = "true" ]; then
             PRE_FLAG="--prerelease"
           fi
 
-          # Lấy changelog body từ CHANGELOG.md
-          BODY="See the assets section below to download the installer for your platform."
-
           gh release create "$TAG" \
             --title "EchoVault $TAG" \
-            --notes "$BODY" \
+            --notes "$NOTES" \
             --draft \
             $PRE_FLAG \
-            --verify-tag
+            --verify-tag \
+            --repo ${{ github.repository }}
+          echo "Created draft release: $TAG"
 
   # ============================================================
   # Build: Tauri multi-platform

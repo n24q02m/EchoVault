@@ -72,8 +72,6 @@
     }
   ],
   "packages": {
-    ".": {
-      "skip-github-release": true
-    }
+    ".": {}
   }
 }
