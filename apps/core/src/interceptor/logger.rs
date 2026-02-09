@@ -204,7 +204,10 @@ mod tests {
         assert_eq!(extract_domain("https://example.com/foo/bar"), "example.com");
 
         // With port
-        assert_eq!(extract_domain("https://example.com:8080/foo"), "example.com");
+        assert_eq!(
+            extract_domain("https://example.com:8080/foo"),
+            "example.com"
+        );
 
         // Subdomain
         assert_eq!(extract_domain("https://api.example.com"), "api.example.com");
