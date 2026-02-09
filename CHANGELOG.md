@@ -277,6 +277,18 @@
 
 * Implement initial Tauri application structure with Rclone synchronization and capability schema. ([8fe9407](https://github.com/n24q02m/EchoVault/commit/8fe94074165a982618eb6f7e14f8fe531ac49e49))
 
+## [1.18.0](https://github.com/n24q02m/EchoVault/compare/v1.17.0...v1.18.0) (2026-02-09)
+
+
+### Features
+
+* promote dev to main (v1.17.1-beta) ([#53](https://github.com/n24q02m/EchoVault/issues/53)) ([8f7b25e](https://github.com/n24q02m/EchoVault/commit/8f7b25e3cb872b1948068274791b8f908b9c432f))
+
+
+### Bug Fixes
+
+* **release:** reset manifest to stable version ([e740a75](https://github.com/n24q02m/EchoVault/commit/e740a75f8519d1a0ba4b9a8cd007e959b9e0075c))
+
 ## [1.17.1-beta](https://github.com/n24q02m/EchoVault/compare/v1.17.0...v1.17.1-beta) (2026-02-09)
 
 
