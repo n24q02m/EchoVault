@@ -1065,6 +1065,7 @@ pub async fn sync_vault(state: State<'_, AppState>) -> Result<String, String> {
 
 /// Mở URL trong browser
 #[tauri::command]
+#[allow(deprecated)]
 pub async fn open_url(app: AppHandle, url: String) -> Result<(), String> {
     app.shell().open(&url, None).map_err(|e| e.to_string())?;
     Ok(())
