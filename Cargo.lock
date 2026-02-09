@@ -1217,6 +1217,7 @@ dependencies = [
  "dirs 5.0.1",
  "echovault-core",
  "indicatif",
+ "keyring",
  "rayon",
  "serde",
  "serde_json",

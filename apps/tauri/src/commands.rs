@@ -9,6 +9,26 @@ use echovault_core::{
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::State;
+use keyring::Entry;
+
+const KEYRING_SERVICE: &str = "echovault";
+const KEYRING_USER: &str = "embedding_api_key";
+
+fn get_api_key_secure() -> Option<String> {
+    let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER).ok()?;
+    entry.get_password().ok()
+}
+
+fn set_api_key_secure(key: &str) -> Result<(), String> {
+    let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| e.to_string())?;
+    entry.set_password(key).map_err(|e| e.to_string())
+}
+
+fn delete_api_key_secure() -> Result<(), String> {
+    let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| e.to_string())?;
+    entry.delete_password().map_err(|e| e.to_string())
+}
+
 use tracing::{error, info, warn};
 
 #[cfg(windows)]
@@ -1656,7 +1676,27 @@ pub async fn save_embedding_config(request: SaveEmbeddingConfigRequest) -> Resul
     let mut config = Config::load_default().map_err(|e| e.to_string())?;
     config.embedding.preset = preset;
     config.embedding.api_base = request.api_base;
-    config.embedding.api_key = request.api_key;
+
+    // Save API key securely if provided
+    if let Some(key) = &request.api_key {
+        if !key.is_empty() {
+            set_api_key_secure(key)?;
+        } else {
+            // Empty key means delete? Or just ignore? Let's assume delete if explicitly empty string passed
+            // But usually request.api_key is Option.
+            // If it is Some(""), maybe delete.
+            let _ = delete_api_key_secure();
+        }
+    } else {
+        // If None, do we delete? No, maybe just didn't change.
+        // But this is "save_config", so it likely sends the full state.
+        // If the user clears the key, frontend should send Some("").
+        // Let's assume if it's Some, we update.
+    }
+
+    // Clear from config struct so it's not saved to file (redundant with skip_serializing but safe)
+    config.embedding.api_key = None;
+
     config.embedding.model = request.model;
 
     config
@@ -1683,12 +1723,24 @@ pub struct ProviderStatusResponse {
 pub async fn test_embedding_connection() -> Result<ProviderStatusResponse, String> {
     use echovault_core::embedding::provider::{EmbeddingProvider, ProviderStatus};
 
-    let config = Config::load_default().map_err(|e| e.to_string())?;
+    let mut config = Config::load_default().map_err(|e| e.to_string())?;
+
+    // Migration: If key exists in file config, move to keyring
+    if let Some(key) = &config.embedding.api_key {
+        if !key.is_empty() {
+            let _ = set_api_key_secure(key);
+            config.embedding.api_key = None;
+            let _ = config.save_default(); // Save to remove from file
+        }
+    }
+
+    // Get key from keyring
+    let api_key = get_api_key_secure();
 
     let result = tokio::task::spawn_blocking(move || {
         let provider = EmbeddingProvider::new(
             &config.embedding.api_base,
-            config.embedding.api_key.as_deref(),
+            api_key.as_deref(),
             &config.embedding.model,
         );
         provider.check_provider_status()
@@ -1746,10 +1798,13 @@ pub async fn get_embedding_config() -> Result<serde_json::Value, String> {
         echovault_core::config::EmbeddingPreset::Custom => "custom",
     };
 
+    // Retrieve key from keyring
+    let api_key = get_api_key_secure().or(config.embedding.api_key);
+
     Ok(serde_json::json!({
         "preset": preset,
         "api_base": config.embedding.api_base,
-        "api_key": config.embedding.api_key,
+        "api_key": api_key,
         "model": config.embedding.model,
     }))
 }
@@ -1757,11 +1812,23 @@ pub async fn get_embedding_config() -> Result<serde_json::Value, String> {
 /// Embed tất cả parsed conversations trong vault
 #[tauri::command]
 pub async fn embed_sessions() -> Result<EmbedResponse, String> {
-    let config = Config::load_default().map_err(|e| e.to_string())?;
+    let mut config = Config::load_default().map_err(|e| e.to_string())?;
     let vault_dir = config.vault_path.clone();
+
+    // Migration check
+    if let Some(key) = &config.embedding.api_key {
+        if !key.is_empty() {
+            let _ = set_api_key_secure(key);
+            config.embedding.api_key = None;
+            let _ = config.save_default();
+        }
+    }
+
+    let api_key = get_api_key_secure();
+
     let embedding_config = echovault_core::embedding::EmbeddingConfig {
         api_base: config.embedding.api_base,
-        api_key: config.embedding.api_key,
+        api_key,
         model: config.embedding.model,
         chunk_size: config.embedding.chunk_size,
         chunk_overlap: config.embedding.chunk_overlap,
@@ -1786,6 +1853,7 @@ pub async fn embed_sessions() -> Result<EmbedResponse, String> {
 /// Semantic search result cho frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResultResponse {
+
     pub session_id: String,
     pub source: String,
     pub title: Option<String>,
@@ -1799,11 +1867,23 @@ pub async fn search_semantic(
     query: String,
     limit: Option<usize>,
 ) -> Result<Vec<SearchResultResponse>, String> {
-    let config = Config::load_default().map_err(|e| e.to_string())?;
+    let mut config = Config::load_default().map_err(|e| e.to_string())?;
     let vault_dir = config.vault_path.clone();
+
+    // Migration check
+    if let Some(key) = &config.embedding.api_key {
+        if !key.is_empty() {
+            let _ = set_api_key_secure(key);
+            config.embedding.api_key = None;
+            let _ = config.save_default();
+        }
+    }
+
+    let api_key = get_api_key_secure();
+
     let embedding_config = echovault_core::embedding::EmbeddingConfig {
         api_base: config.embedding.api_base,
-        api_key: config.embedding.api_key,
+        api_key,
         model: config.embedding.model,
         chunk_size: config.embedding.chunk_size,
         chunk_overlap: config.embedding.chunk_overlap,
