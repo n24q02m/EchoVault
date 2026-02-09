@@ -36,7 +36,8 @@ impl LocalProvider {
                 let should_copy = if dst_path.exists() {
                     let src_meta = entry.metadata()?;
                     let dst_meta = fs::metadata(&dst_path)?;
-                    src_meta.len() != dst_meta.len() || src_meta.modified()? > dst_meta.modified()?
+                    src_meta.len() != dst_meta.len()
+                        || src_meta.modified()? > dst_meta.modified()?
                 } else {
                     true
                 };
@@ -116,7 +117,10 @@ impl SyncProvider for LocalProvider {
             bail!("Target path does not exist");
         }
 
-        info!("[Local] Pulling from {:?} to {:?}", self.target_path, vault_dir);
+        info!(
+            "[Local] Pulling from {:?} to {:?}",
+            self.target_path, vault_dir
+        );
         let count = Self::copy_dir_all(&self.target_path, vault_dir)?;
 
         Ok(PullResult {
@@ -131,7 +135,10 @@ impl SyncProvider for LocalProvider {
             fs::create_dir_all(&self.target_path)?;
         }
 
-        info!("[Local] Pushing from {:?} to {:?}", vault_dir, self.target_path);
+        info!(
+            "[Local] Pushing from {:?} to {:?}",
+            vault_dir, self.target_path
+        );
         let count = Self::copy_dir_all(vault_dir, &self.target_path)?;
 
         Ok(PushResult {

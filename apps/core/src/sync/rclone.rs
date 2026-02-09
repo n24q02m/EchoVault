@@ -2,7 +2,7 @@ use crate::sync::provider::{AuthStatus, PullResult, PushResult, SyncOptions, Syn
 use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use tracing::{info, warn};
+use tracing::info;
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -53,16 +53,22 @@ impl RcloneProvider {
         let crypt_name = format!("{}-crypt", self.remote_name);
         let base_remote = format!("{}:{}", self.remote_name, self.remote_path);
 
-        info!("[Rclone] Configuring encrypted remote '{}' pointing to '{}'...", crypt_name, base_remote);
+        info!(
+            "[Rclone] Configuring encrypted remote '{}' pointing to '{}'...",
+            crypt_name, base_remote
+        );
 
         // Obscure password first
         let obscured_pass = self.obscure_password(password)?;
 
         self.run_rclone(&[
-            "config", "create", &crypt_name, "crypt",
+            "config",
+            "create",
+            &crypt_name,
+            "crypt",
             &format!("remote={}", base_remote),
             &format!("password={}", obscured_pass),
-            "--non-interactive"
+            "--non-interactive",
         ])?;
 
         Ok(())
@@ -234,7 +240,10 @@ impl SyncProvider for RcloneProvider {
             bail!("Rclone not found. Please ensure rclone is installed or bundled.");
         }
 
-        info!("[Rclone] Starting configuration for type: {}...", self.remote_type);
+        info!(
+            "[Rclone] Starting configuration for type: {}...",
+            self.remote_type
+        );
 
         // If type is drive, warn about browser
         if self.remote_type == "drive" {
@@ -429,7 +438,7 @@ mod tests {
 
     #[test]
     fn test_get_remote_url_encrypted() {
-        let mut provider = RcloneProvider::with_remote(DEFAULT_REMOTE_NAME, DEFAULT_REMOTE_PATH);
+        let _provider = RcloneProvider::with_remote(DEFAULT_REMOTE_NAME, DEFAULT_REMOTE_PATH);
         // We can't fully test enable_encryption without rclone binary, but we can set the field manually if it was pub or via internal method
         // But enable_encryption calls rclone. So we just mock the expectation if possible, or skip deep test.
         // Here we just test the url generation logic if we could set the password.

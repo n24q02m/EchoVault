@@ -4,12 +4,11 @@
 //! Simplified version - only Rclone provider, no encryption.
 
 use echovault_core::{
-    LocalProvider,
-    AuthStatus, Config, RcloneProvider, SyncOptions, SyncProvider, VaultMetadata,
+    AuthStatus, Config, LocalProvider, RcloneProvider, SyncOptions, SyncProvider, VaultMetadata,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use tauri::State;
 use tracing::{error, info, warn};
 
@@ -1886,13 +1885,12 @@ pub async fn set_provider(
 
 /// Enable encryption for current provider
 #[tauri::command]
-pub async fn enable_encryption(
-    password: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn enable_encryption(password: String, state: State<'_, AppState>) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().map_err(|e| e.to_string())?;
 
-    provider_guard.enable_encryption(password).map_err(|e| e.to_string())?;
+    provider_guard
+        .enable_encryption(password)
+        .map_err(|e| e.to_string())?;
 
     info!("[enable_encryption] Encryption enabled");
     Ok(())
