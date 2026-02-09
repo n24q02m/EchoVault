@@ -6,8 +6,8 @@
 
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection, LoadExtensionGuard, OptionalExtension};
-use std::path::{Path, PathBuf};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use tracing::info;
 
 /// Find cr-sqlite extension binary path.
@@ -381,7 +381,10 @@ impl VaultDb {
         for chunk in sessions.chunks(chunk_size) {
             let ids: Vec<&str> = chunk.iter().map(|s| s.id.as_str()).collect();
             let placeholders = vec!["?"; ids.len()].join(",");
-            let sql = format!("SELECT id, mtime FROM sessions WHERE id IN ({})", placeholders);
+            let sql = format!(
+                "SELECT id, mtime FROM sessions WHERE id IN ({})",
+                placeholders
+            );
 
             let mut stmt = tx.prepare(&sql)?;
             let rows = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |row| {
@@ -417,7 +420,7 @@ impl VaultDb {
                 "INSERT INTO sessions
                     (id, source, machine_id, mtime, file_size, last_synced,
                      title, workspace_name, created_at, vault_path, original_path)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             )?;
 
             for session in to_insert {
@@ -444,7 +447,7 @@ impl VaultDb {
                     file_size = ?5, last_synced = ?6, title = ?7,
                     workspace_name = ?8, created_at = ?9,
                     vault_path = ?10, original_path = ?11
-                 WHERE id = ?1"
+                 WHERE id = ?1",
             )?;
 
             for session in to_update {
@@ -664,5 +667,4 @@ mod tests {
 
         Ok(())
     }
-
 }
