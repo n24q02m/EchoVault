@@ -308,8 +308,6 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
 
 // ============ SYNC COMMANDS ============
 
-/// Tìm thông tin session từ vault files (cho sessions đã sync từ máy khác)
-
 /// Import sessions from vault/sessions folder into vault.db
 /// This is called after pull to import sessions from other machines
 fn import_vault_sessions(vault_dir: &std::path::Path) -> Result<usize, String> {
