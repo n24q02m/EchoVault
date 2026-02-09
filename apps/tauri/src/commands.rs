@@ -6,10 +6,10 @@
 use echovault_core::{
     AuthStatus, Config, RcloneProvider, SyncOptions, SyncProvider, VaultMetadata,
 };
+use keyring::Entry;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::State;
-use keyring::Entry;
 
 const KEYRING_SERVICE: &str = "echovault";
 const KEYRING_USER: &str = "embedding_api_key";
@@ -1853,7 +1853,6 @@ pub async fn embed_sessions() -> Result<EmbedResponse, String> {
 /// Semantic search result cho frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResultResponse {
-
     pub session_id: String,
     pub source: String,
     pub title: Option<String>,

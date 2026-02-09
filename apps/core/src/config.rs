@@ -335,9 +335,15 @@ mod security_tests {
         config.embedding.api_key = Some("secret_key_12345".to_string());
 
         let toml_string = toml::to_string(&config).unwrap();
-        assert!(!toml_string.contains("secret_key_12345"), "API key was serialized!");
+        assert!(
+            !toml_string.contains("secret_key_12345"),
+            "API key was serialized!"
+        );
         // Note: 'api_key' key might not be present if value is skipped, or present as null?
         // skip_serializing means the field is omitted entirely.
-        assert!(!toml_string.contains("api_key ="), "api_key field should be omitted");
+        assert!(
+            !toml_string.contains("api_key ="),
+            "api_key field should be omitted"
+        );
     }
 }

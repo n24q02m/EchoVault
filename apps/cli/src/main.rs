@@ -26,12 +26,12 @@ use echovault_core::{
     Config,
 };
 use indicatif::{ProgressBar, ProgressStyle};
+use keyring::Entry;
 use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
-use keyring::Entry;
 
 const KEYRING_SERVICE: &str = "echovault";
 const KEYRING_USER: &str = "embedding_api_key";
@@ -40,7 +40,6 @@ fn get_api_key_secure() -> Option<String> {
     let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER).ok()?;
     entry.get_password().ok()
 }
-
 
 /// EchoVault CLI - Black box for your AI conversations
 #[derive(Parser)]
