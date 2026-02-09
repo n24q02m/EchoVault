@@ -190,3 +190,50 @@ fn append_line(path: &std::path::Path, line: &str) -> std::io::Result<()> {
     writeln!(file, "{}", line)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_domain() {
+        // Simple domain
+        assert_eq!(extract_domain("https://example.com"), "example.com");
+
+        // With path
+        assert_eq!(extract_domain("https://example.com/foo/bar"), "example.com");
+
+        // With port
+        assert_eq!(extract_domain("https://example.com:8080/foo"), "example.com");
+
+        // Subdomain
+        assert_eq!(extract_domain("https://api.example.com"), "api.example.com");
+
+        // No scheme
+        assert_eq!(extract_domain("example.com/foo"), "example.com");
+
+        // IP address
+        assert_eq!(extract_domain("http://192.168.1.1"), "192.168.1.1");
+
+        // Weird but valid cases according to current implementation
+        assert_eq!(extract_domain("example.com"), "example.com");
+    }
+
+    #[test]
+    fn test_short_hash() {
+        // Consistency
+        let h1 = short_hash("test");
+        let h2 = short_hash("test");
+        assert_eq!(h1, h2);
+
+        // Different inputs
+        let h3 = short_hash("test1");
+        assert_ne!(h1, h3);
+
+        // Length
+        assert_eq!(h1.len(), 6);
+
+        // Known value (regression test)
+        assert_eq!(short_hash("test"), "d071e5");
+    }
+}
