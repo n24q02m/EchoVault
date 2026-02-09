@@ -238,3 +238,126 @@ impl Parser for ClineParser {
             .is_some_and(|n| n == "api_conversation_history.json")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_extract_string_content() {
+        let content = json!("Hello, world!");
+        let parts = ClineParser::extract_content_parts(&content);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].0, "Hello, world!");
+        assert_eq!(parts[0].1, None);
+    }
+
+    #[test]
+    fn test_extract_simple_text_content() {
+        let content = json!([
+            { "type": "text", "text": "Hello from array" }
+        ]);
+        let parts = ClineParser::extract_content_parts(&content);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].0, "Hello from array");
+        assert_eq!(parts[0].1, None);
+    }
+
+    #[test]
+    fn test_extract_tool_use() {
+        let content = json!([
+            {
+                "type": "tool_use",
+                "name": "calculator",
+                "input": { "expression": "2 + 2" }
+            }
+        ]);
+        let parts = ClineParser::extract_content_parts(&content);
+        assert_eq!(parts.len(), 1);
+        assert!(parts[0].0.contains("*Called tool: calculator*"));
+        // The input formatting puts it inside a json block
+        assert!(parts[0].0.contains("```json"));
+        assert!(parts[0].0.contains("expression"));
+        assert_eq!(parts[0].1, Some("calculator".to_string()));
+    }
+
+    #[test]
+    fn test_extract_tool_use_empty_input() {
+        let content = json!([
+            {
+                "type": "tool_use",
+                "name": "list_files",
+                "input": {}
+            }
+        ]);
+        let parts = ClineParser::extract_content_parts(&content);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].0, "*Called tool: list_files*");
+        assert_eq!(parts[0].1, Some("list_files".to_string()));
+    }
+
+    #[test]
+    fn test_extract_tool_result() {
+        let content = json!([
+            {
+                "type": "tool_result",
+                "content": "File listed successfully"
+            }
+        ]);
+        let parts = ClineParser::extract_content_parts(&content);
+        assert_eq!(parts.len(), 1);
+        assert!(parts[0].0.contains("*Tool result:*"));
+        assert!(parts[0].0.contains("File listed successfully"));
+        assert_eq!(parts[0].1, None);
+    }
+
+    #[test]
+    fn test_extract_tool_result_nested_array() {
+        let content = json!([
+            {
+                "type": "tool_result",
+                "content": [
+                    { "type": "text", "text": "Part 1" }
+                ]
+            }
+        ]);
+        let parts = ClineParser::extract_content_parts(&content);
+        assert_eq!(parts.len(), 1);
+        assert!(parts[0].0.contains("Part 1"));
+        assert_eq!(parts[0].1, None);
+    }
+
+    #[test]
+    fn test_extract_image() {
+        let content = json!([
+            { "type": "image" }
+        ]);
+        let parts = ClineParser::extract_content_parts(&content);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].0, "*[Image content]*");
+        assert_eq!(parts[0].1, None);
+    }
+
+    #[test]
+    fn test_extract_unknown_type_fallback() {
+        let content = json!([
+            { "type": "unknown_type", "text": "Fallback text" }
+        ]);
+        let parts = ClineParser::extract_content_parts(&content);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].0, "Fallback text");
+        assert_eq!(parts[0].1, None);
+    }
+
+    #[test]
+    fn test_extract_empty_or_invalid() {
+        let content = json!([]);
+        let parts = ClineParser::extract_content_parts(&content);
+        assert!(parts.is_empty());
+
+        let content = json!(123);
+        let parts = ClineParser::extract_content_parts(&content);
+        assert!(parts.is_empty());
+    }
+}
