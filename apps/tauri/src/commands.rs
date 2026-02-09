@@ -175,6 +175,7 @@ pub async fn get_config() -> Result<AppConfig, String> {
     })
 }
 // ============ AUTH COMMANDS ============
+#[tauri::command]
 pub async fn get_auth_status(state: State<'_, AppState>) -> Result<AuthStatusResponse, String> {
     let provider = state.provider.lock().map_err(|e| e.to_string())?;
     Ok(AuthStatusResponse::from(provider.auth_status()))
