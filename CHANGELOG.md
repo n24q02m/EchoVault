@@ -277,6 +277,14 @@
 
 * Implement initial Tauri application structure with Rclone synchronization and capability schema. ([8fe9407](https://github.com/n24q02m/EchoVault/commit/8fe94074165a982618eb6f7e14f8fe531ac49e49))
 
+## [1.17.1-beta](https://github.com/n24q02m/EchoVault/compare/v1.17.0...v1.17.1-beta) (2026-02-09)
+
+
+### Bug Fixes
+
+* **release:** add prerelease false ([b453cf9](https://github.com/n24q02m/EchoVault/commit/b453cf918b9680b19cfdb432f4ccb029892e81dd))
+* resolve clippy warnings for PI constant and length comparison ([a68be91](https://github.com/n24q02m/EchoVault/commit/a68be91de526ed1c5e987395d9f5e6329a453e5f))
+
 ## [1.17.0](https://github.com/n24q02m/EchoVault/compare/v1.16.0...v1.17.0) (2026-02-08)
 
 
