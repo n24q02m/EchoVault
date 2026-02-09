@@ -150,7 +150,7 @@ mod tests {
         // On non-Windows or without WSL, should be empty
         for d in &distros {
             assert!(!d.name.is_empty());
-            assert!(d.base_path.to_string_lossy().len() > 0);
+            assert!(!d.base_path.to_string_lossy().is_empty());
         }
     }
 
