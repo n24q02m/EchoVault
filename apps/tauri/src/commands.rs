@@ -20,13 +20,13 @@ fn get_api_key_secure() -> Option<String> {
 }
 
 fn set_api_key_secure(key: &str) -> Result<(), String> {
-    let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e: keyring::Error| e.to_string())?;
-    entry.set_password(key).map_err(|e: keyring::Error| e.to_string())
+    let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| e.to_string())?;
+    entry.set_password(key).map_err(|e| e.to_string())
 }
 
 fn delete_api_key_secure() -> Result<(), String> {
-    let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e: keyring::Error| e.to_string())?;
-    entry.delete_credential().map_err(|e: keyring::Error| e.to_string())
+    let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| e.to_string())?;
+    entry.delete_credential().map_err(|e| e.to_string())
 }
 
 use tracing::{error, info, warn};
@@ -124,7 +124,7 @@ pub struct SetupRequest {
 /// Kiểm tra đã setup chưa
 #[tauri::command]
 pub async fn check_setup_complete() -> Result<bool, String> {
-    let config = Config::load_default().map_err(|e: keyring::Error| e.to_string())?;
+    let config = Config::load_default().map_err(|e| e.to_string())?;
     Ok(config.setup_complete)
 }
 
@@ -141,11 +141,11 @@ pub async fn complete_setup(
         request.folder_name
     );
 
-    let mut config = Config::load_default().map_err(|e: keyring::Error| e.to_string())?;
+    let mut config = Config::load_default().map_err(|e| e.to_string())?;
     let vault_path = config.vault_path.clone();
 
     // Check if Rclone remote is configured
-    let provider = state.provider.lock().map_err(|e: keyring::Error| e.to_string())?;
+    let provider = state.provider.lock().map_err(|e| e.to_string())?;
     if !provider.check_remote_exists().unwrap_or(false) {
         return Err("Please connect to cloud storage first".to_string());
     }
@@ -158,12 +158,12 @@ pub async fn complete_setup(
 
     config
         .save(&default_config_path())
-        .map_err(|e: keyring::Error| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     // Create vault directory if not exists
     if !vault_path.exists() {
         std::fs::create_dir_all(&vault_path)
-            .map_err(|e: keyring::Error| format!("Failed to create vault directory: {}", e))?;
+            .map_err(|e| format!("Failed to create vault directory: {}", e))?;
         info!("[complete_setup] Vault directory created: {:?}", vault_path);
     }
 
@@ -172,7 +172,7 @@ pub async fn complete_setup(
         let metadata = VaultMetadata::new();
         metadata
             .save(&vault_path)
-            .map_err(|e: keyring::Error| format!("Failed to save vault metadata: {}", e))?;
+            .map_err(|e| format!("Failed to save vault metadata: {}", e))?;
         info!("[complete_setup] vault.json created");
     }
 
@@ -185,7 +185,7 @@ pub async fn complete_setup(
 /// Lấy config hiện tại
 #[tauri::command]
 pub async fn get_config() -> Result<AppConfig, String> {
-    let config = Config::load_default().map_err(|e: keyring::Error| e.to_string())?;
+    let config = Config::load_default().map_err(|e| e.to_string())?;
     Ok(AppConfig {
         setup_complete: config.setup_complete,
         vault_path: config.vault_path.to_string_lossy().to_string(),
@@ -199,23 +199,23 @@ pub async fn get_config() -> Result<AppConfig, String> {
 /// Lấy trạng thái auth hiện tại
 #[tauri::command]
 pub async fn get_auth_status(state: State<'_, AppState>) -> Result<AuthStatusResponse, String> {
-    let provider = state.provider.lock().map_err(|e: keyring::Error| e.to_string())?;
+    let provider = state.provider.lock().map_err(|e| e.to_string())?;
     Ok(AuthStatusResponse::from(provider.auth_status()))
 }
 
 /// Bắt đầu auth flow - mở browser để user đăng nhập
 #[tauri::command]
 pub async fn start_auth(state: State<'_, AppState>) -> Result<AuthStatusResponse, String> {
-    let mut provider = state.provider.lock().map_err(|e: keyring::Error| e.to_string())?;
-    let status = provider.start_auth().map_err(|e: keyring::Error| e.to_string())?;
+    let mut provider = state.provider.lock().map_err(|e| e.to_string())?;
+    let status = provider.start_auth().map_err(|e| e.to_string())?;
     Ok(AuthStatusResponse::from(status))
 }
 
 /// Hoàn tất auth - check xem user đã đăng nhập chưa
 #[tauri::command]
 pub async fn complete_auth(state: State<'_, AppState>) -> Result<AuthStatusResponse, String> {
-    let mut provider = state.provider.lock().map_err(|e: keyring::Error| e.to_string())?;
-    let status = provider.complete_auth().map_err(|e: keyring::Error| e.to_string())?;
+    let mut provider = state.provider.lock().map_err(|e| e.to_string())?;
+    let status = provider.complete_auth().map_err(|e| e.to_string())?;
     Ok(AuthStatusResponse::from(status))
 }
 
@@ -330,7 +330,7 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
         all_sessions
     })
     .await
-    .map_err(|e: keyring::Error| e.to_string())?;
+    .map_err(|e| e.to_string())?;
 
     let total = sessions.len();
     Ok(ScanResult { sessions, total })
@@ -451,12 +451,12 @@ fn import_vault_sessions(vault_dir: &std::path::Path) -> Result<usize, String> {
 
     // Open VaultDb
     let mut vault_db =
-        VaultDb::open(vault_dir).map_err(|e: keyring::Error| format!("Failed to open vault.db: {}", e))?;
+        VaultDb::open(vault_dir).map_err(|e| format!("Failed to open vault.db: {}", e))?;
 
     // Get existing session IDs for quick lookup
     let existing_sessions = vault_db
         .get_all_sessions()
-        .map_err(|e: keyring::Error| format!("Failed to get existing sessions: {}", e))?;
+        .map_err(|e| format!("Failed to get existing sessions: {}", e))?;
     let _existing_ids: std::collections::HashSet<String> =
         existing_sessions.iter().map(|s| s.id.clone()).collect();
     let existing_mtimes: std::collections::HashMap<String, u64> = existing_sessions
@@ -639,7 +639,7 @@ fn import_vault_sessions(vault_dir: &std::path::Path) -> Result<usize, String> {
         );
         vault_db
             .upsert_batch(&sessions_to_import)
-            .map_err(|e: keyring::Error| format!("Failed to import sessions: {}", e))?;
+            .map_err(|e| format!("Failed to import sessions: {}", e))?;
         info!(
             "[import_vault_sessions] Import complete: {} sessions",
             import_count
@@ -677,7 +677,7 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(num_threads)
         .build()
-        .map_err(|e: keyring::Error| format!("Failed to build thread pool: {}", e))?;
+        .map_err(|e| format!("Failed to build thread pool: {}", e))?;
 
     info!("[ingest_sessions] Starting scan...");
 
@@ -754,7 +754,7 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     };
 
     let sessions_dir = vault_dir.join("sessions");
-    fs::create_dir_all(&sessions_dir).map_err(|e: keyring::Error| e.to_string())?;
+    fs::create_dir_all(&sessions_dir).map_err(|e| e.to_string())?;
 
     // 3. Filter sessions that need processing
     let sessions_to_process: Vec<_> = sessions
@@ -943,7 +943,7 @@ pub async fn sync_vault(state: State<'_, AppState>) -> Result<String, String> {
 
     // Check auth status
     {
-        let provider = state.provider.lock().map_err(|e: keyring::Error| {
+        let provider = state.provider.lock().map_err(|e| {
             error!("[sync_vault] Failed to lock provider: {}", e);
             e.to_string()
         })?;
@@ -959,7 +959,7 @@ pub async fn sync_vault(state: State<'_, AppState>) -> Result<String, String> {
 
     info!("[sync_vault] Auth check passed");
 
-    let config = Config::load_default().map_err(|e: keyring::Error| {
+    let config = Config::load_default().map_err(|e| {
         error!("[sync_vault] Failed to load config: {}", e);
         e.to_string()
     })?;
@@ -973,13 +973,13 @@ pub async fn sync_vault(state: State<'_, AppState>) -> Result<String, String> {
     let options_for_pull = SyncOptions::default();
 
     let pull_result = tokio::task::spawn_blocking(move || {
-        let provider = provider_for_pull.lock().map_err(|e: keyring::Error| e.to_string())?;
+        let provider = provider_for_pull.lock().map_err(|e| e.to_string())?;
         provider
             .pull(&vault_dir_for_pull, &options_for_pull)
-            .map_err(|e: keyring::Error| e.to_string())
+            .map_err(|e| e.to_string())
     })
     .await
-    .map_err(|e: keyring::Error| e.to_string())?;
+    .map_err(|e| e.to_string())?;
 
     match pull_result {
         Ok(result) => {
@@ -1000,7 +1000,7 @@ pub async fn sync_vault(state: State<'_, AppState>) -> Result<String, String> {
     let import_result =
         tokio::task::spawn_blocking(move || import_vault_sessions(&vault_dir_for_import))
             .await
-            .map_err(|e: keyring::Error| e.to_string())??;
+            .map_err(|e| e.to_string())??;
     info!(
         "[sync_vault] Import complete: {} sessions imported",
         import_result
@@ -1011,7 +1011,7 @@ pub async fn sync_vault(state: State<'_, AppState>) -> Result<String, String> {
     let vault_dir_for_ingest = vault_dir.clone();
     let ingest_result = tokio::task::spawn_blocking(move || ingest_sessions(&vault_dir_for_ingest))
         .await
-        .map_err(|e: keyring::Error| e.to_string())??;
+        .map_err(|e| e.to_string())??;
     info!("[sync_vault] Ingest complete: changes={}", ingest_result);
 
     // 3.5 Parse raw sessions to Markdown (non-blocking, best-effort)
@@ -1060,15 +1060,15 @@ pub async fn sync_vault(state: State<'_, AppState>) -> Result<String, String> {
     let provider_clone = state.provider.clone();
 
     let result = tokio::task::spawn_blocking(move || {
-        let provider = provider_clone.lock().map_err(|e: keyring::Error| e.to_string())?;
+        let provider = provider_clone.lock().map_err(|e| e.to_string())?;
         info!("[sync_vault] Calling provider.push...");
-        provider.push(&vault_dir_clone, &options).map_err(|e: keyring::Error| {
+        provider.push(&vault_dir_clone, &options).map_err(|e| {
             error!("[sync_vault] Push failed: {}", e);
             e.to_string()
         })
     })
     .await
-    .map_err(|e: keyring::Error| {
+    .map_err(|e| {
         error!("[sync_vault] spawn_blocking failed: {}", e);
         e.to_string()
     })??;
@@ -1090,7 +1090,7 @@ pub async fn open_url(url: String) -> Result<(), String> {
         let mut cmd = std::process::Command::new("cmd");
         cmd.args(["/C", "start", "", &url]);
         cmd.creation_flags(CREATE_NO_WINDOW);
-        cmd.spawn().map_err(|e: keyring::Error| e.to_string())?;
+        cmd.spawn().map_err(|e| e.to_string())?;
     }
 
     #[cfg(target_os = "linux")]
@@ -1098,7 +1098,7 @@ pub async fn open_url(url: String) -> Result<(), String> {
         std::process::Command::new("xdg-open")
             .arg(&url)
             .spawn()
-            .map_err(|e: keyring::Error| e.to_string())?;
+            .map_err(|e| e.to_string())?;
     }
 
     #[cfg(target_os = "macos")]
@@ -1106,7 +1106,7 @@ pub async fn open_url(url: String) -> Result<(), String> {
         std::process::Command::new("open")
             .arg(&url)
             .spawn()
-            .map_err(|e: keyring::Error| e.to_string())?;
+            .map_err(|e| e.to_string())?;
     }
 
     Ok(())
@@ -1125,7 +1125,7 @@ pub async fn read_file_content(path: String) -> Result<String, String> {
 
     // Giới hạn 50MB
     const MAX_SIZE: u64 = 50 * 1024 * 1024;
-    let metadata = fs::metadata(path).map_err(|e: keyring::Error| e.to_string())?;
+    let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
 
     if metadata.len() > MAX_SIZE {
         return Err(format!(
@@ -1135,7 +1135,7 @@ pub async fn read_file_content(path: String) -> Result<String, String> {
         ));
     }
 
-    fs::read_to_string(path).map_err(|e: keyring::Error| format!("Failed to read file: {}", e))
+    fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))
 }
 
 // ============ SETTINGS COMMANDS ============
@@ -1176,7 +1176,7 @@ pub async fn get_autostart_status(app: tauri::AppHandle) -> Result<bool, String>
     use tauri_plugin_autostart::ManagerExt;
 
     let autostart_manager = app.autolaunch();
-    autostart_manager.is_enabled().map_err(|e: keyring::Error| e.to_string())
+    autostart_manager.is_enabled().map_err(|e| e.to_string())
 }
 
 /// Bật/tắt autostart
@@ -1186,9 +1186,9 @@ pub async fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), S
 
     let autostart_manager = app.autolaunch();
     if enabled {
-        autostart_manager.enable().map_err(|e: keyring::Error| e.to_string())
+        autostart_manager.enable().map_err(|e| e.to_string())
     } else {
-        autostart_manager.disable().map_err(|e: keyring::Error| e.to_string())
+        autostart_manager.disable().map_err(|e| e.to_string())
     }
 }
 
@@ -1197,7 +1197,7 @@ pub async fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), S
 pub async fn get_export_path() -> Result<String, String> {
     use echovault_core::config::default_vault_path;
 
-    let config = Config::load_default().map_err(|e: keyring::Error| e.to_string())?;
+    let config = Config::load_default().map_err(|e| e.to_string())?;
     let export_path = config.export_path.unwrap_or_else(|| {
         // Default export path is sibling of vault: data_dir/../exports
         default_vault_path()
@@ -1213,11 +1213,11 @@ pub async fn get_export_path() -> Result<String, String> {
 pub async fn set_export_path(path: String) -> Result<(), String> {
     use echovault_core::config::default_config_path;
 
-    let mut config = Config::load_default().map_err(|e: keyring::Error| e.to_string())?;
+    let mut config = Config::load_default().map_err(|e| e.to_string())?;
     config.export_path = Some(std::path::PathBuf::from(path));
     config
         .save(&default_config_path())
-        .map_err(|e: keyring::Error| e.to_string())
+        .map_err(|e| e.to_string())
 }
 
 /// Mở thư mục data trong file explorer
@@ -1227,7 +1227,7 @@ pub async fn open_data_folder() -> Result<(), String> {
 
     let data_dir = default_vault_path();
     if !data_dir.exists() {
-        std::fs::create_dir_all(&data_dir).map_err(|e: keyring::Error| e.to_string())?;
+        std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
     }
     open_folder_in_explorer(&data_dir)
 }
@@ -1244,7 +1244,7 @@ pub async fn open_logs_folder() -> Result<(), String> {
         .unwrap_or_else(|| std::path::PathBuf::from("./logs"));
 
     if !logs_dir.exists() {
-        std::fs::create_dir_all(&logs_dir).map_err(|e: keyring::Error| e.to_string())?;
+        std::fs::create_dir_all(&logs_dir).map_err(|e| e.to_string())?;
     }
     open_folder_in_explorer(&logs_dir)
 }
@@ -1256,7 +1256,7 @@ fn open_folder_in_explorer(path: &std::path::Path) -> Result<(), String> {
         let mut cmd = std::process::Command::new("explorer");
         cmd.arg(path);
         cmd.creation_flags(CREATE_NO_WINDOW);
-        cmd.spawn().map_err(|e: keyring::Error| e.to_string())?;
+        cmd.spawn().map_err(|e| e.to_string())?;
     }
 
     #[cfg(target_os = "linux")]
@@ -1264,7 +1264,7 @@ fn open_folder_in_explorer(path: &std::path::Path) -> Result<(), String> {
         std::process::Command::new("xdg-open")
             .arg(path)
             .spawn()
-            .map_err(|e: keyring::Error| e.to_string())?;
+            .map_err(|e| e.to_string())?;
     }
 
     #[cfg(target_os = "macos")]
@@ -1272,7 +1272,7 @@ fn open_folder_in_explorer(path: &std::path::Path) -> Result<(), String> {
         std::process::Command::new("open")
             .arg(path)
             .spawn()
-            .map_err(|e: keyring::Error| e.to_string())?;
+            .map_err(|e| e.to_string())?;
     }
 
     Ok(())
@@ -1300,7 +1300,7 @@ pub struct ParseResult {
 /// Output: vault/parsed/<source>/<session_id>.md
 #[tauri::command]
 pub async fn parse_sessions() -> Result<ParseResult, String> {
-    let config = Config::load_default().map_err(|e: keyring::Error| e.to_string())?;
+    let config = Config::load_default().map_err(|e| e.to_string())?;
     let vault_dir = config.vault_path.clone();
     let sessions_dir = vault_dir.join("sessions");
 
@@ -1391,7 +1391,7 @@ pub async fn parse_sessions() -> Result<ParseResult, String> {
         }
     })
     .await
-    .map_err(|e: keyring::Error| e.to_string())?;
+    .map_err(|e| e.to_string())?;
 
     Ok(result)
 }
@@ -1399,7 +1399,7 @@ pub async fn parse_sessions() -> Result<ParseResult, String> {
 /// Đọc nội dung parsed Markdown cho một session
 #[tauri::command]
 pub async fn read_parsed_session(source: String, session_id: String) -> Result<String, String> {
-    let config = Config::load_default().map_err(|e: keyring::Error| e.to_string())?;
+    let config = Config::load_default().map_err(|e| e.to_string())?;
     let parsed_path = config
         .vault_path
         .join("parsed")
@@ -1414,7 +1414,7 @@ pub async fn read_parsed_session(source: String, session_id: String) -> Result<S
     }
 
     std::fs::read_to_string(&parsed_path)
-        .map_err(|e: keyring::Error| format!("Failed to read parsed session: {}", e))
+        .map_err(|e| format!("Failed to read parsed session: {}", e))
 }
 
 /// Kiểm tra update thủ công
@@ -1422,7 +1422,7 @@ pub async fn read_parsed_session(source: String, session_id: String) -> Result<S
 pub async fn check_update_manual(app: tauri::AppHandle) -> Result<UpdateCheckResult, String> {
     use tauri_plugin_updater::UpdaterExt;
 
-    let updater = app.updater().map_err(|e: keyring::Error| e.to_string())?;
+    let updater = app.updater().map_err(|e| e.to_string())?;
 
     match updater.check().await {
         Ok(Some(update)) => Ok(UpdateCheckResult {
@@ -1449,12 +1449,12 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
     let detected_bundle = bundle_type();
     tracing::info!("Detected bundle type: {:?}", detected_bundle);
 
-    let updater = app.updater().map_err(|e: keyring::Error| e.to_string())?;
+    let updater = app.updater().map_err(|e| e.to_string())?;
 
     let update = updater
         .check()
         .await
-        .map_err(|e: keyring::Error| e.to_string())?
+        .map_err(|e| e.to_string())?
         .ok_or("No update available")?;
 
     tracing::info!(
@@ -1477,7 +1477,7 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
             },
         )
         .await
-        .map_err(|e: keyring::Error| format!("Install failed: {}", e))?;
+        .map_err(|e| format!("Install failed: {}", e))?;
 
     tracing::info!("Update installed, app will restart");
     Ok(())
@@ -1534,7 +1534,7 @@ pub async fn start_interceptor(
 
     let handle = echovault_core::interceptor::start(config)
         .await
-        .map_err(|e: keyring::Error| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     let response = match handle.state() {
         InterceptorState::Running { port } => InterceptorStatusResponse {
@@ -1673,7 +1673,7 @@ pub async fn save_embedding_config(request: SaveEmbeddingConfigRequest) -> Resul
         other => return Err(format!("Unknown preset: {}", other)),
     };
 
-    let mut config = Config::load_default().map_err(|e: keyring::Error| e.to_string())?;
+    let mut config = Config::load_default().map_err(|e| e.to_string())?;
     config.embedding.preset = preset;
     config.embedding.api_base = request.api_base;
 
@@ -1701,7 +1701,7 @@ pub async fn save_embedding_config(request: SaveEmbeddingConfigRequest) -> Resul
 
     config
         .save(&default_config_path())
-        .map_err(|e: keyring::Error| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     info!(
         "[save_embedding_config] Saved preset={:?}, model={}",
@@ -1723,7 +1723,7 @@ pub struct ProviderStatusResponse {
 pub async fn test_embedding_connection() -> Result<ProviderStatusResponse, String> {
     use echovault_core::embedding::provider::{EmbeddingProvider, ProviderStatus};
 
-    let mut config = Config::load_default().map_err(|e: keyring::Error| e.to_string())?;
+    let mut config = Config::load_default().map_err(|e| e.to_string())?;
 
     // Migration: If key exists in file config, move to keyring
     if let Some(key) = &config.embedding.api_key {
@@ -1746,7 +1746,7 @@ pub async fn test_embedding_connection() -> Result<ProviderStatusResponse, Strin
         provider.check_provider_status()
     })
     .await
-    .map_err(|e: keyring::Error| e.to_string())?;
+    .map_err(|e| e.to_string())?;
 
     Ok(match result {
         ProviderStatus::Available { dimension } => ProviderStatusResponse {
@@ -1774,7 +1774,7 @@ pub async fn check_ollama() -> Result<serde_json::Value, String> {
         echovault_core::embedding::provider::check_ollama_available()
     })
     .await
-    .map_err(|e: keyring::Error| e.to_string())?;
+    .map_err(|e| e.to_string())?;
 
     Ok(match result {
         Some(models) => serde_json::json!({
@@ -1791,7 +1791,7 @@ pub async fn check_ollama() -> Result<serde_json::Value, String> {
 /// Get current embedding config for frontend
 #[tauri::command]
 pub async fn get_embedding_config() -> Result<serde_json::Value, String> {
-    let config = Config::load_default().map_err(|e: keyring::Error| e.to_string())?;
+    let config = Config::load_default().map_err(|e| e.to_string())?;
     let preset = match config.embedding.preset {
         echovault_core::config::EmbeddingPreset::Ollama => "ollama",
         echovault_core::config::EmbeddingPreset::OpenAI => "openai",
@@ -1812,7 +1812,7 @@ pub async fn get_embedding_config() -> Result<serde_json::Value, String> {
 /// Embed tất cả parsed conversations trong vault
 #[tauri::command]
 pub async fn embed_sessions() -> Result<EmbedResponse, String> {
-    let mut config = Config::load_default().map_err(|e: keyring::Error| e.to_string())?;
+    let mut config = Config::load_default().map_err(|e| e.to_string())?;
     let vault_dir = config.vault_path.clone();
 
     // Migration check
@@ -1839,8 +1839,8 @@ pub async fn embed_sessions() -> Result<EmbedResponse, String> {
         echovault_core::embedding::embed_vault(&embedding_config, &vault_dir)
     })
     .await
-    .map_err(|e: keyring::Error| e.to_string())?
-    .map_err(|e: keyring::Error| e.to_string())?;
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
 
     Ok(EmbedResponse {
         sessions_processed: result.sessions_processed,
@@ -1867,7 +1867,7 @@ pub async fn search_semantic(
     query: String,
     limit: Option<usize>,
 ) -> Result<Vec<SearchResultResponse>, String> {
-    let mut config = Config::load_default().map_err(|e: keyring::Error| e.to_string())?;
+    let mut config = Config::load_default().map_err(|e| e.to_string())?;
     let vault_dir = config.vault_path.clone();
 
     // Migration check
@@ -1895,8 +1895,8 @@ pub async fn search_semantic(
         echovault_core::embedding::search_similar(&embedding_config, &vault_dir, &query, limit)
     })
     .await
-    .map_err(|e: keyring::Error| e.to_string())?
-    .map_err(|e: keyring::Error| e.to_string())?;
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
 
     Ok(results
         .into_iter()
@@ -1913,14 +1913,14 @@ pub async fn search_semantic(
 /// Lấy thống kê embedding store
 #[tauri::command]
 pub async fn embedding_stats() -> Result<serde_json::Value, String> {
-    let config = Config::load_default().map_err(|e: keyring::Error| e.to_string())?;
+    let config = Config::load_default().map_err(|e| e.to_string())?;
     let vault_dir = config.vault_path.clone();
 
     let stats =
         tokio::task::spawn_blocking(move || echovault_core::embedding::get_stats(&vault_dir))
             .await
-            .map_err(|e: keyring::Error| e.to_string())?
-            .map_err(|e: keyring::Error| e.to_string())?;
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
 
     Ok(serde_json::json!({
         "total_chunks": stats.total_chunks,
