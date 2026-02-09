@@ -51,23 +51,23 @@ pub struct EmbeddingConfig {
 }
 
 fn default_api_base() -> String {
-    "http://localhost:11434/v1".to_string()
+    crate::config::DEFAULT_OLLAMA_API_BASE.to_string()
 }
 
 fn default_model() -> String {
-    "nomic-embed-text".to_string()
+    crate::config::DEFAULT_OLLAMA_MODEL.to_string()
 }
 
 fn default_chunk_size() -> usize {
-    1000
+    crate::config::DEFAULT_CHUNK_SIZE
 }
 
 fn default_chunk_overlap() -> usize {
-    200
+    crate::config::DEFAULT_CHUNK_OVERLAP
 }
 
 fn default_batch_size() -> usize {
-    32
+    crate::config::DEFAULT_BATCH_SIZE
 }
 
 impl Default for EmbeddingConfig {
