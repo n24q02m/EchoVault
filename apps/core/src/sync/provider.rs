@@ -94,4 +94,9 @@ pub trait SyncProvider: Send + Sync {
 
     /// Check if remote has new changes
     fn has_remote_changes(&self, vault_dir: &Path) -> Result<bool>;
+
+    /// Enable encryption with password (if supported)
+    fn enable_encryption(&mut self, _password: String) -> Result<()> {
+        anyhow::bail!("Encryption not supported by this provider")
+    }
 }
