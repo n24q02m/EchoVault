@@ -37,7 +37,7 @@ impl VSCodeCommon {
 
         // 3. WSL Check
         if cfg!(target_os = "windows") {
-             for subpath in wsl_subpaths {
+            for subpath in wsl_subpaths {
                 for wsl_path in wsl::find_wsl_paths(subpath) {
                     if !storage_paths.contains(&wsl_path) {
                         storage_paths.push(wsl_path);
@@ -254,11 +254,12 @@ impl VSCodeCommon {
         let mut sessions: Vec<SessionFile> = json_paths
             .par_iter()
             .filter_map(|path| {
-                metadata_extractor(path, &workspace_name, extractor_source)
-                    .map(|metadata| SessionFile {
+                metadata_extractor(path, &workspace_name, extractor_source).map(|metadata| {
+                    SessionFile {
                         source_path: path.clone(),
                         metadata,
-                    })
+                    }
+                })
             })
             .collect();
 
