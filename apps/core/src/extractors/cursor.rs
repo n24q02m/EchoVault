@@ -82,19 +82,20 @@ impl CursorExtractor {
     ) -> Option<SessionMetadata> {
         let is_jsonl = path.extension().is_some_and(|ext| ext == "jsonl");
 
-        let json = if is_jsonl {
+        let (json, file_size) = if is_jsonl {
             // JSONL format: first line is kind=0 (session header), data in "v" field
             let file = std::fs::File::open(path).ok()?;
+            let size = file.metadata().map(|m| m.len()).unwrap_or(0);
             let reader = std::io::BufReader::new(file);
             let first_line = reader.lines().next()?.ok()?;
             let wrapper: Value = serde_json::from_str(&first_line).ok()?;
-            wrapper.get("v")?.clone()
+            (wrapper.get("v")?.clone(), size)
         } else {
             let content = std::fs::read_to_string(path).ok()?;
-            serde_json::from_str(&content).ok()?
+            let size = content.len() as u64;
+            (serde_json::from_str(&content).ok()?, size)
         };
 
-        // Get session ID from filename or JSON
         let session_id = json
             .get("sessionId")
             .and_then(|v| v.as_str())
@@ -159,8 +160,6 @@ impl CursorExtractor {
             .and_then(|v| v.as_i64())
             .and_then(|ts| Utc.timestamp_millis_opt(ts).single());
 
-        // Get file size
-        let file_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
 
         Some(SessionMetadata {
             id: session_id,
