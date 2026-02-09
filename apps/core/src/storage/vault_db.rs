@@ -487,6 +487,26 @@ impl VaultDb {
     }
 
     /// Log a sync action.
+
+    /// Get a map of session ID to mtime for all sessions.
+    pub fn get_all_session_mtimes(&self) -> Result<std::collections::HashMap<String, u64>> {
+        let mut stmt = self.conn.prepare("SELECT id, mtime FROM sessions")?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)? as u64
+            ))
+        })?;
+
+        let mut mtimes = std::collections::HashMap::new();
+        for row in rows {
+            let (id, mtime) = row?;
+            mtimes.insert(id, mtime);
+        }
+
+        Ok(mtimes)
+    }
     pub fn log_sync(&self, action: &str, details: Option<&str>) -> Result<()> {
         let now = chrono::Utc::now().timestamp();
         self.conn.execute(
@@ -629,6 +649,28 @@ mod tests {
         // Should be ordered by mtime DESC
         assert_eq!(all[0].id, "s2");
         assert_eq!(all[1].id, "s1");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_all_session_mtimes() -> Result<()> {
+        let mut db = VaultDb::open_in_memory()?;
+
+        let sessions = vec![
+            create_test_session("s1", 1000),
+            create_test_session("s2", 2000),
+            create_test_session("s3", 3000),
+        ];
+
+        db.upsert_batch(&sessions)?;
+
+        let mtimes = db.get_all_session_mtimes()?;
+        assert_eq!(mtimes.len(), 3);
+        assert_eq!(mtimes.get("s1"), Some(&1000));
+        assert_eq!(mtimes.get("s2"), Some(&2000));
+        assert_eq!(mtimes.get("s3"), Some(&3000));
+        assert_eq!(mtimes.get("s4"), None);
 
         Ok(())
     }

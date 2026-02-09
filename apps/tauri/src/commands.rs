@@ -737,6 +737,12 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     fs::create_dir_all(&sessions_dir).map_err(|e| e.to_string())?;
 
     // 3. Filter sessions that need processing
+    // Optimisation: Fetch all mtimes at once to avoid N+1 queries
+    let cached_mtimes = vault_db.get_all_session_mtimes().unwrap_or_else(|e| {
+        warn!("[ingest_sessions] Failed to fetch session mtimes: {}", e);
+        std::collections::HashMap::new()
+    });
+
     let sessions_to_process: Vec<_> = sessions
         .into_iter()
         .filter_map(|session| {
@@ -757,10 +763,9 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
                 .unwrap_or(0);
 
             // Check against vault.db
-            let should_process = match vault_db.get_session_mtime(&session.metadata.id) {
-                Ok(Some(cached_mtime)) => mtime > cached_mtime,
-                Ok(None) => true,
-                Err(_) => true, // Process if we can't check
+            let should_process = match cached_mtimes.get(&session.metadata.id) {
+                Some(&cached_mtime) => mtime > cached_mtime,
+                None => true,
             };
 
             if should_process {
