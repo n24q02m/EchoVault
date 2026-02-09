@@ -161,11 +161,12 @@ pub async fn complete_setup(
 }
 
 // ============ CONFIG COMMANDS ============
-
 /// Lấy config hiện tại
 #[tauri::command]
 pub async fn get_config() -> Result<AppConfig, String> {
-    let config = Config::load_default().map_err(|e| e.to_string())?;
+    let config = tokio::task::spawn_blocking(|| Config::load_default().map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())??;
     Ok(AppConfig {
         setup_complete: config.setup_complete,
         vault_path: config.vault_path.to_string_lossy().to_string(),
@@ -173,11 +174,7 @@ pub async fn get_config() -> Result<AppConfig, String> {
         folder_name: config.sync.folder_name,
     })
 }
-
 // ============ AUTH COMMANDS ============
-
-/// Lấy trạng thái auth hiện tại
-#[tauri::command]
 pub async fn get_auth_status(state: State<'_, AppState>) -> Result<AuthStatusResponse, String> {
     let provider = state.provider.lock().map_err(|e| e.to_string())?;
     Ok(AuthStatusResponse::from(provider.auth_status()))
