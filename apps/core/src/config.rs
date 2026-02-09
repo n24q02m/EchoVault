@@ -9,6 +9,9 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+/// Default folder name on cloud
+pub const DEFAULT_FOLDER_NAME: &str = "EchoVault";
+
 /// Cloud sync configuration via Rclone.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SyncConfig {
@@ -20,7 +23,7 @@ pub struct SyncConfig {
 }
 
 fn default_folder_name() -> String {
-    "EchoVault".to_string()
+    DEFAULT_FOLDER_NAME.to_string()
 }
 
 /// Extractors configuration.
@@ -78,22 +81,39 @@ pub enum EmbeddingPreset {
     Custom,
 }
 
+/// Default Ollama API base URL
+pub const DEFAULT_OLLAMA_API_BASE: &str = "http://localhost:11434/v1";
+/// Default OpenAI API base URL
+pub const DEFAULT_OPENAI_API_BASE: &str = "https://api.openai.com/v1";
+/// Default Custom API base URL
+pub const DEFAULT_CUSTOM_API_BASE: &str = "http://localhost:8000/v1";
+/// Default Ollama model
+pub const DEFAULT_OLLAMA_MODEL: &str = "nomic-embed-text";
+/// Default OpenAI model
+pub const DEFAULT_OPENAI_MODEL: &str = "text-embedding-3-small";
+/// Default chunk size
+pub const DEFAULT_CHUNK_SIZE: usize = 1000;
+/// Default chunk overlap
+pub const DEFAULT_CHUNK_OVERLAP: usize = 200;
+/// Default batch size
+pub const DEFAULT_BATCH_SIZE: usize = 32;
+
 impl EmbeddingPreset {
     /// Default API base URL for this preset.
     pub fn default_api_base(&self) -> &'static str {
         match self {
-            Self::Ollama => "http://localhost:11434/v1",
-            Self::OpenAI => "https://api.openai.com/v1",
-            Self::Custom => "http://localhost:8000/v1",
+            Self::Ollama => DEFAULT_OLLAMA_API_BASE,
+            Self::OpenAI => DEFAULT_OPENAI_API_BASE,
+            Self::Custom => DEFAULT_CUSTOM_API_BASE,
         }
     }
 
     /// Default model name for this preset.
     pub fn default_model(&self) -> &'static str {
         match self {
-            Self::Ollama => "nomic-embed-text",
-            Self::OpenAI => "text-embedding-3-small",
-            Self::Custom => "nomic-embed-text",
+            Self::Ollama => DEFAULT_OLLAMA_MODEL,
+            Self::OpenAI => DEFAULT_OPENAI_MODEL,
+            Self::Custom => DEFAULT_OLLAMA_MODEL,
         }
     }
 
@@ -136,23 +156,23 @@ pub struct EmbeddingConfigToml {
 }
 
 fn default_embedding_api_base() -> String {
-    "http://localhost:11434/v1".to_string()
+    DEFAULT_OLLAMA_API_BASE.to_string()
 }
 
 fn default_embedding_model() -> String {
-    "nomic-embed-text".to_string()
+    DEFAULT_OLLAMA_MODEL.to_string()
 }
 
 fn default_embedding_chunk_size() -> usize {
-    1000
+    DEFAULT_CHUNK_SIZE
 }
 
 fn default_embedding_chunk_overlap() -> usize {
-    200
+    DEFAULT_CHUNK_OVERLAP
 }
 
 fn default_embedding_batch_size() -> usize {
-    32
+    DEFAULT_BATCH_SIZE
 }
 
 impl Default for EmbeddingConfigToml {
