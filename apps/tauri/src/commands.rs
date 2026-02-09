@@ -8,6 +8,7 @@ use echovault_core::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+use std::collections::HashSet;
 use tauri::State;
 use tracing::{error, info, warn};
 
@@ -22,12 +23,14 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 #[derive(Clone)]
 pub struct AppState {
     pub provider: Arc<Mutex<RcloneProvider>>,
+    pub known_paths: Arc<Mutex<HashSet<String>>>,
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self {
             provider: Arc::new(Mutex::new(RcloneProvider::new())),
+            known_paths: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 }
@@ -203,7 +206,7 @@ pub async fn complete_auth(state: State<'_, AppState>) -> Result<AuthStatusRespo
 
 /// Scan tất cả sessions có sẵn (local + synced từ vault)
 #[tauri::command]
-pub async fn scan_sessions() -> Result<ScanResult, String> {
+pub async fn scan_sessions(state: State<'_, AppState>) -> Result<ScanResult, String> {
     use echovault_core::extractors::{
         aider::AiderExtractor, antigravity::AntigravityExtractor, claude_code::ClaudeCodeExtractor,
         cline::ClineExtractor, codex::CodexExtractor, continue_dev::ContinueDevExtractor,
@@ -311,6 +314,17 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
     })
     .await
     .map_err(|e| e.to_string())?;
+
+    // Update known paths for security
+    if let Ok(mut known) = state.known_paths.lock() {
+        known.clear();
+        for session in &sessions {
+            if let Ok(canon) = std::fs::canonicalize(&session.path) {
+                known.insert(canon.to_string_lossy().to_string());
+            }
+        }
+        info!("[scan_sessions] Updated known_paths with {} entries", known.len());
+    }
 
     let total = sessions.len();
     Ok(ScanResult { sessions, total })
@@ -1094,18 +1108,56 @@ pub async fn open_url(url: String) -> Result<(), String> {
 
 /// Đọc nội dung file để hiển thị trong text editor
 #[tauri::command]
-pub async fn read_file_content(path: String) -> Result<String, String> {
+pub async fn read_file_content(path: String, state: State<'_, AppState>) -> Result<String, String> {
     use std::fs;
 
-    let path = std::path::Path::new(&path);
+    let path_buf = std::path::Path::new(&path);
 
-    if !path.exists() {
-        return Err(format!("File not found: {}", path.display()));
+    if !path_buf.exists() {
+        return Err(format!("File not found: {}", path_buf.display()));
+    }
+
+    // Security check: validate path
+    let canonical_path = fs::canonicalize(path_buf).map_err(|e| format!("Invalid path: {}", e))?;
+    let mut allowed = false;
+
+    // 1. Check if in vault directory
+    if let Ok(config) = Config::load_default() {
+        if let Ok(vault_canon) = fs::canonicalize(&config.vault_path) {
+            if canonical_path.starts_with(&vault_canon) {
+                allowed = true;
+            }
+        }
+
+        // 2. Check if in export directory
+        if !allowed {
+            if let Some(export_path) = config.export_path {
+                if let Ok(export_canon) = fs::canonicalize(&export_path) {
+                    if canonical_path.starts_with(&export_canon) {
+                        allowed = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Check against known paths from scan_sessions
+    if !allowed {
+        if let Ok(known) = state.known_paths.lock() {
+            if known.contains(&canonical_path.to_string_lossy().to_string()) {
+                allowed = true;
+            }
+        }
+    }
+
+    if !allowed {
+        warn!("[read_file_content] Access denied: {:?}", canonical_path);
+        return Err(format!("Access denied: {}", path));
     }
 
     // Giới hạn 50MB
     const MAX_SIZE: u64 = 50 * 1024 * 1024;
-    let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
+    let metadata = fs::metadata(&canonical_path).map_err(|e| e.to_string())?;
 
     if metadata.len() > MAX_SIZE {
         return Err(format!(
@@ -1115,7 +1167,7 @@ pub async fn read_file_content(path: String) -> Result<String, String> {
         ));
     }
 
-    fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))
+    fs::read_to_string(&canonical_path).map_err(|e| format!("Failed to read file: {}", e))
 }
 
 // ============ SETTINGS COMMANDS ============
