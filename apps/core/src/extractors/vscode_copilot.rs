@@ -70,6 +70,93 @@ impl VSCodeCopilotExtractor {
         Self { storage_paths }
     }
 
+    fn read_json_content(path: &Path, is_jsonl: bool) -> Option<Value> {
+        if is_jsonl {
+            // JSONL format: first line is kind=0 (session header), data in "v" field
+            let file = std::fs::File::open(path).ok()?;
+            let reader = std::io::BufReader::new(file);
+            let first_line = reader.lines().next()?.ok()?;
+            let wrapper: Value = serde_json::from_str(&first_line).ok()?;
+            wrapper.get("v")?.clone().into()
+        } else {
+            // Legacy JSON format: entire file is the session object
+            let content = std::fs::read_to_string(path).ok()?;
+            serde_json::from_str(&content).ok()?
+        }
+    }
+
+    fn extract_session_id(json: &Value, path: &Path) -> String {
+        json.get("sessionId")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_default()
+            })
+    }
+
+    fn extract_title(json: &Value, path: &Path, is_jsonl: bool) -> Option<String> {
+        json.get("customTitle")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| Self::extract_title_from_requests(json))
+            .or_else(|| {
+                if is_jsonl {
+                    Self::extract_title_from_jsonl_body(path)
+                } else {
+                    None
+                }
+            })
+    }
+
+    fn extract_title_from_requests(json: &Value) -> Option<String> {
+        json.get("requests")
+            .and_then(|r| r.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|req| req.get("message"))
+            .and_then(|msg| msg.get("text"))
+            .and_then(|t| t.as_str())
+            .map(|s| {
+                let truncated: String = s.chars().take(60).collect();
+                if s.chars().count() > 60 {
+                    format!("{}...", truncated)
+                } else {
+                    truncated
+                }
+            })
+    }
+
+    fn extract_title_from_jsonl_body(path: &Path) -> Option<String> {
+        let file = std::fs::File::open(path).ok()?;
+        let reader = std::io::BufReader::new(file);
+        // Skip first line (header), look for kind=1 with string value (user message)
+        for line in reader.lines().skip(1).take(20).flatten() {
+            if let Ok(obj) = serde_json::from_str::<Value>(&line) {
+                if obj.get("kind").and_then(|k| k.as_i64()) == Some(1) {
+                    if let Some(text) = obj.get("v").and_then(|v| v.as_str()) {
+                        if !text.is_empty() && text.len() > 5 {
+                            let truncated: String = text.chars().take(60).collect();
+                            return if text.chars().count() > 60 {
+                                Some(format!("{}...", truncated))
+                            } else {
+                                Some(truncated)
+                            };
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn extract_timestamp(json: &Value) -> Option<chrono::DateTime<Utc>> {
+        json.get("creationDate")
+            .and_then(|v| v.as_i64())
+            .and_then(|ts| Utc.timestamp_millis_opt(ts).single())
+    }
+
     /// Quick metadata extraction from JSON/JSONL file (only read required fields).
     fn extract_quick_metadata(
         &self,
@@ -78,88 +165,13 @@ impl VSCodeCopilotExtractor {
     ) -> Option<SessionMetadata> {
         let is_jsonl = path.extension().is_some_and(|ext| ext == "jsonl");
 
-        let json = if is_jsonl {
-            // JSONL format: first line is kind=0 (session header), data in "v" field
-            let file = std::fs::File::open(path).ok()?;
-            let reader = std::io::BufReader::new(file);
-            let first_line = reader.lines().next()?.ok()?;
-            let wrapper: Value = serde_json::from_str(&first_line).ok()?;
-            // Extract the "v" object which contains session metadata
-            wrapper.get("v")?.clone()
-        } else {
-            // Legacy JSON format: entire file is the session object
-            let content = std::fs::read_to_string(path).ok()?;
-            serde_json::from_str(&content).ok()?
-        };
+        // Read initial JSON content
+        let json = Self::read_json_content(path, is_jsonl)?;
 
-        // Get session ID from filename or JSON
-        let session_id = json
-            .get("sessionId")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| {
-                path.file_stem()
-                    .and_then(|s| s.to_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_default()
-            });
-
-        // Get title if available
-        let title = json
-            .get("customTitle")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .or_else(|| {
-                // Fallback: get text from first request (works for legacy JSON)
-                json.get("requests")
-                    .and_then(|r| r.as_array())
-                    .and_then(|arr| arr.first())
-                    .and_then(|req| req.get("message"))
-                    .and_then(|msg| msg.get("text"))
-                    .and_then(|t| t.as_str())
-                    .map(|s| {
-                        let truncated: String = s.chars().take(60).collect();
-                        if s.chars().count() > 60 {
-                            format!("{}...", truncated)
-                        } else {
-                            truncated
-                        }
-                    })
-            })
-            .or_else(|| {
-                // Fallback for JSONL: read subsequent lines to find first user message
-                if !is_jsonl {
-                    return None;
-                }
-                let file = std::fs::File::open(path).ok()?;
-                let reader = std::io::BufReader::new(file);
-                // Skip first line (header), look for kind=1 with string value (user message)
-                for line in reader.lines().skip(1).take(20).flatten() {
-                    if let Ok(obj) = serde_json::from_str::<Value>(&line) {
-                        if obj.get("kind").and_then(|k| k.as_i64()) == Some(1) {
-                            if let Some(text) = obj.get("v").and_then(|v| v.as_str()) {
-                                if !text.is_empty() && text.len() > 5 {
-                                    let truncated: String = text.chars().take(60).collect();
-                                    return if text.chars().count() > 60 {
-                                        Some(format!("{}...", truncated))
-                                    } else {
-                                        Some(truncated)
-                                    };
-                                }
-                            }
-                        }
-                    }
-                }
-                None
-            });
-
-        // Get timestamp
-        let created_at = json
-            .get("creationDate")
-            .and_then(|v| v.as_i64())
-            .and_then(|ts| Utc.timestamp_millis_opt(ts).single());
-
-        // Get file size
+        // Extract metadata
+        let session_id = Self::extract_session_id(&json, path);
+        let title = Self::extract_title(&json, path, is_jsonl);
+        let created_at = Self::extract_timestamp(&json);
         let file_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
 
         Some(SessionMetadata {
@@ -299,5 +311,118 @@ impl Extractor for VSCodeCopilotExtractor {
             .count();
 
         Ok(count)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_extract_quick_metadata_json() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("session.json");
+        let mut file = File::create(&file_path).unwrap();
+
+        let json_content = r#"{
+            "sessionId": "12345",
+            "customTitle": "Test Session",
+            "creationDate": 1678886400000
+        }"#;
+        file.write_all(json_content.as_bytes()).unwrap();
+
+        let extractor = VSCodeCopilotExtractor::new();
+        let metadata = extractor
+            .extract_quick_metadata(&file_path, "workspace")
+            .unwrap();
+
+        assert_eq!(metadata.id, "12345");
+        assert_eq!(metadata.title, Some("Test Session".to_string()));
+        assert_eq!(
+            metadata.created_at.unwrap().timestamp_millis(),
+            1678886400000
+        );
+    }
+
+    #[test]
+    fn test_extract_quick_metadata_json_fallback() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("session_fallback.json");
+        let mut file = File::create(&file_path).unwrap();
+
+        let json_content = r#"{
+            "sessionId": "67890",
+            "creationDate": 1678886400000,
+            "requests": [
+                {
+                    "message": {
+                        "text": "Hello, Copilot!"
+                    }
+                }
+            ]
+        }"#;
+        file.write_all(json_content.as_bytes()).unwrap();
+
+        let extractor = VSCodeCopilotExtractor::new();
+        let metadata = extractor
+            .extract_quick_metadata(&file_path, "workspace")
+            .unwrap();
+
+        assert_eq!(metadata.id, "67890");
+        assert_eq!(metadata.title, Some("Hello, Copilot!".to_string()));
+    }
+
+    #[test]
+    fn test_extract_quick_metadata_jsonl() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("session.jsonl");
+        let mut file = File::create(&file_path).unwrap();
+
+        // Header line
+        let header = r#"{"kind":0,"v":{"sessionId":"abcde","customTitle":"JSONL Session","creationDate":1678886400000}}"#;
+        writeln!(file, "{}", header).unwrap();
+        // Content line
+        file.write_all(r#"{"kind":1,"v":"User message"}"#.as_bytes())
+            .unwrap();
+
+        let extractor = VSCodeCopilotExtractor::new();
+        let metadata = extractor
+            .extract_quick_metadata(&file_path, "workspace")
+            .unwrap();
+
+        assert_eq!(metadata.id, "abcde");
+        assert_eq!(metadata.title, Some("JSONL Session".to_string()));
+        assert_eq!(
+            metadata.created_at.unwrap().timestamp_millis(),
+            1678886400000
+        );
+    }
+
+    #[test]
+    fn test_extract_quick_metadata_jsonl_fallback() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("session_fallback.jsonl");
+        let mut file = File::create(&file_path).unwrap();
+
+        // Header line without title
+        let header = r#"{"kind":0,"v":{"sessionId":"fghij","creationDate":1678886400000}}"#;
+        writeln!(file, "{}", header).unwrap();
+        // Content lines
+        file.write_all(r#"{"kind":2,"v":"System message"}"#.as_bytes())
+            .unwrap();
+        file.write_all(b"\n").unwrap();
+        file.write_all(r#"{"kind":1,"v":"User fallback message"}"#.as_bytes())
+            .unwrap();
+
+        let extractor = VSCodeCopilotExtractor::new();
+        let metadata = extractor
+            .extract_quick_metadata(&file_path, "workspace")
+            .unwrap();
+
+        assert_eq!(metadata.id, "fghij");
+        assert_eq!(metadata.title, Some("User fallback message".to_string()));
     }
 }
