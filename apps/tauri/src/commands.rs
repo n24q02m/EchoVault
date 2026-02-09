@@ -32,17 +32,7 @@ impl Default for AppState {
     }
 }
 
-/// Thông tin một session
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionInfo {
-    pub id: String,
-    pub source: String,
-    pub title: Option<String>,
-    pub workspace_name: Option<String>,
-    pub created_at: Option<String>,
-    pub file_size: u64,
-    pub path: String,
-}
+use echovault_core::session::{find_vault_session_info, SessionInfo};
 
 /// Kết quả scan
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -317,100 +307,6 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
 }
 
 // ============ SYNC COMMANDS ============
-
-/// Tìm thông tin session từ vault files (cho sessions đã sync từ máy khác)
-fn find_vault_session_info(
-    vault_dir: &std::path::Path,
-    session_id: &str,
-    file_size: u64,
-    source: &str,
-    db_created_at: Option<&str>,
-    db_title: Option<&str>,
-    db_workspace_name: Option<&str>,
-) -> SessionInfo {
-    use std::fs;
-
-    let sessions_dir = vault_dir.join("sessions");
-
-    // Xử lý ID có chứa `/` (Antigravity artifact format: uuid/filename)
-    let file_part = if session_id.contains('/') {
-        let parts: Vec<&str> = session_id.splitn(2, '/').collect();
-        parts.get(1).copied()
-    } else {
-        None
-    };
-
-    // Tìm file path dựa vào source đã biết từ index
-    let source_dir = sessions_dir.join(source);
-    let mut found_path = String::new();
-    let mut display_title: Option<String> = None;
-
-    if source_dir.exists() {
-        // Tạo các patterns để tìm file
-        let patterns = if let Some(file_name) = file_part {
-            // Antigravity artifact: file name là phần sau `/`
-            let clean_name = file_name.replace(".md", "");
-            display_title = Some(clean_name.replace('_', " "));
-            vec![format!("{}.md", clean_name), file_name.to_string()]
-        } else {
-            // Normal session - try both .json and .jsonl extensions
-            let extension = if source == "antigravity" {
-                "pb"
-            } else {
-                "json" // Will try jsonl as fallback below
-            };
-            vec![
-                format!("{}.{}", session_id, extension),
-                format!("{}.jsonl", session_id), // JSONL fallback for vscode-copilot/cursor
-                session_id.to_string(),
-            ]
-        };
-
-        for pattern in &patterns {
-            let file_path = source_dir.join(pattern);
-            if file_path.exists() {
-                found_path = file_path.to_string_lossy().to_string();
-                break;
-            }
-        }
-    }
-
-    // Nếu không tìm thấy path cụ thể, dùng đường dẫn sessions
-    if found_path.is_empty() {
-        found_path = sessions_dir.to_string_lossy().to_string();
-    }
-
-    // Ưu tiên title từ db, nếu không có thì thử đọc từ file
-    let title = db_title.map(|s| s.to_string()).or_else(|| {
-        if !found_path.is_empty() && std::path::Path::new(&found_path).exists() {
-            if let Ok(content) = fs::read_to_string(&found_path) {
-                // Parse JSON để lấy title/workspace
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                    json.get("title")
-                        .or_else(|| json.get("workspace_name"))
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                } else {
-                    display_title.clone()
-                }
-            } else {
-                display_title.clone()
-            }
-        } else {
-            display_title.clone()
-        }
-    });
-
-    SessionInfo {
-        id: session_id.to_string(),
-        source: source.to_string(),
-        title,
-        workspace_name: db_workspace_name.map(|s| s.to_string()),
-        created_at: db_created_at.map(|s| s.to_string()),
-        file_size,
-        path: found_path,
-    }
-}
 
 /// Import sessions from vault/sessions folder into vault.db
 /// This is called after pull to import sessions from other machines

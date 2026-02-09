@@ -18,6 +18,7 @@ pub mod interceptor;
 #[cfg(feature = "mcp")]
 pub mod mcp;
 pub mod parsers;
+pub mod session;
 pub mod storage;
 pub mod sync;
 pub mod utils;
@@ -28,6 +29,7 @@ pub mod watcher;
 pub use config::Config;
 pub use extractors::{all_extractors, Extractor, ExtractorKind};
 pub use parsers::{ParsedConversation, Parser};
+pub use session::SessionInfo;
 pub use storage::SessionIndex;
 pub use sync::{AuthStatus, PullResult, PushResult, RcloneProvider, SyncOptions, SyncProvider};
 pub use vault::VaultMetadata;
