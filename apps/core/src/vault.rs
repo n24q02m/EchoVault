@@ -88,7 +88,10 @@ mod tests {
 
         let result = VaultMetadata::load(vault_dir);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Failed to read vault.json"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to read vault.json"));
     }
 
     #[test]
@@ -100,7 +103,10 @@ mod tests {
 
         let result = VaultMetadata::load(vault_dir);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Failed to parse vault.json"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to parse vault.json"));
     }
 
     #[test]
@@ -116,6 +122,9 @@ mod tests {
 
         let result = VaultMetadata::load(vault_dir);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Failed to parse vault.json"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to parse vault.json"));
     }
 }
