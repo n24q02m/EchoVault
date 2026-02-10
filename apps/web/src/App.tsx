@@ -452,6 +452,7 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 hover:bg-[var(--bg-card)]"
+            aria-label="Close settings"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <title>Close</title>
@@ -482,6 +483,9 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
                   <span className="text-sm">Auto Launch</span>
                   <button
                     type="button"
+                    role="switch"
+                    aria-checked={autoLaunch}
+                    aria-label="Auto Launch"
                     onClick={handleAutoLaunchToggle}
                     className={`relative h-6 w-11 rounded-full transition-colors ${autoLaunch ? "bg-[var(--accent)]" : "bg-gray-500"}`}
                   >
@@ -944,6 +948,7 @@ function MainApp() {
               onClick={() => setShowSettings(true)}
               className="rounded-lg p-1.5 hover:bg-[var(--bg-card)]"
               title="Settings"
+              aria-label="Settings"
             >
               <svg
                 className="h-5 w-5 text-[var(--text-secondary)]"
@@ -1027,6 +1032,7 @@ function MainApp() {
                   <button
                     onClick={() => toggleSource(source)}
                     className="flex w-full items-center justify-between px-4 py-3"
+                    aria-expanded={isExpanded}
                   >
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{source}</span>
