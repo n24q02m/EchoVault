@@ -47,12 +47,12 @@ const JETBRAINS_PRODUCTS: &[&str] = &[
     "Aqua",
 ];
 
-/// XML component markers that indicate AI chat sessions
+/// XML component/element markers that indicate AI chat sessions
 const CHAT_COMPONENTS: &[&str] = &[
-    "AiAssistantConversation",
-    "ChatSessionStateTemp",
-    // JetBrains AI Assistant plugin variants
-    "AiAssistantHistory",
+    "ChatSessionStateTemp",    // Current format (verified PyCharm 2025.3)
+    "AiAssistantConversation", // Newer format variant
+    "SerializedChat",          // Element inside ChatSessionStateTemp
+    "AiAssistantHistory",      // JetBrains AI Assistant plugin variants
 ];
 
 impl JetBrainsExtractor {

@@ -1,104 +1,23 @@
 //! OpenCode Parser
 //!
-//! Parses SQLite database files from OpenCode (github.com/opencode-ai/opencode).
+//! Parses 3-tier JSON files from OpenCode v1.x (github.com/opencode-ai/opencode).
 //!
-//! Database schema:
-//! - sessions: id TEXT PK, title TEXT, message_count INTEGER,
-//!   prompt_tokens INTEGER, completion_tokens INTEGER,
-//!   cost REAL, created_at INTEGER, updated_at INTEGER
-//! - messages: id TEXT PK, session_id TEXT FK, role TEXT, parts TEXT (JSON array),
-//!   model TEXT, created_at INTEGER, updated_at INTEGER
+//! Storage structure: ~/.local/share/opencode/storage/
+//!   - session/<id>.json: {id, slug, version, projectID, directory, title, time:{created,updated}, summary}
+//!   - message/<id>.json: {id, sessionID, role, time:{created}, agent, model:{providerID, modelID}, parentID, cost, tokens}
+//!   - part/<id>.json:    {id, sessionID, messageID, type:"text"|"tool-invocation"|..., text:"actual content"}
 //!
-//! Parts JSON: `[{"type":"text","text":"..."}, {"type":"tool_call","name":"...","input":{...}}, ...]`
-//!
-//! Message roles: "user", "assistant"
-//! The database stores timestamps as Unix epoch seconds.
+//! The vault stores these in: opencode/<sessionId>/{session,message,part}/*.json
+//! The parser reads the session directory and reconstructs conversations.
 
 use super::{ParsedConversation, ParsedMessage, Parser, Role};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use serde_json::Value;
 use std::path::Path;
 
 /// OpenCode Parser
 pub struct OpenCodeParser;
-
-impl OpenCodeParser {
-    /// Extract text content from the `parts` JSON array.
-    ///
-    /// Parts format: `[{"type":"text","text":"..."}, {"type":"tool_call","name":"edit","input":{...}}, ...]`
-    fn extract_content_from_parts(parts_json: &str) -> String {
-        let parts: Vec<serde_json::Value> = match serde_json::from_str(parts_json) {
-            Ok(v) => v,
-            Err(_) => {
-                // Fallback: treat raw string as content
-                return if parts_json.is_empty() {
-                    String::new()
-                } else {
-                    parts_json.to_string()
-                };
-            }
-        };
-
-        let mut text_parts = Vec::new();
-
-        for part in &parts {
-            let part_type = part.get("type").and_then(|t| t.as_str()).unwrap_or("");
-            match part_type {
-                "text" => {
-                    if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                        if !text.trim().is_empty() {
-                            text_parts.push(text.to_string());
-                        }
-                    }
-                }
-                "reasoning" => {
-                    if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                        if !text.trim().is_empty() {
-                            text_parts.push(format!("**[Reasoning]** {}", text));
-                        }
-                    }
-                }
-                "tool_call" => {
-                    let name = part.get("name").and_then(|n| n.as_str()).unwrap_or("tool");
-                    text_parts.push(format!("[Tool: {}]", name));
-                }
-                "tool_result" => {
-                    if let Some(content) = part.get("content").and_then(|c| c.as_str()) {
-                        let truncated: String = content.chars().take(500).collect();
-                        if content.chars().count() > 500 {
-                            text_parts.push(format!("[Result] {}...", truncated));
-                        } else {
-                            text_parts.push(format!("[Result] {}", truncated));
-                        }
-                    }
-                }
-                "finish" => {
-                    // Skip finish markers
-                }
-                _ => {}
-            }
-        }
-
-        text_parts.join("\n")
-    }
-
-    /// Extract tool name from parts JSON for tool-related messages.
-    fn extract_tool_name_from_parts(parts_json: &str) -> Option<String> {
-        let parts: Vec<serde_json::Value> = serde_json::from_str(parts_json).ok()?;
-
-        for part in &parts {
-            let part_type = part.get("type").and_then(|t| t.as_str())?;
-            if part_type == "tool_call" {
-                return part
-                    .get("name")
-                    .and_then(|n| n.as_str())
-                    .map(|s| s.to_string());
-            }
-        }
-
-        None
-    }
-}
 
 impl Parser for OpenCodeParser {
     fn source_name(&self) -> &'static str {
@@ -106,199 +25,362 @@ impl Parser for OpenCodeParser {
     }
 
     fn parse(&self, raw_path: &Path) -> Result<ParsedConversation> {
-        // Open the SQLite database in read-only mode
-        let db = rusqlite::Connection::open_with_flags(
-            raw_path,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
-        )
-        .context("Cannot open OpenCode database")?;
+        // raw_path is the session directory in vault: opencode/<sessionId>/
+        // It contains subdirs: session/, message/, part/
 
-        // Query all sessions
-        let mut all_conversations = Vec::new();
+        let session_dir = raw_path.join("session");
+        let message_dir = raw_path.join("message");
+        let part_dir = raw_path.join("part");
 
-        let mut session_stmt = db
-            .prepare(
-                "SELECT id, title, model, created_at, updated_at FROM sessions \
-                 ORDER BY created_at DESC",
-            )
-            .context("Failed to prepare sessions query")?;
+        // 1. Read session metadata
+        let (session_id, title, created_at, updated_at, workspace, version) =
+            Self::read_session_meta(&session_dir)?;
 
-        type SessionRow = (
-            String,
-            Option<String>,
-            Option<String>,
-            Option<i64>,
-            Option<i64>,
-        );
-        let sessions: Vec<SessionRow> = session_stmt
-            .query_map([], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                    row.get::<_, Option<i64>>(3)?,
-                    row.get::<_, Option<i64>>(4)?,
-                ))
-            })
-            .context("Failed to query sessions")?
-            .filter_map(|r| r.ok())
-            .collect();
+        // 2. Read all messages for this session
+        let mut messages_meta = Self::read_messages(&message_dir, &session_id);
 
-        for (session_id, title, model, created_ts, updated_ts) in sessions {
-            let created_at = created_ts.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0));
-            let updated_at = updated_ts.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0));
+        // Sort messages by creation time
+        messages_meta.sort_by(|a, b| a.created_ms.cmp(&b.created_ms));
 
-            // Query messages for this session
-            // Schema: role TEXT, parts TEXT (JSON array), model TEXT, created_at INTEGER, updated_at INTEGER
-            let mut msg_stmt = db
-                .prepare(
-                    "SELECT role, parts, model, created_at FROM messages \
-                     WHERE session_id = ? ORDER BY created_at ASC",
-                )
-                .context("Failed to prepare messages query")?;
+        // 3. Read all parts and index by messageID
+        let parts = Self::read_parts(&part_dir, &session_id);
 
-            let messages: Vec<ParsedMessage> = msg_stmt
-                .query_map(rusqlite::params![session_id], |row| {
-                    let role_str: String = row.get(0)?;
-                    let parts_json: String = row.get::<_, Option<String>>(1)?.unwrap_or_default();
-                    let msg_model: Option<String> = row.get(2)?;
-                    let msg_ts: Option<i64> = row.get(3)?;
+        // 4. Assemble ParsedMessages
+        let mut parsed_messages = Vec::new();
+        let mut model: Option<String> = None;
 
-                    let role = match role_str.as_str() {
-                        "user" | "human" => Role::User,
-                        "assistant" | "model" => Role::Assistant,
-                        "system" => Role::System,
-                        "tool" => Role::Tool,
-                        _ => Role::Info,
-                    };
-
-                    // Parse parts JSON array: [{"type":"text","text":"..."}, {"type":"tool_call","name":"...","input":{...}}, ...]
-                    let content = Self::extract_content_from_parts(&parts_json);
-
-                    // Extract tool name from tool_call parts
-                    let tool_name = if role == Role::Tool || role == Role::Assistant {
-                        Self::extract_tool_name_from_parts(&parts_json)
-                    } else {
-                        None
-                    };
-
-                    let timestamp = msg_ts.and_then(|ts| DateTime::<Utc>::from_timestamp(ts, 0));
-                    let is_assistant = role == Role::Assistant;
-
-                    Ok(ParsedMessage {
-                        role,
-                        content,
-                        timestamp,
-                        tool_name,
-                        model: if is_assistant { msg_model } else { None },
-                    })
-                })
-                .context("Failed to query messages")?
-                .filter_map(|r| r.ok())
-                .filter(|m| !m.content.trim().is_empty())
+        for msg_meta in &messages_meta {
+            // Find parts belonging to this message
+            let mut msg_parts: Vec<&PartMeta> = parts
+                .iter()
+                .filter(|p| p.message_id == msg_meta.id)
                 .collect();
+            msg_parts.sort_by(|a, b| a.id.cmp(&b.id));
 
-            if messages.is_empty() {
+            let role = match msg_meta.role.as_str() {
+                "user" | "human" => Role::User,
+                "assistant" | "model" => Role::Assistant,
+                "system" => Role::System,
+                "tool" => Role::Tool,
+                _ => Role::Info,
+            };
+
+            // Combine text from all parts
+            let mut content_parts = Vec::new();
+            let mut tool_name = None;
+
+            for part in &msg_parts {
+                match part.part_type.as_str() {
+                    "text" => {
+                        if !part.text.trim().is_empty() {
+                            content_parts.push(part.text.clone());
+                        }
+                    }
+                    "tool-invocation" | "tool_call" => {
+                        if let Some(ref name) = part.tool_call_name {
+                            tool_name = Some(name.clone());
+                            content_parts.push(format!("[Tool: {}]", name));
+                        }
+                        if !part.text.trim().is_empty() {
+                            content_parts.push(part.text.clone());
+                        }
+                    }
+                    "tool-result" | "tool_result" => {
+                        let truncated: String = part.text.chars().take(500).collect();
+                        if part.text.chars().count() > 500 {
+                            content_parts.push(format!("[Result] {}...", truncated));
+                        } else if !part.text.is_empty() {
+                            content_parts.push(format!("[Result] {}", part.text));
+                        }
+                    }
+                    "reasoning" => {
+                        if !part.text.trim().is_empty() {
+                            content_parts.push(format!("**[Reasoning]** {}", part.text));
+                        }
+                    }
+                    _ => {
+                        if !part.text.trim().is_empty() {
+                            content_parts.push(part.text.clone());
+                        }
+                    }
+                }
+            }
+
+            let content = content_parts.join("\n");
+            if content.trim().is_empty() {
                 continue;
             }
 
-            // Title fallback: first user message
-            let title = title.or_else(|| {
-                messages.iter().find(|m| m.role == Role::User).map(|m| {
-                    let first_line = m.content.lines().next().unwrap_or(&m.content);
-                    let truncated: String = first_line.chars().take(80).collect();
-                    if first_line.chars().count() > 80 {
-                        format!("{}...", truncated)
-                    } else {
-                        truncated
-                    }
-                })
-            });
+            let timestamp = DateTime::<Utc>::from_timestamp(
+                msg_meta.created_ms / 1000,
+                ((msg_meta.created_ms % 1000) * 1_000_000) as u32,
+            );
 
-            // Workspace from database filename
-            let workspace = raw_path
-                .file_stem()
-                .and_then(|n| n.to_str())
-                .map(|s| s.to_string());
-
-            all_conversations.push(ParsedConversation {
-                id: session_id,
-                source: "opencode".to_string(),
-                title,
-                workspace,
-                created_at,
-                updated_at,
-                model,
-                messages,
-                tags: Vec::new(),
-            });
-        }
-
-        // Return the most recent session, or an empty one
-        // For multi-session databases, the parse_vault_source function handles iteration,
-        // but since each .db file is one "raw file", we merge all sessions
-        if all_conversations.len() == 1 {
-            Ok(all_conversations.into_iter().next().unwrap())
-        } else if all_conversations.is_empty() {
-            Ok(ParsedConversation {
-                id: raw_path
-                    .file_stem()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("unknown")
-                    .to_string(),
-                source: "opencode".to_string(),
-                title: None,
-                workspace: None,
-                created_at: None,
-                updated_at: None,
-                model: None,
-                messages: Vec::new(),
-                tags: Vec::new(),
-            })
-        } else {
-            // Multiple sessions in one DB: merge into one ParsedConversation
-            // with session separators
-            let mut merged_messages = Vec::new();
-            let first_created = all_conversations.first().and_then(|c| c.created_at);
-            let last_updated = all_conversations.last().and_then(|c| c.updated_at);
-            let model = all_conversations.first().and_then(|c| c.model.clone());
-            let workspace = all_conversations.first().and_then(|c| c.workspace.clone());
-
-            for (i, conv) in all_conversations.iter().enumerate() {
-                if i > 0 {
-                    let separator_title = conv.title.as_deref().unwrap_or("(untitled)");
-                    merged_messages.push(ParsedMessage {
-                        role: Role::Info,
-                        content: format!("--- Session: {} ---", separator_title),
-                        timestamp: conv.created_at,
-                        tool_name: None,
-                        model: None,
-                    });
+            // Capture model info
+            let msg_model = if role == Role::Assistant {
+                let m = msg_meta.model.clone();
+                if model.is_none() {
+                    model.clone_from(&m);
                 }
-                merged_messages.extend(conv.messages.clone());
-            }
+                m
+            } else {
+                None
+            };
 
-            let combined_id = raw_path
-                .file_stem()
-                .and_then(|n| n.to_str())
-                .unwrap_or("unknown")
-                .to_string();
-
-            Ok(ParsedConversation {
-                id: combined_id,
-                source: "opencode".to_string(),
-                title: Some(format!("OpenCode ({} sessions)", all_conversations.len())),
-                workspace,
-                created_at: first_created,
-                updated_at: last_updated,
-                model,
-                messages: merged_messages,
-                tags: Vec::new(),
-            })
+            parsed_messages.push(ParsedMessage {
+                role,
+                content,
+                timestamp,
+                tool_name,
+                model: msg_model,
+            });
         }
+
+        // Build tags
+        let mut tags = Vec::new();
+        if let Some(ref v) = version {
+            tags.push(format!("opencode:{}", v));
+        }
+
+        Ok(ParsedConversation {
+            id: session_id,
+            source: "opencode".to_string(),
+            title: Some(title),
+            workspace,
+            created_at,
+            updated_at,
+            model,
+            messages: parsed_messages,
+            tags,
+        })
     }
 
     fn can_parse(&self, raw_path: &Path) -> bool {
-        raw_path.extension().is_some_and(|ext| ext == "db")
+        // The raw_path is a directory containing session/, message/, part/ subdirs
+        raw_path.is_dir() && raw_path.join("session").is_dir()
+    }
+}
+
+/// Message metadata from message/<id>.json
+struct MessageMeta {
+    id: String,
+    role: String,
+    created_ms: i64,
+    model: Option<String>,
+}
+
+/// Part metadata from part/<id>.json
+struct PartMeta {
+    id: String,
+    message_id: String,
+    part_type: String,
+    text: String,
+    tool_call_name: Option<String>,
+}
+
+impl OpenCodeParser {
+    /// Read session metadata from the first .json file in session/ directory.
+    #[allow(clippy::type_complexity)]
+    fn read_session_meta(
+        session_dir: &Path,
+    ) -> Result<(
+        String,
+        String,
+        Option<DateTime<Utc>>,
+        Option<DateTime<Utc>>,
+        Option<String>,
+        Option<String>,
+    )> {
+        let session_file = std::fs::read_dir(session_dir)
+            .context("Cannot read session directory")?
+            .flatten()
+            .find(|e| e.path().extension().is_some_and(|ext| ext == "json"))
+            .map(|e| e.path())
+            .context("No session JSON file found")?;
+
+        let content = std::fs::read_to_string(&session_file).context("Cannot read session JSON")?;
+        let json: Value = serde_json::from_str(&content).context("Invalid session JSON")?;
+
+        let session_id = json
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        let title = json
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| {
+                json.get("slug")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Untitled")
+            })
+            .to_string();
+
+        let created_at = json
+            .get("time")
+            .and_then(|t| t.get("created"))
+            .and_then(|v| v.as_i64())
+            .and_then(|ms| {
+                DateTime::<Utc>::from_timestamp(ms / 1000, ((ms % 1000) * 1_000_000) as u32)
+            });
+
+        let updated_at = json
+            .get("time")
+            .and_then(|t| t.get("updated"))
+            .and_then(|v| v.as_i64())
+            .and_then(|ms| {
+                DateTime::<Utc>::from_timestamp(ms / 1000, ((ms % 1000) * 1_000_000) as u32)
+            });
+
+        let workspace = json.get("directory").and_then(|v| v.as_str()).map(|dir| {
+            dir.replace('\\', "/")
+                .rsplit('/')
+                .next()
+                .unwrap_or(dir)
+                .to_string()
+        });
+
+        let version = json
+            .get("version")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        Ok((
+            session_id, title, created_at, updated_at, workspace, version,
+        ))
+    }
+
+    /// Read all message files matching the given session ID.
+    fn read_messages(message_dir: &Path, session_id: &str) -> Vec<MessageMeta> {
+        let mut messages = Vec::new();
+
+        if !message_dir.exists() || !message_dir.is_dir() {
+            return messages;
+        }
+
+        if let Ok(entries) = std::fs::read_dir(message_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_none_or(|ext| ext != "json") {
+                    continue;
+                }
+
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    if let Ok(json) = serde_json::from_str::<Value>(&content) {
+                        let msg_session_id =
+                            json.get("sessionID").and_then(|v| v.as_str()).unwrap_or("");
+                        if msg_session_id != session_id {
+                            continue;
+                        }
+
+                        let id = json
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let role = json
+                            .get("role")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown")
+                            .to_string();
+                        let created_ms = json
+                            .get("time")
+                            .and_then(|t| t.get("created"))
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or(0);
+
+                        let model = json.get("model").and_then(|m| {
+                            let provider =
+                                m.get("providerID").and_then(|v| v.as_str()).unwrap_or("");
+                            let model_id = m.get("modelID").and_then(|v| v.as_str()).unwrap_or("");
+                            if !model_id.is_empty() {
+                                Some(format!(
+                                    "{}{}{}",
+                                    provider,
+                                    if !provider.is_empty() { "/" } else { "" },
+                                    model_id
+                                ))
+                            } else {
+                                None
+                            }
+                        });
+
+                        messages.push(MessageMeta {
+                            id,
+                            role,
+                            created_ms,
+                            model,
+                        });
+                    }
+                }
+            }
+        }
+
+        messages
+    }
+
+    /// Read all part files matching the given session ID.
+    fn read_parts(part_dir: &Path, session_id: &str) -> Vec<PartMeta> {
+        let mut parts = Vec::new();
+
+        if !part_dir.exists() || !part_dir.is_dir() {
+            return parts;
+        }
+
+        if let Ok(entries) = std::fs::read_dir(part_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_none_or(|ext| ext != "json") {
+                    continue;
+                }
+
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    if let Ok(json) = serde_json::from_str::<Value>(&content) {
+                        let part_session_id =
+                            json.get("sessionID").and_then(|v| v.as_str()).unwrap_or("");
+                        if part_session_id != session_id {
+                            continue;
+                        }
+
+                        let id = json
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let message_id = json
+                            .get("messageID")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let part_type = json
+                            .get("type")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("text")
+                            .to_string();
+                        let text = json
+                            .get("text")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let tool_call_name = json
+                            .get("toolName")
+                            .or_else(|| json.get("name"))
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+
+                        parts.push(PartMeta {
+                            id,
+                            message_id,
+                            part_type,
+                            text,
+                            tool_call_name,
+                        });
+                    }
+                }
+            }
+        }
+
+        parts
     }
 }

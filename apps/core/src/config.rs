@@ -183,8 +183,11 @@ impl EmbeddingConfigToml {
     }
 }
 
+/// Current config version. Bump when adding new fields or changing structure.
+const CURRENT_CONFIG_VERSION: u32 = 2;
+
 fn default_version() -> u32 {
-    2 // Version 2: simplified, Rclone-only
+    CURRENT_CONFIG_VERSION
 }
 
 impl Default for Config {
@@ -235,13 +238,18 @@ impl Config {
         }
     }
 
-    /// Load config from file.
+    /// Load config from file, applying migrations if needed.
     pub fn load(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("Cannot read config file: {}", path.display()))?;
 
-        let config: Config = toml::from_str(&content)
+        let mut config: Config = toml::from_str(&content)
             .with_context(|| format!("Cannot parse config file: {}", path.display()))?;
+
+        // Migrate if config is from an older version
+        if config.version < CURRENT_CONFIG_VERSION {
+            config.migrate(path)?;
+        }
 
         Ok(config)
     }
@@ -293,6 +301,34 @@ impl Config {
     pub fn index_db_path(&self) -> PathBuf {
         self.vault_path.join("index.db")
     }
+
+    /// Apply migrations from older config versions to current.
+    /// Saves the migrated config back to disk.
+    fn migrate(&mut self, path: &Path) -> Result<()> {
+        let old_version = self.version;
+
+        // v0/v1 -> v2: Added embedding config, extractors config
+        // serde defaults handle missing fields, just bump version.
+        if self.version < 2 {
+            self.version = 2;
+        }
+
+        // Future migrations go here:
+        // if self.version < 3 { ... self.version = 3; }
+
+        tracing::info!(
+            "[config] Migrated config from v{} to v{} ({})",
+            old_version,
+            self.version,
+            path.display()
+        );
+
+        // Persist migrated config
+        self.save(path)
+            .with_context(|| "Failed to save migrated config")?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -319,6 +355,55 @@ mod tests {
         let loaded = Config::load(&config_path)?;
         assert!(loaded.is_initialized());
         assert_eq!(loaded.sync.remote_name, Some("echovault".to_string()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_migrate_v1_to_current() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let config_path = temp_dir.path().join("old.toml");
+
+        // Write a v1 config (no embedding section, version = 1)
+        let v1_content = r#"
+version = 1
+setup_complete = true
+vault_path = "/tmp/vault"
+
+[sync]
+folder_name = "EchoVault"
+"#;
+        std::fs::write(&config_path, v1_content)?;
+
+        let config = Config::load(&config_path)?;
+        assert_eq!(config.version, CURRENT_CONFIG_VERSION);
+        assert!(config.setup_complete);
+        // Embedding defaults should be applied
+        assert_eq!(config.embedding.preset, EmbeddingPreset::Ollama);
+        assert_eq!(config.embedding.model, "nomic-embed-text");
+
+        // Verify migrated file was saved
+        let reloaded = Config::load(&config_path)?;
+        assert_eq!(reloaded.version, CURRENT_CONFIG_VERSION);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_migrate_v0_missing_version() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let config_path = temp_dir.path().join("ancient.toml");
+
+        // Config with no version field at all (serde default = 2, so this
+        // actually loads as v2 and no migration is needed)
+        let v0_content = r#"
+vault_path = "/tmp/vault"
+"#;
+        std::fs::write(&config_path, v0_content)?;
+
+        let config = Config::load(&config_path)?;
+        // Missing version defaults to CURRENT via serde default
+        assert_eq!(config.version, CURRENT_CONFIG_VERSION);
 
         Ok(())
     }

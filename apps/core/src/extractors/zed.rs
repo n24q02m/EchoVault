@@ -6,8 +6,9 @@
 //! ## 1. Agent Threads (Primary - SQLite + zstd)
 //! - Path: `{data_dir}/threads/threads.db`
 //! - Format: SQLite with zstd-compressed JSON blobs
-//! - Schema: `threads(id TEXT PK, summary TEXT, updated_at TEXT, data_type TEXT, data BLOB)`
+//! - Schema: `threads(id TEXT PK, parent_id TEXT, summary TEXT NOT NULL, updated_at TEXT NOT NULL, data_type TEXT NOT NULL, data BLOB NOT NULL)`
 //! - `data_type` = "json" (raw) or "zstd" (compressed)
+//! - Source: verified from `zed-industries/zed/crates/agent/src/db.rs`
 //!
 //! ## 2. Text Threads (Legacy - JSON files)
 //! - Path: `{state_dir}/conversations/*.zed.json` or `{config_dir}/conversations/*.zed.json`

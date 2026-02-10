@@ -8,7 +8,6 @@
 //! - Artifacts: ~/.gemini/antigravity/brain/{uuid}/*.md
 
 use super::{Extractor, SessionFile, SessionMetadata};
-use crate::utils::wsl;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use rayon::prelude::*;
@@ -47,13 +46,6 @@ impl AntigravityExtractor {
             let path = home.join(".gemini/antigravity");
             if !storage_paths.contains(&path) {
                 storage_paths.push(path);
-            }
-        }
-
-        // Windows: Scan WSL for Antigravity data (Gemini CLI often runs inside WSL)
-        for wsl_path in wsl::find_wsl_paths(".gemini/antigravity") {
-            if !storage_paths.contains(&wsl_path) {
-                storage_paths.push(wsl_path);
             }
         }
 

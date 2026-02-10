@@ -2,26 +2,45 @@
 //!
 //! Parses XML workspace files from JetBrains IDEs.
 //!
-//! Known components containing AI chat history:
-//! - `AiAssistantConversation` (newer format)
-//! - `ChatSessionStateTemp` (older AI Assistant plugin)
+//! Location: `%APPDATA%/JetBrains/<Product><Version>/workspace/*.xml`
+//! (each file maps to a project that was opened in the IDE)
 //!
-//! ## Format: AiAssistantConversation (primary)
+//! Known components containing AI chat history:
+//! - `ChatSessionStateTemp` (current format, verified from PyCharm 2025.3)
+//! - `AiAssistantConversation` (newer format, not yet confirmed in the wild)
+//!
+//! ## Format: ChatSessionStateTemp (primary - verified)
 //! ```xml
-//! <component name="AiAssistantConversation">
-//!   <conversations>
-//!     <conversation id="..." timestamp="...">
-//!       <messages>
-//!         <message role="user" content="..." timestamp="..." />
-//!         <message role="assistant" content="..." timestamp="..." model="..." />
-//!       </messages>
-//!     </conversation>
-//!   </conversations>
+//! <component name="ChatSessionStateTemp">
+//!   <option name="chats">
+//!     <list>
+//!       <SerializedChat>
+//!         <option name="messages">
+//!           <list>
+//!             <SerializedChatMessage>
+//!               <option name="author" value="Assistant" />  <!-- missing = User -->
+//!               <option name="uid" value="UUID(...)" />
+//!               <option name="displayContent" value="..." />
+//!               <option name="internalContent" value="..." />
+//!               <option name="markupLanguageID" value="ChatInput" />
+//!             </SerializedChatMessage>
+//!           </list>
+//!         </option>
+//!         <option name="modifiedAt" value="1770729612654" />
+//!         <option name="title">
+//!           <SerializedChatTitle>
+//!             <option name="text" value="..." />
+//!           </SerializedChatTitle>
+//!         </option>
+//!         <option name="uid" value="UUID" />
+//!       </SerializedChat>
+//!     </list>
+//!   </option>
 //! </component>
 //! ```
 //!
-//! ## Format: ChatSessionStateTemp (legacy fallback)
-//! Uses `<option name="..." value="..."/>` style attributes.
+//! ## Format: AiAssistantConversation (fallback)
+//! Uses `<conversation>` / `<message>` elements with direct attributes.
 //!
 //! Parsing is defensive to handle both formats and version variations.
 
@@ -178,7 +197,36 @@ impl JetBrainsParser {
 
     /// Parse the legacy ChatSessionStateTemp component format.
     ///
-    /// Uses `<option name="..." value="..."/>` pattern for fields.
+    /// Actual format (verified from PyCharm 2025.3 workspace XML):
+    /// ```xml
+    /// <component name="ChatSessionStateTemp">
+    ///   <option name="chats">
+    ///     <list>
+    ///       <SerializedChat>
+    ///         <option name="messages">
+    ///           <list>
+    ///             <SerializedChatMessage>
+    ///               <option name="author" value="Assistant" />
+    ///               <option name="uid" value="UUID(...)" />
+    ///               <option name="displayContent" value="..." />
+    ///               <option name="internalContent" value="..." />
+    ///             </SerializedChatMessage>
+    ///           </list>
+    ///         </option>
+    ///         <option name="modifiedAt" value="1770729612654" />
+    ///         <option name="title">
+    ///           <SerializedChatTitle>
+    ///             <option name="text" value="..." />
+    ///           </SerializedChatTitle>
+    ///         </option>
+    ///         <option name="uid" value="UUID" />
+    ///       </SerializedChat>
+    ///     </list>
+    ///   </option>
+    /// </component>
+    /// ```
+    ///
+    /// Note: User messages have NO author field (only assistant has `author="Assistant"`).
     fn parse_chat_session_state(content: &str, raw_path: &Path) -> Vec<ParsedConversation> {
         let component_start = match content.find("\"ChatSessionStateTemp\"") {
             Some(pos) => pos,
@@ -196,7 +244,94 @@ impl JetBrainsParser {
 
         let mut conversations = Vec::new();
 
-        // Look for session/chat markers - various element names used
+        // Primary format: <SerializedChat> elements (verified from real data)
+        let chat_chunks: Vec<&str> = component_xml.split("<SerializedChat>").skip(1).collect();
+
+        if !chat_chunks.is_empty() {
+            for chunk in &chat_chunks {
+                let chat_end = chunk.find("</SerializedChat>").unwrap_or(chunk.len());
+                let chat_xml = &chunk[..chat_end];
+
+                let chat_id = Self::extract_option_value(chat_xml, "uid")
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+                let title = Self::extract_serialized_chat_title(chat_xml);
+
+                let timestamp = Self::extract_option_value(chat_xml, "modifiedAt")
+                    .and_then(|ts| Self::parse_timestamp(&ts));
+
+                // Parse messages from <SerializedChatMessage> elements
+                let mut messages = Vec::new();
+                let msg_chunks: Vec<&str> =
+                    chat_xml.split("<SerializedChatMessage>").skip(1).collect();
+
+                for msg_chunk in &msg_chunks {
+                    let msg_end = msg_chunk
+                        .find("</SerializedChatMessage>")
+                        .unwrap_or(msg_chunk.len());
+                    let msg_xml = &msg_chunk[..msg_end];
+
+                    // Role: if "author" = "Assistant", it's assistant; otherwise user
+                    let author = Self::extract_option_value(msg_xml, "author");
+                    let role = match author.as_deref() {
+                        Some("Assistant") | Some("assistant") => Role::Assistant,
+                        Some("System") | Some("system") => Role::System,
+                        _ => Role::User, // No author field = user message
+                    };
+
+                    // Content: prefer internalContent, fallback to displayContent
+                    let content = Self::extract_option_value(msg_xml, "internalContent")
+                        .or_else(|| Self::extract_option_value(msg_xml, "displayContent"))
+                        .or_else(|| Self::extract_option_value(msg_xml, "content"))
+                        .map(|c| Self::decode_xml_entities(&c))
+                        .unwrap_or_default();
+
+                    if content.trim().is_empty() {
+                        continue;
+                    }
+
+                    messages.push(ParsedMessage {
+                        role,
+                        content,
+                        timestamp: Self::extract_option_value(msg_xml, "timestamp")
+                            .and_then(|ts| Self::parse_timestamp(&ts)),
+                        tool_name: None,
+                        model: None,
+                    });
+                }
+
+                if messages.is_empty() {
+                    continue;
+                }
+
+                let title = title.or_else(|| Self::title_from_messages(&messages));
+
+                let workspace = raw_path
+                    .parent()
+                    .and_then(|p| p.parent())
+                    .and_then(|p| p.file_name())
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.to_string());
+
+                conversations.push(ParsedConversation {
+                    id: format!("jetbrains-{}", chat_id),
+                    source: "jetbrains".to_string(),
+                    title,
+                    workspace,
+                    created_at: timestamp,
+                    updated_at: timestamp,
+                    model: None,
+                    messages,
+                    tags: Vec::new(),
+                });
+            }
+
+            if !conversations.is_empty() {
+                return conversations;
+            }
+        }
+
+        // Fallback: legacy format markers
         for session_marker in &["<ChatSession", "<session ", "<conversation ", "<chat "] {
             let session_chunks: Vec<&str> = component_xml.split(session_marker).skip(1).collect();
 
@@ -220,7 +355,6 @@ impl JetBrainsParser {
                     .or_else(|| Self::extract_attr(session_xml, "timestamp"))
                     .and_then(|ts| Self::parse_timestamp(&ts));
 
-                // Parse messages using <ChatMessage>, <message>, etc.
                 let mut messages = Vec::new();
 
                 for msg_marker in &["<ChatMessage", "<message "] {
@@ -236,10 +370,12 @@ impl JetBrainsParser {
 
                         let role_str = Self::extract_attr(msg_xml, "role")
                             .or_else(|| Self::extract_option_value(msg_xml, "role"))
+                            .or_else(|| Self::extract_option_value(msg_xml, "author"))
                             .unwrap_or_default();
 
                         let content = Self::extract_attr(msg_xml, "content")
                             .or_else(|| Self::extract_option_value(msg_xml, "content"))
+                            .or_else(|| Self::extract_option_value(msg_xml, "displayContent"))
                             .or_else(|| Self::extract_option_value(msg_xml, "text"))
                             .map(|c| Self::decode_xml_entities(&c))
                             .unwrap_or_default();
@@ -309,6 +445,30 @@ impl JetBrainsParser {
         conversations
     }
 
+    /// Extract title from SerializedChatTitle nested element.
+    /// ```xml
+    /// <option name="title">
+    ///   <SerializedChatTitle>
+    ///     <option name="text" value="..." />
+    ///   </SerializedChatTitle>
+    /// </option>
+    /// ```
+    fn extract_serialized_chat_title(chat_xml: &str) -> Option<String> {
+        if let Some(title_start) = chat_xml.find("<SerializedChatTitle>") {
+            let title_end = chat_xml[title_start..]
+                .find("</SerializedChatTitle>")
+                .map(|p| title_start + p)
+                .unwrap_or(chat_xml.len());
+            let title_xml = &chat_xml[title_start..title_end];
+            Self::extract_option_value(title_xml, "text")
+                .filter(|s| !s.is_empty())
+                .map(|s| Self::decode_xml_entities(&s))
+        } else {
+            // Fallback: simple title attribute
+            Self::extract_option_value(chat_xml, "title")
+        }
+    }
+
     /// Extract XML attribute value: `attr="value"` -> `value`
     fn extract_attr(xml: &str, attr_name: &str) -> Option<String> {
         let pattern = format!("{}=\"", attr_name);
@@ -325,14 +485,18 @@ impl JetBrainsParser {
     }
 
     /// Extract option element value: `<option name="key" value="val"/>` -> `val`
+    ///
+    /// Handles arbitrarily long values (e.g., chat message content with encoded newlines).
     fn extract_option_value(xml: &str, name: &str) -> Option<String> {
         let pattern = format!("name=\"{}\"", name);
         if let Some(pos) = xml.find(&pattern) {
-            // Look for value="..." near this position
-            let rest = &xml[pos..];
-            let nearby = &rest[..rest.len().min(200)];
-            if let Some(val_pos) = nearby.find("value=\"") {
-                let val_rest = &nearby[val_pos + "value=\"".len()..];
+            let rest = &xml[pos + pattern.len()..];
+            // value="..." should appear on the same <option> element,
+            // within the next few hundred bytes (attribute name + spaces).
+            // But the VALUE itself can be arbitrarily long, so we must NOT
+            // cap the search for the closing quote.
+            if let Some(val_pos) = rest[..rest.len().min(100)].find("value=\"") {
+                let val_rest = &rest[val_pos + "value=\"".len()..];
                 if let Some(end) = val_rest.find('"') {
                     let value = &val_rest[..end];
                     if !value.is_empty() {

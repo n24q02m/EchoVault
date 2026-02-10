@@ -15,11 +15,10 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 use echovault_core::{
     extractors::{
-        aider::AiderExtractor, antigravity::AntigravityExtractor, claude_code::ClaudeCodeExtractor,
-        cline::ClineExtractor, codex::CodexExtractor, continue_dev::ContinueDevExtractor,
-        cursor::CursorExtractor, gemini_cli::GeminiCliExtractor, jetbrains::JetBrainsExtractor,
-        opencode::OpenCodeExtractor, vscode_copilot::VSCodeCopilotExtractor, zed::ZedExtractor,
-        Extractor, SessionFile,
+        antigravity::AntigravityExtractor, claude_code::ClaudeCodeExtractor, cline::ClineExtractor,
+        codex::CodexExtractor, continue_dev::ContinueDevExtractor, cursor::CursorExtractor,
+        gemini_cli::GeminiCliExtractor, jetbrains::JetBrainsExtractor, opencode::OpenCodeExtractor,
+        vscode_copilot::VSCodeCopilotExtractor, zed::ZedExtractor, Extractor, SessionFile,
     },
     storage::{SessionEntry, VaultDb},
     sync::{AuthStatus, RcloneProvider, SyncOptions, SyncProvider},
@@ -873,16 +872,6 @@ fn ingest_sessions(vault_dir: &Path) -> Result<bool> {
     if let Ok(locations) = claude_extractor.find_storage_locations() {
         for location in &locations {
             if let Ok(files) = claude_extractor.list_session_files(location) {
-                all_sessions.extend(files);
-            }
-        }
-    }
-
-    println!("  Scanning Aider...");
-    let aider_extractor = AiderExtractor::new();
-    if let Ok(locations) = aider_extractor.find_storage_locations() {
-        for location in &locations {
-            if let Ok(files) = aider_extractor.list_session_files(location) {
                 all_sessions.extend(files);
             }
         }

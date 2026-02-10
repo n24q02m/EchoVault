@@ -8,7 +8,6 @@
 //! Config: ~/.codex/config.toml or .codex/config.toml (project-level)
 
 use super::{Extractor, SessionFile, SessionMetadata};
-use crate::utils::wsl;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use rayon::prelude::*;
@@ -45,13 +44,6 @@ impl CodexExtractor {
             let path = home.join(".codex");
             if !codex_dirs.contains(&path) {
                 codex_dirs.push(path);
-            }
-        }
-
-        // Windows: Scan WSL for Codex CLI data
-        for wsl_path in wsl::find_wsl_paths(".codex") {
-            if !codex_dirs.contains(&wsl_path) {
-                codex_dirs.push(wsl_path);
             }
         }
 

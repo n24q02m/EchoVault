@@ -2,15 +2,15 @@
 //!
 //! Parses JSONL rollout session files from OpenAI Codex CLI.
 //!
-//! Format: Each line is a JSON event in the session:
+//! Format: Each line is a JSON event with {timestamp, type, payload}:
 //! ```jsonl
-//! {"type":"message","role":"user","content":"Fix the tests","timestamp":"..."}
-//! {"type":"message","role":"assistant","content":"I'll check the tests...","timestamp":"..."}
-//! {"type":"tool_call","name":"shell","input":{"command":"cargo test"},"timestamp":"..."}
-//! {"type":"tool_result","output":"test result ...","timestamp":"..."}
+//! {"timestamp":"...","type":"session_meta","payload":{"id":"...","cwd":"...","originator":"codex_vscode","cli_version":"0.89.0","source":"vscode","model_provider":"openai","base_instructions":{...}}}
+//! {"timestamp":"...","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"..."}]}}
+//! {"timestamp":"...","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"..."}]}}
 //! ```
 //!
-//! Codex uses a streaming event format with type, role, and content fields.
+//! Roles: "developer" (system/tool instructions), "user", "assistant"
+//! Content is an array of {type, text} objects.
 
 use super::{ParsedConversation, ParsedMessage, Parser, Role};
 use anyhow::{Context, Result};
@@ -21,6 +21,27 @@ use std::path::Path;
 
 /// OpenAI Codex CLI Parser
 pub struct CodexParser;
+
+impl CodexParser {
+    /// Extract text from a content array: [{type:"input_text", text:"..."}, ...]
+    fn extract_content_text(content: &Value) -> String {
+        match content {
+            Value::Array(arr) => {
+                let mut parts = Vec::new();
+                for item in arr {
+                    if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
+                        if !text.trim().is_empty() {
+                            parts.push(text.to_string());
+                        }
+                    }
+                }
+                parts.join("\n")
+            }
+            Value::String(s) => s.clone(),
+            _ => String::new(),
+        }
+    }
+}
 
 impl Parser for CodexParser {
     fn source_name(&self) -> &'static str {
@@ -40,6 +61,9 @@ impl Parser for CodexParser {
         let mut messages = Vec::new();
         let mut first_timestamp: Option<DateTime<Utc>> = None;
         let mut last_timestamp: Option<DateTime<Utc>> = None;
+        let mut session_cwd: Option<String> = None;
+        let mut session_originator: Option<String> = None;
+        let mut model_provider: Option<String> = None;
 
         for line in reader.lines() {
             let line = match line {
@@ -56,19 +80,12 @@ impl Parser for CodexParser {
                 Err(_) => continue,
             };
 
-            // Parse timestamp
+            // Parse timestamp (top-level field)
             let timestamp = obj
                 .get("timestamp")
-                .or_else(|| obj.get("created_at"))
-                .and_then(|v| {
-                    v.as_str()
-                        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
-                        .map(|dt| dt.with_timezone(&Utc))
-                        .or_else(|| {
-                            v.as_f64()
-                                .and_then(|ts| DateTime::<Utc>::from_timestamp(ts as i64, 0))
-                        })
-                });
+                .and_then(|v| v.as_str())
+                .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                .map(|dt| dt.with_timezone(&Utc));
 
             if let Some(ts) = timestamp {
                 if first_timestamp.is_none() {
@@ -77,133 +94,123 @@ impl Parser for CodexParser {
                 last_timestamp = Some(ts);
             }
 
-            let event_type = obj
-                .get("type")
-                .and_then(|t| t.as_str())
-                .unwrap_or("message");
+            let event_type = obj.get("type").and_then(|t| t.as_str()).unwrap_or("");
 
             match event_type {
-                "message" | "input" | "output" => {
-                    let role_str = obj.get("role").and_then(|r| r.as_str()).unwrap_or_else(|| {
-                        if event_type == "input" {
-                            "user"
-                        } else if event_type == "output" {
-                            "assistant"
-                        } else {
-                            "unknown"
+                "session_meta" => {
+                    // Extract session metadata from payload
+                    if let Some(payload) = obj.get("payload") {
+                        session_cwd = payload
+                            .get("cwd")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        session_originator = payload
+                            .get("originator")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        model_provider = payload
+                            .get("model_provider")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                    }
+                }
+                "response_item" => {
+                    if let Some(payload) = obj.get("payload") {
+                        let payload_type =
+                            payload.get("type").and_then(|t| t.as_str()).unwrap_or("");
+
+                        match payload_type {
+                            "message" => {
+                                let role_str = payload
+                                    .get("role")
+                                    .and_then(|r| r.as_str())
+                                    .unwrap_or("unknown");
+
+                                let role = match role_str {
+                                    "user" | "human" => Role::User,
+                                    "assistant" | "model" => Role::Assistant,
+                                    "developer" | "system" => Role::System,
+                                    _ => Role::Info,
+                                };
+
+                                let content = payload
+                                    .get("content")
+                                    .map(Self::extract_content_text)
+                                    .unwrap_or_default();
+
+                                if !content.trim().is_empty() {
+                                    messages.push(ParsedMessage {
+                                        role,
+                                        content,
+                                        timestamp,
+                                        tool_name: None,
+                                        model: None,
+                                    });
+                                }
+                            }
+                            "function_call" => {
+                                let tool_name = payload
+                                    .get("name")
+                                    .and_then(|n| n.as_str())
+                                    .unwrap_or("tool")
+                                    .to_string();
+
+                                let desc = payload
+                                    .get("arguments")
+                                    .and_then(|a| a.as_str())
+                                    .map(|args| format!("Called `{}`: {}", tool_name, args))
+                                    .unwrap_or_else(|| format!("Called `{}`", tool_name));
+
+                                messages.push(ParsedMessage {
+                                    role: Role::Tool,
+                                    content: desc,
+                                    timestamp,
+                                    tool_name: Some(tool_name),
+                                    model: None,
+                                });
+                            }
+                            "function_call_output" => {
+                                let output = payload
+                                    .get("output")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or_default();
+
+                                if !output.is_empty() {
+                                    let truncated = if output.len() > 500 {
+                                        format!("{}...", &output[..500])
+                                    } else {
+                                        output.to_string()
+                                    };
+
+                                    messages.push(ParsedMessage {
+                                        role: Role::Tool,
+                                        content: format!("```\n{}\n```", truncated),
+                                        timestamp,
+                                        tool_name: None,
+                                        model: None,
+                                    });
+                                }
+                            }
+                            _ => {
+                                // Unknown payload type, try to extract content
+                                if let Some(content) = payload.get("content") {
+                                    let text = Self::extract_content_text(content);
+                                    if !text.trim().is_empty() {
+                                        messages.push(ParsedMessage {
+                                            role: Role::Info,
+                                            content: text,
+                                            timestamp,
+                                            tool_name: None,
+                                            model: None,
+                                        });
+                                    }
+                                }
+                            }
                         }
-                    });
-
-                    let role = match role_str {
-                        "user" | "human" => Role::User,
-                        "assistant" | "model" => Role::Assistant,
-                        "system" => Role::System,
-                        _ => Role::Info,
-                    };
-
-                    let content = obj
-                        .get("content")
-                        .or_else(|| obj.get("text"))
-                        .or_else(|| obj.get("message"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default()
-                        .to_string();
-
-                    if !content.trim().is_empty() {
-                        messages.push(ParsedMessage {
-                            role,
-                            content,
-                            timestamp,
-                            tool_name: None,
-                            model: None,
-                        });
                     }
-                }
-                "tool_call" | "function_call" => {
-                    let tool_name = obj
-                        .get("name")
-                        .or_else(|| obj.get("function"))
-                        .and_then(|n| n.as_str())
-                        .unwrap_or("tool")
-                        .to_string();
-
-                    let desc = obj
-                        .get("input")
-                        .map(|input| match tool_name.as_str() {
-                            "shell" | "bash" | "execute" => input
-                                .get("command")
-                                .and_then(|c| c.as_str())
-                                .map(|c| format!("```bash\n{}\n```", c))
-                                .unwrap_or_else(|| format!("Called `{}`", tool_name)),
-                            "write" | "create" | "patch" => input
-                                .get("path")
-                                .and_then(|p| p.as_str())
-                                .map(|p| format!("Write to `{}`", p))
-                                .unwrap_or_else(|| format!("Called `{}`", tool_name)),
-                            _ => format!("Called `{}`", tool_name),
-                        })
-                        .unwrap_or_else(|| format!("Called `{}`", tool_name));
-
-                    messages.push(ParsedMessage {
-                        role: Role::Tool,
-                        content: desc,
-                        timestamp,
-                        tool_name: Some(tool_name),
-                        model: None,
-                    });
-                }
-                "tool_result" | "function_response" => {
-                    let output = obj
-                        .get("output")
-                        .or_else(|| obj.get("result"))
-                        .or_else(|| obj.get("content"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default();
-
-                    if !output.is_empty() {
-                        let truncated = if output.len() > 500 {
-                            format!("{}...", &output[..500])
-                        } else {
-                            output.to_string()
-                        };
-
-                        messages.push(ParsedMessage {
-                            role: Role::Tool,
-                            content: format!("```\n{}\n```", truncated),
-                            timestamp,
-                            tool_name: None,
-                            model: None,
-                        });
-                    }
-                }
-                "error" => {
-                    let error_msg = obj
-                        .get("message")
-                        .or_else(|| obj.get("content"))
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("Unknown error");
-
-                    messages.push(ParsedMessage {
-                        role: Role::Info,
-                        content: format!("**Error:** {}", error_msg),
-                        timestamp,
-                        tool_name: None,
-                        model: None,
-                    });
                 }
                 _ => {
-                    // Unknown event type, try to extract any content
-                    if let Some(content) = obj.get("content").and_then(|v| v.as_str()) {
-                        if !content.trim().is_empty() {
-                            messages.push(ParsedMessage {
-                                role: Role::Info,
-                                content: content.to_string(),
-                                timestamp,
-                                tool_name: None,
-                                model: None,
-                            });
-                        }
-                    }
+                    // Unknown event type — skip
                 }
             }
         }
@@ -219,16 +226,35 @@ impl Parser for CodexParser {
             }
         });
 
+        // Workspace from session CWD
+        let workspace = session_cwd.as_ref().map(|cwd| {
+            // Extract last path component as project name
+            cwd.replace('\\', "/")
+                .rsplit('/')
+                .next()
+                .unwrap_or(cwd)
+                .to_string()
+        });
+
+        // Build tags from metadata
+        let mut tags = Vec::new();
+        if let Some(ref orig) = session_originator {
+            tags.push(format!("originator:{}", orig));
+        }
+        if let Some(ref provider) = model_provider {
+            tags.push(format!("provider:{}", provider));
+        }
+
         Ok(ParsedConversation {
             id: session_id,
             source: "codex".to_string(),
             title,
-            workspace: Some("Codex CLI".to_string()),
+            workspace,
             created_at: first_timestamp,
             updated_at: last_timestamp,
-            model: None,
+            model: model_provider,
             messages,
-            tags: Vec::new(),
+            tags,
         })
     }
 

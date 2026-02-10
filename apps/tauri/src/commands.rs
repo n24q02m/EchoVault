@@ -205,11 +205,10 @@ pub async fn complete_auth(state: State<'_, AppState>) -> Result<AuthStatusRespo
 #[tauri::command]
 pub async fn scan_sessions() -> Result<ScanResult, String> {
     use echovault_core::extractors::{
-        aider::AiderExtractor, antigravity::AntigravityExtractor, claude_code::ClaudeCodeExtractor,
-        cline::ClineExtractor, codex::CodexExtractor, continue_dev::ContinueDevExtractor,
-        cursor::CursorExtractor, gemini_cli::GeminiCliExtractor, jetbrains::JetBrainsExtractor,
-        opencode::OpenCodeExtractor, vscode_copilot::VSCodeCopilotExtractor, zed::ZedExtractor,
-        Extractor,
+        antigravity::AntigravityExtractor, claude_code::ClaudeCodeExtractor, cline::ClineExtractor,
+        codex::CodexExtractor, continue_dev::ContinueDevExtractor, cursor::CursorExtractor,
+        gemini_cli::GeminiCliExtractor, jetbrains::JetBrainsExtractor, opencode::OpenCodeExtractor,
+        vscode_copilot::VSCodeCopilotExtractor, zed::ZedExtractor, Extractor,
     };
     use std::collections::HashSet;
 
@@ -253,7 +252,6 @@ pub async fn scan_sessions() -> Result<ScanResult, String> {
         scan_extractor!(AntigravityExtractor::new());
         scan_extractor!(GeminiCliExtractor::new());
         scan_extractor!(ClaudeCodeExtractor::new());
-        scan_extractor!(AiderExtractor::new());
         scan_extractor!(CodexExtractor::new());
         scan_extractor!(ContinueDevExtractor::new());
         scan_extractor!(OpenCodeExtractor::new());
@@ -634,11 +632,10 @@ fn import_vault_sessions(vault_dir: &std::path::Path) -> Result<usize, String> {
 /// Ingest sessions từ local extractors vào vault
 fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     use echovault_core::extractors::{
-        aider::AiderExtractor, antigravity::AntigravityExtractor, claude_code::ClaudeCodeExtractor,
-        cline::ClineExtractor, codex::CodexExtractor, continue_dev::ContinueDevExtractor,
-        cursor::CursorExtractor, gemini_cli::GeminiCliExtractor, jetbrains::JetBrainsExtractor,
-        opencode::OpenCodeExtractor, vscode_copilot::VSCodeCopilotExtractor, zed::ZedExtractor,
-        Extractor,
+        antigravity::AntigravityExtractor, claude_code::ClaudeCodeExtractor, cline::ClineExtractor,
+        codex::CodexExtractor, continue_dev::ContinueDevExtractor, cursor::CursorExtractor,
+        gemini_cli::GeminiCliExtractor, jetbrains::JetBrainsExtractor, opencode::OpenCodeExtractor,
+        vscode_copilot::VSCodeCopilotExtractor, zed::ZedExtractor, Extractor,
     };
     use rayon::prelude::*;
 
@@ -690,7 +687,6 @@ fn ingest_sessions(vault_dir: &std::path::Path) -> Result<bool, String> {
     ingest_extractor!(AntigravityExtractor::new(), "Antigravity");
     ingest_extractor!(GeminiCliExtractor::new(), "Gemini CLI");
     ingest_extractor!(ClaudeCodeExtractor::new(), "Claude Code");
-    ingest_extractor!(AiderExtractor::new(), "Aider");
     ingest_extractor!(CodexExtractor::new(), "Codex");
     ingest_extractor!(ContinueDevExtractor::new(), "Continue.dev");
     ingest_extractor!(OpenCodeExtractor::new(), "OpenCode");
@@ -1759,6 +1755,43 @@ pub async fn get_embedding_config() -> Result<serde_json::Value, String> {
 pub async fn embed_sessions() -> Result<EmbedResponse, String> {
     let config = Config::load_default().map_err(|e| e.to_string())?;
     let vault_dir = config.vault_path.clone();
+
+    // Validate: Test connection before embedding to avoid timeout/crash
+
+    // Test connection with a quick health check
+    let status = tokio::task::spawn_blocking({
+        let provider = echovault_core::embedding::provider::EmbeddingProvider::new(
+            &config.embedding.api_base,
+            config.embedding.api_key.as_deref(),
+            &config.embedding.model,
+        );
+        move || provider.check_provider_status()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    use echovault_core::embedding::provider::ProviderStatus;
+    match status {
+        ProviderStatus::Available { .. } => {
+            // Connection OK, proceed with embedding
+        }
+        ProviderStatus::ModelNotFound { message: _ } => {
+            return Err(format!(
+                "Embedding model '{}' not found. Please check your settings or run: ollama pull {}",
+                config.embedding.model, config.embedding.model
+            ));
+        }
+        ProviderStatus::Unavailable { reason } => {
+            return Err(format!(
+                "Cannot connect to embedding provider at '{}'. Please check:\n\
+                 - Is Ollama running? (ollama serve)\n\
+                 - Is the API base URL correct?\n\
+                 \nDetails: {}",
+                config.embedding.api_base, reason
+            ));
+        }
+    }
+
     let embedding_config = echovault_core::embedding::EmbeddingConfig {
         api_base: config.embedding.api_base,
         api_key: config.embedding.api_key,

@@ -3,11 +3,11 @@
 //! Principle: ONLY COPY raw files, DO NOT format/transform data.
 //! This ensures no information loss when IDE changes format.
 //!
-//! ## Supported sources (12)
+//! ## Supported sources (11)
 //!
 //! ### Extensions (plugins inside host IDEs)
 //! - `vscode-copilot`: GitHub Copilot Chat (VS Code, VS Code Insiders)
-//! - `cline`: Cline (Claude Dev) and Roo Code fork (VS Code, Cursor)
+//! - `cline`: Cline (Claude Dev) and Roo Code fork (VS Code, Cursor, JetBrains)
 //! - `continue-dev`: Continue.dev (VS Code, JetBrains)
 //!
 //! ### Standalone IDEs
@@ -19,11 +19,9 @@
 //! ### CLI tools
 //! - `gemini-cli`: Google Gemini CLI
 //! - `claude-code`: Claude Code CLI (Anthropic)
-//! - `aider`: Aider AI coding assistant
 //! - `codex`: OpenAI Codex CLI
 //! - `opencode`: OpenCode terminal AI
 
-pub mod aider;
 pub mod antigravity;
 pub mod claude_code;
 pub mod cline;
@@ -168,7 +166,6 @@ pub fn all_extractors() -> Vec<Box<dyn Extractor>> {
         Box::new(antigravity::AntigravityExtractor::new()),
         Box::new(gemini_cli::GeminiCliExtractor::new()),
         Box::new(claude_code::ClaudeCodeExtractor::new()),
-        Box::new(aider::AiderExtractor::new()),
         Box::new(codex::CodexExtractor::new()),
         Box::new(opencode::OpenCodeExtractor::new()),
     ]

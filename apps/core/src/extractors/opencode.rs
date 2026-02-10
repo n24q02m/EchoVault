@@ -1,158 +1,140 @@
 //! OpenCode Terminal AI Extractor
 //!
 //! Extracts chat session history from OpenCode (github.com/opencode-ai/opencode).
-//! OpenCode stores sessions in a SQLite database per project:
-//! - {project}/.opencode/opencode.db
+//! OpenCode v1.x stores sessions as 3-tier JSON files using XDG paths:
 //!
-//! Database schema (key tables):
-//! - sessions: id, title, model, created_at, updated_at
-//! - messages: id, session_id, role, content, created_at, tool_call_id, parts (JSON)
+//! Storage: ~/.local/share/opencode/storage/
+//!   - session/<id>.json   (session metadata)
+//!   - message/<id>.json   (message metadata: role, model, tokens)
+//!   - part/<id>.json      (actual content: text, tool calls)
+//!   - project/<id>.json   (project metadata)
+//!   - session_diff/<id>.json (diff data)
 //!
-//! The extractor copies the entire opencode.db file to the vault.
-//! Scanning is done in known project directories.
+//! The extractor copies all JSON files from the storage directory to the vault.
 
 use super::{Extractor, SessionFile, SessionMetadata};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 /// OpenCode Extractor
 pub struct OpenCodeExtractor {
-    /// Directories to scan for .opencode/ subdirectories.
-    scan_dirs: Vec<PathBuf>,
+    /// Paths to opencode storage directories.
+    storage_dirs: Vec<PathBuf>,
 }
-
-/// OpenCode database filename
-const OPENCODE_DB: &str = "opencode.db";
-/// OpenCode directory name
-const OPENCODE_DIR: &str = ".opencode";
 
 impl OpenCodeExtractor {
     /// Create new extractor.
     pub fn new() -> Self {
-        let mut scan_dirs = Vec::new();
+        let mut storage_dirs = Vec::new();
 
         // Check OPENCODE_HOME env var
         if let Ok(home) = std::env::var("OPENCODE_HOME") {
-            scan_dirs.push(PathBuf::from(home));
+            storage_dirs.push(PathBuf::from(home).join("storage"));
         }
 
-        // Common project directories
+        // XDG data directory: ~/.local/share/opencode/storage/
+        if let Some(data_dir) = dirs::data_dir() {
+            let path = data_dir.join("opencode").join("storage");
+            if !storage_dirs.contains(&path) {
+                storage_dirs.push(path);
+            }
+        }
+
+        // Fallback: $HOME/.local/share/opencode/storage/
+        if let Ok(home) = std::env::var("HOME") {
+            let path = PathBuf::from(home).join(".local/share/opencode/storage");
+            if !storage_dirs.contains(&path) {
+                storage_dirs.push(path);
+            }
+        }
+
+        // Additional fallback via dirs::home_dir
         if let Some(home) = dirs::home_dir() {
-            let project_dirs = ["projects", "repos", "dev", "code", "workspace", "src"];
-            for dir in &project_dirs {
-                let path = home.join(dir);
-                if path.exists() && path.is_dir() {
-                    scan_dirs.push(path);
-                }
-            }
-            // Home directory itself
-            scan_dirs.push(home);
-        }
-
-        // Current working directory
-        if let Ok(cwd) = std::env::current_dir() {
-            if !scan_dirs.contains(&cwd) {
-                scan_dirs.push(cwd);
+            let path = home.join(".local/share/opencode/storage");
+            if !storage_dirs.contains(&path) {
+                storage_dirs.push(path);
             }
         }
 
-        Self { scan_dirs }
+        Self { storage_dirs }
     }
 
-    /// Recursively find directories containing .opencode/opencode.db (max depth 2)
-    fn find_opencode_dirs(&self) -> Vec<PathBuf> {
-        let mut found = Vec::new();
-
-        for scan_dir in &self.scan_dirs {
-            Self::check_dir(scan_dir, 0, 2, &mut found);
+    /// Find session JSON files in the session/ subdirectory.
+    fn find_session_files(storage_dir: &Path) -> Vec<PathBuf> {
+        let session_dir = storage_dir.join("session");
+        if !session_dir.exists() || !session_dir.is_dir() {
+            return Vec::new();
         }
 
-        found.sort();
-        found.dedup();
-        found
-    }
-
-    fn check_dir(dir: &Path, depth: usize, max_depth: usize, found: &mut Vec<PathBuf>) {
-        let db_path = dir.join(OPENCODE_DIR).join(OPENCODE_DB);
-        if db_path.exists() {
-            found.push(dir.to_path_buf());
-        }
-
-        if depth >= max_depth {
-            return;
-        }
-
-        if let Ok(entries) = std::fs::read_dir(dir) {
+        let mut files = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&session_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() {
-                    // Skip hidden directories (except .opencode itself)
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if name.starts_with('.') && name != OPENCODE_DIR {
-                            continue;
-                        }
-                        // Skip common non-project directories
-                        if matches!(
-                            name,
-                            "node_modules" | "target" | ".git" | "vendor" | "__pycache__"
-                        ) {
-                            continue;
-                        }
-                    }
-                    Self::check_dir(&path, depth + 1, max_depth, found);
+                if path.is_file() && path.extension().is_some_and(|ext| ext == "json") {
+                    files.push(path);
                 }
             }
         }
+        files
     }
 
-    /// Extract metadata from an OpenCode database.
-    fn extract_metadata(&self, project_dir: &Path) -> Vec<SessionMetadata> {
-        let db_path = project_dir.join(OPENCODE_DIR).join(OPENCODE_DB);
-        if !db_path.exists() {
-            return Vec::new();
-        }
+    /// Extract session metadata from a session JSON file.
+    fn extract_session_metadata(
+        session_path: &Path,
+        storage_dir: &Path,
+    ) -> Option<SessionMetadata> {
+        let content = std::fs::read_to_string(session_path).ok()?;
+        let json: Value = serde_json::from_str(&content).ok()?;
 
-        let file_size = std::fs::metadata(&db_path).map(|m| m.len()).unwrap_or(0);
-        if file_size < 100 {
-            return Vec::new();
-        }
+        let session_id = json
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())?;
 
-        let project_name = project_dir
-            .file_name()
-            .and_then(|n| n.to_str())
+        let title = json
+            .get("title")
+            .and_then(|v| v.as_str())
             .map(|s| s.to_string())
-            .unwrap_or_else(|| "Unknown".to_string());
+            .or_else(|| {
+                json.get("slug")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            });
 
-        // Create a single session metadata for the entire database
-        // (the parser will split into individual sessions)
-        let session_id = format!(
-            "opencode-{}",
-            project_dir
-                .to_string_lossy()
-                .chars()
-                .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
-                .collect::<String>()
-        );
+        let created_at = json
+            .get("time")
+            .and_then(|t| t.get("created"))
+            .and_then(|v| v.as_i64())
+            .and_then(|ms| {
+                DateTime::<Utc>::from_timestamp(ms / 1000, ((ms % 1000) * 1_000_000) as u32)
+            });
 
-        // Get modified time as creation time
-        let created_at = std::fs::metadata(&db_path)
-            .ok()
-            .and_then(|m| m.modified().ok())
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .and_then(|d| DateTime::<Utc>::from_timestamp(d.as_secs() as i64, 0));
+        let workspace_name = json.get("directory").and_then(|v| v.as_str()).map(|dir| {
+            dir.replace('\\', "/")
+                .rsplit('/')
+                .next()
+                .unwrap_or(dir)
+                .to_string()
+        });
 
-        vec![SessionMetadata {
+        // Calculate total size: session file + associated messages + parts
+        let file_size = std::fs::metadata(session_path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+
+        Some(SessionMetadata {
             id: session_id,
             source: "opencode".to_string(),
-            title: Some(format!("OpenCode - {}", project_name)),
+            title,
             created_at,
             vault_path: PathBuf::new(),
-            original_path: db_path,
+            original_path: storage_dir.to_path_buf(),
             file_size,
-            workspace_name: Some(project_name),
+            workspace_name,
             ide_origin: None,
-        }]
+        })
     }
 }
 
@@ -168,62 +150,133 @@ impl Extractor for OpenCodeExtractor {
     }
 
     fn find_storage_locations(&self) -> Result<Vec<PathBuf>> {
-        Ok(self.find_opencode_dirs())
+        let mut locations = Vec::new();
+
+        for storage_dir in &self.storage_dirs {
+            if storage_dir.exists() && storage_dir.is_dir() {
+                // Check if there are session files
+                let session_dir = storage_dir.join("session");
+                if session_dir.exists() && session_dir.is_dir() {
+                    locations.push(storage_dir.clone());
+                }
+            }
+        }
+
+        Ok(locations)
     }
 
     fn get_workspace_name(&self, location: &Path) -> String {
-        location
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "OpenCode".to_string())
+        // The location is the storage/ directory.
+        // Try to read the first session's directory field.
+        let session_dir = location.join("session");
+        if let Ok(entries) = std::fs::read_dir(&session_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|ext| ext == "json") {
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        if let Ok(json) = serde_json::from_str::<Value>(&content) {
+                            if let Some(dir) = json.get("directory").and_then(|v| v.as_str()) {
+                                return dir
+                                    .replace('\\', "/")
+                                    .rsplit('/')
+                                    .next()
+                                    .unwrap_or(dir)
+                                    .to_string();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        "OpenCode".to_string()
     }
 
     fn list_session_files(&self, location: &Path) -> Result<Vec<SessionFile>> {
-        let metadata_list = self.extract_metadata(location);
-        let sessions: Vec<SessionFile> = metadata_list
-            .into_iter()
-            .map(|metadata| SessionFile {
-                source_path: metadata.original_path.clone(),
-                metadata,
+        let session_files = Self::find_session_files(location);
+        let mut sessions: Vec<SessionFile> = session_files
+            .iter()
+            .filter_map(|path| {
+                Self::extract_session_metadata(path, location).map(|metadata| SessionFile {
+                    source_path: location.to_path_buf(),
+                    metadata,
+                })
             })
             .collect();
+
+        // Sort by creation time (newest first)
+        sessions.sort_by(|a, b| b.metadata.created_at.cmp(&a.metadata.created_at));
         Ok(sessions)
     }
 
     fn count_sessions(&self, location: &Path) -> Result<usize> {
-        let db_path = location.join(OPENCODE_DIR).join(OPENCODE_DB);
-        if db_path.exists() {
-            Ok(1)
-        } else {
-            Ok(0)
-        }
+        Ok(Self::find_session_files(location).len())
     }
 
-    /// Custom copy: copy the opencode.db to vault under a project-specific name.
+    /// Custom copy: copy the entire storage directory structure to vault.
     fn copy_to_vault(&self, session: &SessionFile, vault_dir: &Path) -> Result<Option<PathBuf>> {
         let source_dir = vault_dir.join(self.source_name());
         std::fs::create_dir_all(&source_dir)?;
 
-        // Use project name as filename to avoid collisions
-        let project_name = session
-            .metadata
-            .workspace_name
-            .as_deref()
-            .unwrap_or("unknown");
-        let dest_path = source_dir.join(format!("{}.db", project_name));
+        // Use session ID as subdirectory
+        let session_id = &session.metadata.id;
+        let dest_session_dir = source_dir.join(session_id);
+        std::fs::create_dir_all(&dest_session_dir)?;
 
-        let should_copy = if dest_path.exists() {
-            let src_meta = session.source_path.metadata()?;
-            let dest_meta = dest_path.metadata()?;
-            src_meta.modified()? > dest_meta.modified()? || src_meta.len() != dest_meta.len()
-        } else {
-            true
-        };
+        let storage_dir = &session.source_path;
+        let mut copied = false;
 
-        if should_copy {
-            std::fs::copy(&session.source_path, &dest_path)?;
-            Ok(Some(dest_path))
+        // Copy relevant files for this session from all subdirectories
+        let subdirs = ["session", "message", "part", "project", "session_diff"];
+        for subdir in &subdirs {
+            let src_subdir = storage_dir.join(subdir);
+            if !src_subdir.exists() {
+                continue;
+            }
+
+            let dest_subdir = dest_session_dir.join(subdir);
+            std::fs::create_dir_all(&dest_subdir)?;
+
+            if let Ok(entries) = std::fs::read_dir(&src_subdir) {
+                for entry in entries.flatten() {
+                    let src_path = entry.path();
+                    if src_path.is_file() && src_path.extension().is_some_and(|ext| ext == "json") {
+                        // For session/: only copy the matching session file
+                        // For message/part/: filter by sessionID in content
+                        let should_copy = if *subdir == "session" {
+                            src_path
+                                .file_stem()
+                                .and_then(|n| n.to_str())
+                                .is_some_and(|name| name == session_id)
+                        } else {
+                            // Copy all files — the parser will filter by sessionID
+                            true
+                        };
+
+                        if should_copy {
+                            let filename = src_path.file_name().unwrap_or_default();
+                            let dest_path = dest_subdir.join(filename);
+
+                            let do_copy = if dest_path.exists() {
+                                let src_meta = src_path.metadata()?;
+                                let dest_meta = dest_path.metadata()?;
+                                src_meta.modified()? > dest_meta.modified()?
+                                    || src_meta.len() != dest_meta.len()
+                            } else {
+                                true
+                            };
+
+                            if do_copy {
+                                std::fs::copy(&src_path, &dest_path)?;
+                                copied = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if copied {
+            Ok(Some(dest_session_dir))
         } else {
             Ok(None)
         }

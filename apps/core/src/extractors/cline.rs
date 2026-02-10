@@ -1,25 +1,29 @@
-//! Cline (Claude Dev) VS Code Extension Extractor
+//! Cline (Claude Dev) Extension Extractor
 //!
 //! Extracts task history from Cline extension.
 //! ONLY COPY raw JSON files, DO NOT parse/transform content.
 //!
 //! Storage locations:
-//! - Windows: %APPDATA%/Code/User/globalStorage/saoudrizwan.claude-dev/tasks
-//! - macOS: ~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks
-//! - Linux: ~/.config/Code/User/globalStorage/saoudrizwan.claude-dev/tasks
+//! - VS Code: %APPDATA%/Code/User/globalStorage/saoudrizwan.claude-dev/tasks
+//! - Cursor: %APPDATA%/Cursor/User/globalStorage/saoudrizwan.claude-dev/tasks
+//! - JetBrains (PyCharm, IntelliJ, etc.): %USERPROFILE%/.cline/data/tasks
+//! - macOS JetBrains: ~/.cline/data/tasks
+//! - Linux JetBrains: ~/.cline/data/tasks
 
 use super::{Extractor, ExtractorKind, SessionFile, SessionMetadata};
-use crate::utils::wsl;
 use anyhow::Result;
 use chrono::{TimeZone, Utc};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-/// Cline VS Code Extension Extractor.
+/// Cline Extension Extractor.
+/// Supports VS Code, Cursor, and JetBrains IDEs.
 /// Also supports Roo Code (fork of Cline) with extension ID `rooveterinaryinc.roo-cline`.
 pub struct ClineExtractor {
-    /// Paths that may contain globalStorage
+    /// Paths that may contain globalStorage (VS Code/Cursor)
     storage_paths: Vec<PathBuf>,
+    /// Paths for JetBrains Cline (~/.cline/data/tasks/)
+    jetbrains_paths: Vec<PathBuf>,
 }
 
 /// Extension IDs for Cline and its forks.
@@ -35,8 +39,9 @@ impl ClineExtractor {
     /// Create new extractor with default paths per platform.
     pub fn new() -> Self {
         let mut storage_paths = Vec::new();
+        let mut jetbrains_paths = Vec::new();
 
-        // Build all possible paths from: IDE variant x Extension ID
+        // Build all possible paths from: IDE variant x Extension ID (VS Code / Cursor)
         let add_paths = |base: &PathBuf, paths: &mut Vec<PathBuf>| {
             for variant in VSCODE_VARIANTS {
                 for ext_id in CLINE_EXTENSION_IDS {
@@ -51,8 +56,15 @@ impl ClineExtractor {
 
         // Prefer reading from HOME env variable
         if let Ok(home) = std::env::var("HOME") {
-            let home_config = PathBuf::from(home).join(".config");
+            let home_path = PathBuf::from(&home);
+            let home_config = home_path.join(".config");
             add_paths(&home_config, &mut storage_paths);
+
+            // JetBrains Cline: ~/.cline/data/tasks/
+            let jb_path = home_path.join(".cline/data/tasks");
+            if !jetbrains_paths.contains(&jb_path) {
+                jetbrains_paths.push(jb_path);
+            }
         }
 
         // Fallback: Get path per platform via dirs crate
@@ -60,28 +72,28 @@ impl ClineExtractor {
             add_paths(&config_dir, &mut storage_paths);
         }
 
-        // NOTE: On Windows, dirs::config_dir() already returns %APPDATA% (Roaming)
-        // which is the correct location for VS Code extensions' globalStorage.
-
-        // Windows: Scan WSL for Cline installations
-        for variant in VSCODE_VARIANTS {
-            for ext_id in CLINE_EXTENSION_IDS {
-                let subpath = format!(".config/{}/User/globalStorage/{}/tasks", variant, ext_id);
-                for wsl_path in wsl::find_wsl_paths(&subpath) {
-                    if !storage_paths.contains(&wsl_path) {
-                        storage_paths.push(wsl_path);
-                    }
-                }
+        // JetBrains path via dirs::home_dir()
+        if let Some(home_dir) = dirs::home_dir() {
+            let jb_path = home_dir.join(".cline/data/tasks");
+            if !jetbrains_paths.contains(&jb_path) {
+                jetbrains_paths.push(jb_path);
             }
         }
 
-        Self { storage_paths }
+        // NOTE: On Windows, dirs::config_dir() already returns %APPDATA% (Roaming)
+        // which is the correct location for VS Code extensions' globalStorage.
+
+        Self {
+            storage_paths,
+            jetbrains_paths,
+        }
     }
 
     /// Extract metadata from task folder.
     fn extract_task_metadata(&self, task_dir: &Path) -> Option<SessionMetadata> {
         // Cline stores each task in a separate folder with files:
         // - api_conversation_history.json (conversation)
+        // - task_metadata.json (metadata including IDE info)
         // - ui_messages.json (UI state)
         let api_history = task_dir.join("api_conversation_history.json");
 
@@ -122,6 +134,9 @@ impl ClineExtractor {
             (None, None)
         };
 
+        // Extract IDE origin from task_metadata.json
+        let ide_origin = Self::extract_ide_origin(task_dir);
+
         // Get total file size of folder
         let file_size = std::fs::read_dir(task_dir)
             .ok()?
@@ -146,8 +161,23 @@ impl ClineExtractor {
             original_path: task_dir.to_path_buf(),
             file_size,
             workspace_name: None,
-            ide_origin: None,
+            ide_origin,
         })
+    }
+
+    /// Extract IDE origin from task_metadata.json's environment_history.
+    fn extract_ide_origin(task_dir: &Path) -> Option<String> {
+        let metadata_path = task_dir.join("task_metadata.json");
+        let content = std::fs::read_to_string(&metadata_path).ok()?;
+        let json: Value = serde_json::from_str(&content).ok()?;
+
+        // Try environment_history (array of environment snapshots)
+        json.get("environment_history")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.last()) // Most recent environment
+            .and_then(|env| env.get("host_name"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
     }
 }
 
@@ -167,12 +197,20 @@ impl Extractor for ClineExtractor {
     }
 
     fn supported_ides(&self) -> &'static [&'static str] {
-        &["VS Code", "VS Code Insiders", "Cursor"]
+        &[
+            "VS Code",
+            "VS Code Insiders",
+            "Cursor",
+            "PyCharm",
+            "IntelliJ IDEA",
+            "JetBrains",
+        ]
     }
 
     fn find_storage_locations(&self) -> Result<Vec<PathBuf>> {
         let mut locations = Vec::new();
 
+        // VS Code / Cursor globalStorage paths
         for storage_path in &self.storage_paths {
             if storage_path.exists() && storage_path.is_dir() {
                 // Each task is a subdirectory
@@ -182,6 +220,23 @@ impl Extractor for ClineExtractor {
                         if path.is_dir() {
                             // Check if api_conversation_history.json exists
                             if path.join("api_conversation_history.json").exists() {
+                                locations.push(path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // JetBrains paths (~/.cline/data/tasks/)
+        for jb_path in &self.jetbrains_paths {
+            if jb_path.exists() && jb_path.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(jb_path) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() && path.join("api_conversation_history.json").exists() {
+                            // Avoid duplicates
+                            if !locations.contains(&path) {
                                 locations.push(path);
                             }
                         }

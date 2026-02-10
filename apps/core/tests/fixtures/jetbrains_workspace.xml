@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChatSessionStateTemp">
+    <option name="chats">
+      <list>
+        <SerializedChat>
+          <option name="chatContext">
+            <SerializedChatContext />
+          </option>
+          <option name="chatModelId" value="chat_mode" />
+          <option name="messages">
+            <list>
+              <SerializedChatMessage>
+                <option name="attachments">
+                  <list />
+                </option>
+                <option name="markupLanguageID" value="ChatInput" />
+                <option name="uid" value="UUID(uuid=11111111-1111-1111-1111-111111111111)" />
+                <option name="displayContent" value="What is Python GIL?" />
+                <option name="internalContent" value="What is Python GIL?" />
+              </SerializedChatMessage>
+              <SerializedChatMessage>
+                <option name="author" value="Assistant" />
+                <option name="uid" value="22222222-2222-2222-2222-222222222222" />
+                <option name="displayContent" value="The Python GIL (Global Interpreter Lock) is a mutex that protects access to Python objects.&#10;&#10;Key points:&#10;- Only one thread can execute Python bytecode at a time&#10;- It simplifies memory management&#10;- It can be a bottleneck for CPU-bound multi-threaded programs" />
+                <option name="internalContent" value="The Python GIL (Global Interpreter Lock) is a mutex that protects access to Python objects.&#10;&#10;Key points:&#10;- Only one thread can execute Python bytecode at a time&#10;- It simplifies memory management&#10;- It can be a bottleneck for CPU-bound multi-threaded programs" />
+              </SerializedChatMessage>
+              <SerializedChatMessage>
+                <option name="markupLanguageID" value="ChatInput" />
+                <option name="uid" value="UUID(uuid=33333333-3333-3333-3333-333333333333)" />
+                <option name="displayContent" value="How to work around GIL limitations?" />
+                <option name="internalContent" value="How to work around GIL limitations?" />
+              </SerializedChatMessage>
+              <SerializedChatMessage>
+                <option name="author" value="Assistant" />
+                <option name="uid" value="44444444-4444-4444-4444-444444444444" />
+                <option name="displayContent" value="You can use multiprocessing, asyncio, or C extensions to work around GIL limitations." />
+                <option name="internalContent" value="You can use multiprocessing, asyncio, or C extensions to work around GIL limitations." />
+              </SerializedChatMessage>
+            </list>
+          </option>
+          <option name="modifiedAt" value="1700000000000" />
+          <option name="statisticInformation">
+            <ChatStatisticInformation>
+              <option name="sourceActionType" value="NEW_CHAT_ON_START" />
+              <option name="timestamp" value="1700000000000" />
+            </ChatStatisticInformation>
+          </option>
+          <option name="title">
+            <SerializedChatTitle>
+              <option name="custom" value="true" />
+              <option name="text" value="Python GIL Discussion" />
+            </SerializedChatTitle>
+          </option>
+          <option name="uid" value="test-jb-chat-001" />
+        </SerializedChat>
+      </list>
+    </option>
+  </component>
+</project>

@@ -1,0 +1,94 @@
+{
+  "version": "0.3.0",
+  "title": "Test Agent Thread",
+  "messages": [
+    {
+      "User": {
+        "id": "user-msg-001",
+        "content": [
+          {
+            "Text": "What is Rust ownership?"
+          }
+        ]
+      }
+    },
+    {
+      "Agent": {
+        "content": [
+          {
+            "Text": "Rust ownership is a set of rules that the compiler checks at compile time."
+          },
+          {
+            "Thinking": {
+              "text": "Let me explain the three ownership rules",
+              "signature": "sig123"
+            }
+          }
+        ],
+        "tool_results": {},
+        "reasoning_details": null
+      }
+    },
+    {
+      "User": {
+        "id": "user-msg-002",
+        "content": [
+          {
+            "Text": "Show me an example with a file reference"
+          },
+          {
+            "File": {
+              "path": "src/main.rs"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "Agent": {
+        "content": [
+          {
+            "Text": "Here's an example:\n```rust\nfn main() {\n    let s1 = String::from(\"hello\");\n    let s2 = s1; // s1 is moved\n}\n```"
+          },
+          {
+            "ToolUse": {
+              "id": "tool-1",
+              "name": "read_file",
+              "raw_input": "{\"path\": \"src/main.rs\"}",
+              "input": {
+                "path": "src/main.rs"
+              },
+              "is_input_complete": true,
+              "thought_signature": null
+            }
+          }
+        ],
+        "tool_results": {
+          "tool-1": {
+            "tool_use_id": "tool-1",
+            "tool_name": "read_file",
+            "is_error": false,
+            "content": "fn main() { }",
+            "output": null
+          }
+        },
+        "reasoning_details": null
+      }
+    }
+  ],
+  "updated_at": "2024-12-01T10:30:00Z",
+  "detailed_summary": "Discussion about Rust ownership and borrowing",
+  "initial_project_snapshot": null,
+  "cumulative_token_usage": {
+    "input_tokens": 500,
+    "output_tokens": 300
+  },
+  "request_token_usage": {},
+  "model": {
+    "provider": "zed",
+    "model": "claude-sonnet-4-20250514"
+  },
+  "profile": null,
+  "imported": false,
+  "subagent_context": null
+}

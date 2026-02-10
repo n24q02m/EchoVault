@@ -3,19 +3,27 @@
 //! Parses both storage formats from the Zed editor:
 //!
 //! ## 1. Agent Threads (threads.db - SQLite + zstd)
-//! - `data_type` = "json": raw JSON blob
-//! - `data_type` = "zstd": zstd-compressed JSON blob
+//! - Schema: `threads(id TEXT PK, parent_id TEXT, summary TEXT, updated_at TEXT, data_type TEXT, data BLOB)`
+//! - `data_type` = "json" (raw) or "zstd" (compressed)
 //! - Data structure (after decompression):
 //!   ```json
 //!   {
 //!     "version": "0.3.0",
 //!     "title": "...",
-//!     "messages": [...],
+//!     "messages": [
+//!       {"User": {"id": "...", "content": [{"Text": "..."}]}},
+//!       {"Agent": {"content": [{"Text": "..."}, {"Thinking": {"text": "...", "signature": "..."}}, {"ToolUse": {...}}], "tool_results": {...}}}
+//!     ],
 //!     "model": {"provider": "...", "model": "..."},
 //!     "updated_at": "RFC3339",
-//!     "cumulative_token_usage": {"input_tokens": N, "output_tokens": N}
+//!     "cumulative_token_usage": {"input_tokens": N, "output_tokens": N},
+//!     "detailed_summary": "...",
+//!     "profile": "...",
+//!     "imported": false,
+//!     "subagent_context": null
 //!   }
 //!   ```
+//! - Source: verified from `zed-industries/zed/crates/agent/src/db.rs`
 //!
 //! ## 2. Text Threads (*.zed.json - legacy JSON files)
 //! - Structure:
@@ -167,9 +175,31 @@ impl ZedParser {
     }
 
     /// Parse a single message from Agent Thread JSON.
-    /// Agent messages have varying structures across versions.
+    ///
+    /// Zed uses Rust-style tagged enum serialization for messages:
+    /// - User: `{"User": {"id": "...", "content": [{"Text": "..."}, ...]}}`
+    /// - Agent: `{"Agent": {"content": [{"Text": "..."}, {"Thinking": {...}}, {"ToolUse": {...}}], "tool_results": {...}}}`
+    ///
+    /// Legacy format (pre-0.3.0) uses: `{"role": "user", "content": "...", "segments": [...]}`
     fn parse_agent_message(msg: &Value) -> (Role, String) {
-        // Try role field (various locations)
+        // Format 1 (current v0.3.0+): Tagged enum - {"User": {...}} or {"Agent": {...}}
+        if let Some(user_data) = msg.get("User") {
+            let content = Self::extract_content_parts(
+                user_data.get("content").and_then(|c| c.as_array()),
+                true,
+            );
+            return (Role::User, content);
+        }
+
+        if let Some(agent_data) = msg.get("Agent") {
+            let content = Self::extract_content_parts(
+                agent_data.get("content").and_then(|c| c.as_array()),
+                false,
+            );
+            return (Role::Assistant, content);
+        }
+
+        // Format 2 (legacy): {"role": "user", "content": "...", "segments": [...]}
         let role_str = msg
             .get("role")
             .and_then(|r| r.as_str())
@@ -188,14 +218,13 @@ impl ZedParser {
             _ => Role::Info,
         };
 
-        // Try content field (string or structured)
+        // Legacy: try content as string or structured array
         let content = msg
             .get("content")
             .and_then(|c| {
                 if let Some(s) = c.as_str() {
                     Some(s.to_string())
                 } else if let Some(arr) = c.as_array() {
-                    // Array of content parts
                     let parts: Vec<String> = arr
                         .iter()
                         .filter_map(|part| {
@@ -227,8 +256,27 @@ impl ZedParser {
                     None
                 }
             })
+            // Legacy: segments array
             .or_else(|| {
-                // Fallback: try text field
+                msg.get("segments").and_then(|s| s.as_array()).map(|segs| {
+                    segs.iter()
+                        .filter_map(|seg| {
+                            if let Some(text_obj) = seg.get("Text") {
+                                text_obj
+                                    .get("text")
+                                    .and_then(|t| t.as_str())
+                                    .map(|s| s.to_string())
+                            } else {
+                                seg.get("text")
+                                    .and_then(|t| t.as_str())
+                                    .map(|s| s.to_string())
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+            })
+            .or_else(|| {
                 msg.get("text")
                     .and_then(|t| t.as_str())
                     .map(|s| s.to_string())
@@ -236,6 +284,82 @@ impl ZedParser {
             .unwrap_or_default();
 
         (role, content)
+    }
+
+    /// Extract text from content parts array (tagged enum format).
+    ///
+    /// User content: `[{"Text": "..."}, ...]`
+    /// Agent content: `[{"Text": "..."}, {"Thinking": {"text": "...", "signature": "..."}}, {"ToolUse": {...}}, {"RedactedThinking": "..."}]`
+    fn extract_content_parts(parts: Option<&Vec<Value>>, is_user: bool) -> String {
+        let Some(parts) = parts else {
+            return String::new();
+        };
+
+        let mut texts = Vec::new();
+
+        for part in parts {
+            // Tagged enum: {"Text": "content"} or {"Text": {"text": "content"}}
+            if let Some(text) = part.get("Text") {
+                if let Some(s) = text.as_str() {
+                    texts.push(s.to_string());
+                } else if let Some(s) = text.get("text").and_then(|t| t.as_str()) {
+                    texts.push(s.to_string());
+                }
+                continue;
+            }
+
+            // User-specific: {"File": {"path": "..."}}, {"Directory": {...}}, etc.
+            if is_user {
+                if let Some(file) = part.get("File") {
+                    if let Some(path) = file.get("path").and_then(|p| p.as_str()) {
+                        texts.push(format!("[File: {}]", path));
+                    }
+                }
+                if let Some(dir) = part.get("Directory") {
+                    if let Some(path) = dir.get("path").and_then(|p| p.as_str()) {
+                        texts.push(format!("[Directory: {}]", path));
+                    }
+                }
+                continue;
+            }
+
+            // Agent-specific: Thinking, ToolUse, RedactedThinking
+            if let Some(thinking) = part.get("Thinking") {
+                if let Some(text) = thinking.get("text").and_then(|t| t.as_str()) {
+                    if !text.trim().is_empty() {
+                        texts.push(format!("[Thinking: {}]", text));
+                    }
+                }
+                continue;
+            }
+
+            if let Some(tool_use) = part.get("ToolUse") {
+                let name = tool_use
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("tool");
+                texts.push(format!("[Tool: {}]", name));
+                continue;
+            }
+
+            // Fallback: any "type"/"text" pattern
+            if let Some(part_type) = part.get("type").and_then(|t| t.as_str()) {
+                match part_type {
+                    "text" => {
+                        if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
+                            texts.push(text.to_string());
+                        }
+                    }
+                    "tool_use" | "tool_call" => {
+                        let name = part.get("name").and_then(|n| n.as_str()).unwrap_or("tool");
+                        texts.push(format!("[Tool: {}]", name));
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        texts.join("\n")
     }
 
     /// Parse a legacy Text Thread JSON file.
@@ -328,8 +452,30 @@ impl ZedParser {
                     model: if is_assistant { model.clone() } else { None },
                 });
             }
+        } else if !raw_messages.is_empty()
+            && raw_messages
+                .first()
+                .is_some_and(|m| m.get("User").is_some() || m.get("Agent").is_some())
+        {
+            // v0.3.0+ tagged enum format: {"User": {...}} / {"Agent": {...}}
+            // This is the Agent Thread data format used in threads.db, but can also
+            // appear in standalone JSON exports.
+            for msg in &raw_messages {
+                let (role, content) = Self::parse_agent_message(msg);
+                if content.trim().is_empty() {
+                    continue;
+                }
+                let is_assistant = role == Role::Assistant;
+                messages.push(ParsedMessage {
+                    role,
+                    content,
+                    timestamp: None,
+                    tool_name: None,
+                    model: if is_assistant { model.clone() } else { None },
+                });
+            }
         } else {
-            // Simple format: messages with direct content
+            // Simple format: messages with direct content (role + content string)
             for msg in &raw_messages {
                 let role_str = msg
                     .get("role")

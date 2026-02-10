@@ -4,7 +4,6 @@
 //! ONLY COPY raw JSON files, DO NOT parse/transform content.
 
 use super::{Extractor, ExtractorKind, SessionFile, SessionMetadata};
-use crate::utils::wsl;
 use anyhow::Result;
 use chrono::{TimeZone, Utc};
 use rayon::prelude::*;
@@ -54,18 +53,6 @@ impl VSCodeCopilotExtractor {
         // NOTE: On Windows, dirs::config_dir() already returns %APPDATA% (Roaming)
         // which is the correct location for VS Code storage.
         // dirs::data_dir() returns %LOCALAPPDATA% (Local) which is NOT where VS Code stores data.
-
-        // Windows: Scan WSL distributions for VS Code storage (Remote-WSL scenario).
-        // When VS Code connects to WSL, CLI tools like Claude Code, Gemini CLI
-        // store data inside WSL filesystem, but VS Code workspace storage stays on Windows.
-        // However, users may have native VS Code inside WSL too.
-        for subpath in VSCODE_WORKSPACE_SUBPATHS {
-            for wsl_path in wsl::find_wsl_paths(subpath) {
-                if !storage_paths.contains(&wsl_path) {
-                    storage_paths.push(wsl_path);
-                }
-            }
-        }
 
         Self { storage_paths }
     }

@@ -2,15 +2,19 @@
 //!
 //! Strategy: Split on paragraph boundaries with target chunk size and overlap.
 //! Each chunk preserves context by including overlapping text from neighbors.
+//!
+//! All offsets use **byte** positions that are validated to land on UTF-8 char
+//! boundaries, so multi-byte characters (e.g. Vietnamese, CJK) are safe.
 
 use crate::parsers::{ParsedConversation, Role};
 
 /// Configuration for text chunking.
 #[derive(Debug, Clone)]
 pub struct ChunkConfig {
-    /// Target characters per chunk
+    /// Target bytes per chunk (approx – actual split will snap to nearest
+    /// paragraph/sentence/word boundary).
     pub chunk_size: usize,
-    /// Overlap characters between consecutive chunks
+    /// Overlap bytes between consecutive chunks
     pub chunk_overlap: usize,
     /// Minimum chunk size to keep (discard smaller)
     pub min_chunk_size: usize,
@@ -37,6 +41,33 @@ pub struct Chunk {
     pub start_offset: usize,
     /// Byte offset in the original text where this chunk ends
     pub end_offset: usize,
+}
+
+/// Round a byte offset DOWN to the nearest UTF-8 char boundary.
+#[inline]
+fn floor_char_boundary(s: &str, index: usize) -> usize {
+    if index >= s.len() {
+        return s.len();
+    }
+    // Walk backwards until we hit a char boundary
+    let mut i = index;
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
+/// Round a byte offset UP to the nearest UTF-8 char boundary.
+#[inline]
+fn ceil_char_boundary(s: &str, index: usize) -> usize {
+    if index >= s.len() {
+        return s.len();
+    }
+    let mut i = index;
+    while i < s.len() && !s.is_char_boundary(i) {
+        i += 1;
+    }
+    i
 }
 
 /// Split a parsed conversation into chunks suitable for embedding.
@@ -74,6 +105,7 @@ pub fn chunk_conversation(conv: &ParsedConversation, config: &ChunkConfig) -> Ve
 ///
 /// Tries to split on paragraph boundaries (\n\n), falling back to
 /// sentence boundaries (. or \n), then word boundaries.
+/// All byte offsets are snapped to UTF-8 char boundaries.
 pub fn chunk_text(text: &str, config: &ChunkConfig) -> Vec<Chunk> {
     if text.len() <= config.chunk_size {
         if text.len() >= config.min_chunk_size {
@@ -92,12 +124,18 @@ pub fn chunk_text(text: &str, config: &ChunkConfig) -> Vec<Chunk> {
     let mut index = 0;
 
     while start < text.len() {
+        // Ensure start is on a char boundary
+        start = ceil_char_boundary(text, start);
+        if start >= text.len() {
+            break;
+        }
+
         let remaining = text.len() - start;
         let end = if remaining <= config.chunk_size {
             text.len()
         } else {
             // Find a good split point near chunk_size
-            let target_end = start + config.chunk_size;
+            let target_end = floor_char_boundary(text, start + config.chunk_size);
             find_split_point(text, start, target_end)
         };
 
@@ -139,14 +177,18 @@ pub fn chunk_text(text: &str, config: &ChunkConfig) -> Vec<Chunk> {
 /// 2. Line boundary (\n)
 /// 3. Sentence boundary (. followed by space)
 /// 4. Word boundary (space)
-/// 5. Exact target_end
+/// 5. Nearest char boundary at target_end
 fn find_split_point(text: &str, start: usize, target_end: usize) -> usize {
-    let search_start = if target_end > 100 {
-        target_end - 100
-    } else {
-        start
-    };
-    let search_end = (target_end + 50).min(text.len());
+    let target_end = floor_char_boundary(text, target_end);
+    let search_start = floor_char_boundary(
+        text,
+        if target_end > 100 {
+            target_end - 100
+        } else {
+            start
+        },
+    );
+    let search_end = floor_char_boundary(text, (target_end + 50).min(text.len()));
     let search_range = &text[search_start..search_end];
 
     // Try paragraph boundary
@@ -181,8 +223,8 @@ fn find_split_point(text: &str, start: usize, target_end: usize) -> usize {
         }
     }
 
-    // Fallback: exact target
-    target_end.min(text.len())
+    // Fallback: nearest char boundary
+    floor_char_boundary(text, target_end.min(text.len()))
 }
 
 #[cfg(test)]
@@ -244,5 +286,54 @@ mod tests {
         for (i, chunk) in chunks.iter().enumerate() {
             assert_eq!(chunk.index, i);
         }
+    }
+
+    #[test]
+    fn test_chunk_unicode_vietnamese() {
+        // Vietnamese text with multi-byte UTF-8 chars (ờ is 3 bytes)
+        let config = ChunkConfig {
+            chunk_size: 80,
+            chunk_overlap: 20,
+            min_chunk_size: 10,
+        };
+        let text = "Tổng hợp ý tưởng và phân tích giải pháp.\n\n\
+                     Người dùng muốn tiếp tục cuộc hội thoại.\n\n\
+                     Đây là đoạn văn bản tiếng Việt dài hơn để kiểm tra chunker.";
+        let chunks = chunk_text(text, &config);
+        assert!(
+            !chunks.is_empty(),
+            "Should produce chunks from Vietnamese text"
+        );
+        for chunk in &chunks {
+            assert!(chunk.content.is_char_boundary(0));
+            assert!(!chunk.content.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_chunk_unicode_cjk() {
+        let config = ChunkConfig {
+            chunk_size: 30,
+            chunk_overlap: 5,
+            min_chunk_size: 5,
+        };
+        // CJK chars are 3 bytes each
+        let text = "日本語テキスト。\n\nこれはテストです。\n\n中文文本测试。";
+        let chunks = chunk_text(text, &config);
+        assert!(!chunks.is_empty(), "Should produce chunks from CJK text");
+    }
+
+    #[test]
+    fn test_floor_ceil_char_boundary() {
+        let text = "Tờ"; // 'T' = 1 byte, 'ờ' = 3 bytes → total 4 bytes
+        assert_eq!(text.len(), 4);
+        assert_eq!(floor_char_boundary(text, 0), 0); // start of 'T'
+        assert_eq!(floor_char_boundary(text, 1), 1); // start of 'ờ'
+        assert_eq!(floor_char_boundary(text, 2), 1); // inside 'ờ' → back to 1
+        assert_eq!(floor_char_boundary(text, 3), 1); // inside 'ờ' → back to 1
+        assert_eq!(floor_char_boundary(text, 4), 4); // past end → s.len()
+        assert_eq!(ceil_char_boundary(text, 2), 4); // inside 'ờ' → up to end
+        assert_eq!(ceil_char_boundary(text, 0), 0); // already on boundary
+        assert_eq!(ceil_char_boundary(text, 1), 1); // already on boundary
     }
 }

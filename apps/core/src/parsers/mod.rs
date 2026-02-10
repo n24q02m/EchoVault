@@ -8,7 +8,6 @@
 //! Each parser knows how to read its source format and produce
 //! a unified ParsedConversation structure.
 
-pub mod aider;
 pub mod antigravity;
 pub mod claude_code;
 pub mod cline;
@@ -191,7 +190,6 @@ pub fn all_parsers() -> Vec<Box<dyn Parser>> {
         Box::new(gemini_cli::GeminiCliParser),
         Box::new(claude_code::ClaudeCodeParser),
         Box::new(codex::CodexParser),
-        Box::new(aider::AiderParser),
         Box::new(antigravity::AntigravityParser),
         Box::new(continue_dev::ContinueDevParser),
         Box::new(opencode::OpenCodeParser),

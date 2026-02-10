@@ -1,0 +1,6 @@
+{"timestamp":"2024-01-15T10:00:00Z","type":"session_meta","payload":{"id":"test-codex-001","timestamp":"2024-01-15T10:00:00Z","cwd":"/home/user/project","model_provider":"openai","cli_version":"0.89.0"}}
+{"timestamp":"2024-01-15T10:00:05Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Fix the failing tests in src/main.rs"}]}}
+{"timestamp":"2024-01-15T10:00:10Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I'll look at the test failures. Let me check the file first."}]}}
+{"timestamp":"2024-01-15T10:00:15Z","type":"response_item","payload":{"type":"function_call","name":"shell","call_id":"call-001","arguments":"{\"command\":\"cargo test 2>&1 | head -50\"}"}}
+{"timestamp":"2024-01-15T10:00:20Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call-001","output":"test result: 3 passed; 1 failed"}}
+{"timestamp":"2024-01-15T10:00:25Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Found the issue. The test `test_parse` expects a different output format. I'll fix it now."}]}}

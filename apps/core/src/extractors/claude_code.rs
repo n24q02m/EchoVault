@@ -8,7 +8,6 @@
 //! (special chars /, spaces, ~ are replaced with -)
 
 use super::{Extractor, SessionFile, SessionMetadata};
-use crate::utils::wsl;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use rayon::prelude::*;
@@ -37,13 +36,6 @@ impl ClaudeCodeExtractor {
             let path = home.join(".claude");
             if !claude_dirs.contains(&path) {
                 claude_dirs.push(path);
-            }
-        }
-
-        // Windows: Scan WSL for Claude Code data
-        for wsl_path in wsl::find_wsl_paths(".claude") {
-            if !claude_dirs.contains(&wsl_path) {
-                claude_dirs.push(wsl_path);
             }
         }
 

@@ -3,8 +3,11 @@
 //! Captures HTTP/HTTPS traffic between AI IDEs and their API backends,
 //! logging request/response pairs as clean JSONL files.
 //!
-//! Primary target: Google Antigravity IDE -> Gemini API
-//! (generativelanguage.googleapis.com)
+//! Target domains:
+//! - generativelanguage.googleapis.com (Gemini API)
+//! - aiplatform.googleapis.com (Vertex AI)
+//! - api.anthropic.com (Claude API)
+//! - api.openai.com (OpenAI API)
 //!
 //! This module is feature-gated behind the `interceptor` feature.
 
@@ -52,6 +55,8 @@ impl Default for InterceptorConfig {
             target_domains: vec![
                 "generativelanguage.googleapis.com".to_string(),
                 "aiplatform.googleapis.com".to_string(),
+                "api.anthropic.com".to_string(),
+                "api.openai.com".to_string(),
             ],
             output_dir: data_dir.join("vault").join("intercepted"),
             cert_dir: data_dir.join("certs"),

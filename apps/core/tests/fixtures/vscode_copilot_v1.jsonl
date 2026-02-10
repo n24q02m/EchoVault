@@ -1,0 +1,5 @@
+{"kind":0,"v":{"sessionId":"test-legacy-001","customTitle":"Legacy Test","creationDate":1700000000000}}
+{"kind":1,"v":"What is Rust?"}
+{"kind":2,"v":"Rust is a systems programming language focused on safety and performance."}
+{"kind":1,"v":"Tell me more about borrow checker"}
+{"kind":2,"v":"The borrow checker ensures references follow ownership rules at compile time."}
