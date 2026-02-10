@@ -134,7 +134,11 @@ impl EchoVaultServer {
     #[tool(
         name = "vault",
         description = "Access AI chat sessions. Actions: list (browse), search (FTS5), read (full content), semantic_search (hybrid vector+keyword). Use `help` tool for full documentation.",
-        annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true
+        )
     )]
     async fn vault(
         &self,
@@ -188,7 +192,11 @@ impl EchoVaultServer {
     #[tool(
         name = "help",
         description = "Get full documentation for EchoVault tools. Returns detailed usage, parameters, examples.",
-        annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true
+        )
     )]
     async fn help(
         &self,
