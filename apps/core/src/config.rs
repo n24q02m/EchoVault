@@ -344,7 +344,11 @@ mod tests {
         let mode = metadata.permissions().mode();
         // Check if permissions are 0o600 (rw-------)
         // We strip the file type bits (0o100000) and stick to permission bits (0o777)
-        assert_eq!(mode & 0o777, 0o600, "Config file should have 0600 permissions");
+        assert_eq!(
+            mode & 0o777,
+            0o600,
+            "Config file should have 0600 permissions"
+        );
 
         Ok(())
     }
