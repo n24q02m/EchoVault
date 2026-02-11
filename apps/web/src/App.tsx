@@ -832,6 +832,7 @@ function MainApp() {
     {} as Record<string, SessionInfo[]>
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: init effect runs once on mount
   useEffect(() => {
     const initialize = async () => {
       try {
