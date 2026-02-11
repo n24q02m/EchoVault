@@ -230,6 +230,7 @@ impl EmbeddingStore {
     ///
     /// Loads all embeddings into memory and computes similarity.
     /// Efficient for up to ~100k chunks.
+    // TODO: Migrate to sqlite-vec (SIMD-accelerated, vec0 MATCH queries) when scale > 50k chunks.
     pub fn search_similar(
         &self,
         query_embedding: &[f32],
