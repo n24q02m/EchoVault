@@ -3,7 +3,7 @@
 //! Intercepts traffic to configured domains, logging request/response pairs.
 //! Traffic to non-target domains is tunneled through transparently.
 
-use super::logger::ConversationLogger;
+use super::logger::{ConversationLogger, PendingRequest};
 use super::InterceptorConfig;
 use anyhow::Result;
 use http_body_util::{BodyExt, Full};
@@ -31,10 +31,13 @@ fn body_from_vec(bytes: Vec<u8>) -> Body {
 }
 
 /// HTTP handler that intercepts and logs API traffic.
+/// Each connection gets its own clone, so `pending` is per-connection.
 #[derive(Clone)]
 struct InterceptHandler {
     target_domains: Arc<Vec<String>>,
     logger: Arc<ConversationLogger>,
+    /// Per-connection pending request (not shared across connections).
+    pending: Option<PendingRequest>,
 }
 
 impl InterceptHandler {
@@ -70,10 +73,13 @@ impl HttpHandler for InterceptHandler {
             let (parts, body) = req.into_parts();
             let bytes = body_to_bytes(body).await;
 
-            self.logger
-                .log_request(&method, &uri, &parts.headers, &bytes);
+            self.pending = Some(PendingRequest::from_request(
+                &method,
+                &uri,
+                &parts.headers,
+                &bytes,
+            ));
 
-            // Reconstruct request from raw bytes
             let req = Request::from_parts(parts, body_from_vec(bytes));
             req.into()
         } else {
@@ -82,7 +88,7 @@ impl HttpHandler for InterceptHandler {
     }
 
     async fn handle_response(&mut self, _ctx: &HttpContext, res: Response<Body>) -> Response<Body> {
-        if self.logger.has_pending() {
+        if let Some(pending) = self.pending.take() {
             let (parts, body) = res.into_parts();
             let bytes = body_to_bytes(body).await;
 
@@ -94,7 +100,8 @@ impl HttpHandler for InterceptHandler {
                 .unwrap_or("unknown")
                 .to_string();
 
-            self.logger.log_response(status, &content_type, &bytes);
+            self.logger
+                .write_exchange(pending, status, &content_type, &bytes);
 
             Response::from_parts(parts, body_from_vec(bytes))
         } else {
@@ -115,6 +122,7 @@ pub async fn run_proxy(
     let handler = InterceptHandler {
         target_domains: Arc::new(config.target_domains),
         logger,
+        pending: None,
     };
 
     tracing::info!("[interceptor] Starting proxy on {}", addr);

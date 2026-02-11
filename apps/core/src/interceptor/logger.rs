@@ -6,7 +6,6 @@
 use chrono::{Local, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::Mutex;
 
 /// A single intercepted API exchange (request + response).
 #[derive(Debug, Serialize, Deserialize)]
@@ -22,40 +21,23 @@ pub struct InterceptedExchange {
 }
 
 /// Pending request waiting for its response.
-struct PendingRequest {
-    method: String,
-    url: String,
-    content_type: Option<String>,
-    body: Option<serde_json::Value>,
+/// Stored per-connection in InterceptHandler, not in the shared logger.
+#[derive(Clone)]
+pub struct PendingRequest {
+    pub method: String,
+    pub url: String,
+    pub content_type: Option<String>,
+    pub body: Option<serde_json::Value>,
 }
 
-/// Logs intercepted conversations to disk.
-pub struct ConversationLogger {
-    output_dir: PathBuf,
-    pending: Mutex<Option<PendingRequest>>,
-}
-
-impl ConversationLogger {
-    pub fn new(output_dir: PathBuf) -> Self {
-        Self {
-            output_dir,
-            pending: Mutex::new(None),
-        }
-    }
-
-    /// Check if there's a pending request waiting for response.
-    pub fn has_pending(&self) -> bool {
-        self.pending.lock().unwrap().is_some()
-    }
-
-    /// Log an intercepted request. Stores it as pending until response arrives.
-    pub fn log_request(
-        &self,
+impl PendingRequest {
+    /// Create from raw request data.
+    pub fn from_request(
         method: &str,
         url: &str,
         headers: &hudsucker::hyper::HeaderMap,
         body: &[u8],
-    ) {
+    ) -> Self {
         let content_type = headers
             .get("content-type")
             .and_then(|v| v.to_str().ok())
@@ -64,7 +46,6 @@ impl ConversationLogger {
         let body_json = if body.is_empty() {
             None
         } else {
-            // Try to parse as JSON, fall back to base64 string
             serde_json::from_slice(body).ok().or_else(|| {
                 Some(serde_json::Value::String(format!(
                     "[binary {} bytes]",
@@ -73,24 +54,34 @@ impl ConversationLogger {
             })
         };
 
-        let pending = PendingRequest {
+        Self {
             method: method.to_string(),
             url: url.to_string(),
             content_type,
             body: body_json,
-        };
+        }
+    }
+}
 
-        *self.pending.lock().unwrap() = Some(pending);
+/// Logs intercepted conversations to disk.
+/// Thread-safe: only handles writing, no mutable state.
+pub struct ConversationLogger {
+    output_dir: PathBuf,
+}
+
+impl ConversationLogger {
+    pub fn new(output_dir: PathBuf) -> Self {
+        Self { output_dir }
     }
 
-    /// Log an intercepted response. Pairs with pending request and writes to disk.
-    pub fn log_response(&self, status: u16, content_type: &str, body: &[u8]) {
-        let pending = self.pending.lock().unwrap().take();
-        let Some(req) = pending else {
-            tracing::warn!("[interceptor] Response without pending request");
-            return;
-        };
-
+    /// Write a complete exchange (request + response) to disk.
+    pub fn write_exchange(
+        &self,
+        req: PendingRequest,
+        status: u16,
+        content_type: &str,
+        body: &[u8],
+    ) {
         let response_body = if body.is_empty() {
             None
         } else {

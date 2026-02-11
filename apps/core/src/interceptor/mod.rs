@@ -53,10 +53,18 @@ impl Default for InterceptorConfig {
         Self {
             port: 18080,
             target_domains: vec![
+                // Google (Gemini, Vertex AI, Antigravity/Firebase Studio)
                 "generativelanguage.googleapis.com".to_string(),
                 "aiplatform.googleapis.com".to_string(),
+                "firebasevertexai.googleapis.com".to_string(),
+                // Anthropic (Claude)
                 "api.anthropic.com".to_string(),
+                // OpenAI (GPT, Codex)
                 "api.openai.com".to_string(),
+                // Mistral
+                "api.mistral.ai".to_string(),
+                // Cohere
+                "api.cohere.com".to_string(),
             ],
             output_dir: data_dir.join("vault").join("intercepted"),
             cert_dir: data_dir.join("certs"),
