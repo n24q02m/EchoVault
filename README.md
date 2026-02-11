@@ -1,5 +1,12 @@
 # EchoVault
 
+> [!CAUTION]
+> **⚠️ PROJECT ARCHIVED - NO LONGER MAINTAINED**
+> 
+> This project is no longer being maintained. Development has been discontinued due to the project's complexity and scope becoming unmanageable. The codebase is preserved for historical reference and learning purposes, but no further updates, bug fixes, or feature development will occur.
+> 
+> If you're looking for similar functionality, please explore alternative solutions for managing AI chat history and conversations.
+
 **Black box for all your AI conversations.**
 
 EchoVault extracts, indexes, and searches chat history from 12+ AI coding tools — ensuring you never lose valuable insights. Works as a desktop app, CLI, or MCP server for AI assistants.
