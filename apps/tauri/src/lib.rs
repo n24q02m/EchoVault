@@ -183,6 +183,7 @@ pub fn run() {
             commands::check_setup_complete,
             commands::complete_setup,
             commands::get_config,
+            commands::reset_config,
             commands::get_auth_status,
             commands::start_auth,
             commands::complete_auth,

@@ -844,6 +844,27 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
                   </svg>
                   GitHub
                 </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (
+                      window.confirm(
+                        "Reset setup? This will clear your config and return to the Setup Wizard. Vault data is preserved."
+                      )
+                    ) {
+                      try {
+                        await invoke("reset_config");
+                        toast.success("Config reset. Restarting...");
+                        setTimeout(() => window.location.reload(), 500);
+                      } catch (err) {
+                        toast.error(`Reset failed: ${String(err)}`);
+                      }
+                    }
+                  }}
+                  className="w-full rounded-lg border border-red-500/30 py-2.5 text-sm font-medium text-red-400 hover:bg-red-500/10"
+                >
+                  Reset Setup
+                </button>
               </div>
             </div>
           </>

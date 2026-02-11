@@ -174,6 +174,22 @@ pub async fn get_config() -> Result<AppConfig, String> {
     })
 }
 
+/// Reset config to trigger the setup wizard again.
+/// Preserves vault data but clears setup_complete flag.
+#[tauri::command]
+pub async fn reset_config() -> Result<(), String> {
+    use echovault_core::config::default_config_path;
+
+    let config_path = default_config_path();
+    if config_path.exists() {
+        std::fs::remove_file(&config_path)
+            .map_err(|e| format!("Failed to delete config: {}", e))?;
+        info!("[reset_config] Config removed: {:?}", config_path);
+    }
+
+    Ok(())
+}
+
 // ============ AUTH COMMANDS ============
 
 /// Lấy trạng thái auth hiện tại
