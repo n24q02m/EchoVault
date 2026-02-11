@@ -14,7 +14,9 @@
     "format:check": "biome format src",
     "check": "biome check src",
     "check:fix": "biome check --write src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui"
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",

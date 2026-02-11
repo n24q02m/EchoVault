@@ -5,7 +5,12 @@
     "clientKind": "git",
     "useIgnoreFile": false
   },
-  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "assists": {
+    "enabled": true
+  },
+  "organizeImports": {
+    "enabled": true
+  },
   "linter": {
     "enabled": true,
     "rules": {
@@ -40,6 +45,7 @@
     }
   },
   "files": {
-    "includes": ["**/src/**/*.ts", "**/src/**/*.tsx", "!**/node_modules", "!**/dist"]
+    "include": ["**/src/**/*.ts", "**/src/**/*.tsx"],
+    "ignore": ["**/node_modules", "**/dist"]
   }
 }

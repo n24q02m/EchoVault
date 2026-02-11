@@ -8,7 +8,7 @@ EchoVault extracts, indexes, and searches chat history from 12+ AI coding tools 
 
 ## Features
 
-- **12 Source Extractors**: VS Code Copilot, Cursor, Cline, Continue.dev, JetBrains AI, Zed, Antigravity, Gemini CLI, Claude Code, Aider, Codex, OpenCode
+- **11 Source Extractors**: VS Code Copilot, Cursor, Cline, Continue.dev, JetBrains AI, Zed, Antigravity, Gemini CLI, Claude Code, Codex, OpenCode
 - **Hybrid Search**: Vector semantic search + FTS5 keyword search with RRF fusion
 - **MCP Server**: Expose your vault to Claude Desktop, Copilot, Cursor, and other AI assistants
 - **Cloud Sync**: Auto-sync with Google Drive via Rclone
@@ -20,7 +20,7 @@ EchoVault extracts, indexes, and searches chat history from 12+ AI coding tools 
 ## Architecture
 
 ```
-IDE Sources (12)          EchoVault Pipeline              AI Assistants
+IDE Sources (11)          EchoVault Pipeline              AI Assistants
 +-----------------+     +-------------------------+     +----------------+
 | VS Code Copilot |     |                         |     | Claude Desktop |
 | Cursor          | --> | Extract --> Parse -->    |     | VS Code Copilot|
@@ -30,9 +30,8 @@ IDE Sources (12)          EchoVault Pipeline              AI Assistants
 | Zed             |     +----+----+----+----------+
 | Gemini CLI      |          |    |    |
 | Claude Code     |       vault.db  index.db  embeddings.db
-| Aider           |          |
-| Codex           |       Google Drive (Rclone sync)
-| OpenCode        |
+| Codex           |          |
+| OpenCode        |       Google Drive (Rclone sync)
 | Antigravity     |
 +-----------------+
 ```
@@ -281,7 +280,6 @@ echovault-cli sync
 |--------|-------------|----------------|
 | `gemini-cli` | Google Gemini CLI | JSON sessions |
 | `claude-code` | Claude Code (Anthropic) | JSONL sessions |
-| `aider` | Aider AI assistant | Markdown history |
 | `codex` | OpenAI Codex CLI | JSONL rollout |
 | `opencode` | OpenCode terminal AI | JSON sessions |
 
@@ -335,7 +333,7 @@ mise run setup
 ```bash
 # Rust
 cargo build --workspace          # Debug build (all crates)
-cargo test --workspace           # Run tests (36 tests)
+cargo test --workspace           # Run tests
 cargo clippy --workspace         # Lint
 cargo fmt --all                  # Format
 

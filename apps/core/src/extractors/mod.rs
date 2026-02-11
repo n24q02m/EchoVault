@@ -7,7 +7,7 @@
 //!
 //! ### Extensions (plugins inside host IDEs)
 //! - `vscode-copilot`: GitHub Copilot Chat (VS Code, VS Code Insiders)
-//! - `cline`: Cline (Claude Dev) and Roo Code fork (VS Code, Cursor, JetBrains)
+//! - `cline`: Cline (Claude Dev) and Roo Code fork (VS Code, Cursor)
 //! - `continue-dev`: Continue.dev (VS Code, JetBrains)
 //!
 //! ### Standalone IDEs

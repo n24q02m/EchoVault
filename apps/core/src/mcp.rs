@@ -104,7 +104,7 @@ Requires embeddings to be generated first (Settings > Build Index).
 
 ## Sources
 copilot, cursor, cline, continue-dev, jetbrains, zed, antigravity,
-gemini-cli, claude-code, aider, codex, opencode
+gemini-cli, claude-code, codex, opencode
 
 ## Workflow
 1. `vault(action="list")` to browse available sessions

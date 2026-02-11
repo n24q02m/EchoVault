@@ -296,6 +296,7 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [configDirty, setConfigDirty] = useState(false);
   const [ollamaAvailable, setOllamaAvailable] = useState<boolean | null>(null);
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -310,6 +311,7 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
         setAutoLaunch(autostart);
         setEmbeddingConfig(embConfig);
         setOllamaAvailable(ollamaCheck.available);
+        setOllamaModels(ollamaCheck.models || []);
       } catch (err) {
         toast.error(`Failed to load settings: ${String(err)}`);
       } finally {
@@ -405,6 +407,23 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
       });
       setConfigDirty(false);
       toast.success("Embedding config saved");
+
+      // Auto-test connection after save
+      setIsTesting(true);
+      setProviderStatus(null);
+      try {
+        const result = await invoke<ProviderStatusInfo>("test_embedding_connection");
+        setProviderStatus(result);
+        if (result.status === "available") {
+          toast.success(`Connected (dim=${result.dimension})`);
+        } else {
+          toast.error(result.message || "Connection failed");
+        }
+      } catch (testErr) {
+        toast.error(`Test failed: ${String(testErr)}`);
+      } finally {
+        setIsTesting(false);
+      }
     } catch (err) {
       toast.error(`Failed to save config: ${String(err)}`);
     } finally {
@@ -572,15 +591,65 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
                 {/* Model */}
                 <div>
                   <label className="mb-1 block text-xs text-[var(--text-secondary)]">Model</label>
-                  <input
-                    type="text"
-                    value={embeddingConfig.model}
-                    onChange={(e) => {
-                      setEmbeddingConfig((prev) => ({ ...prev, model: e.target.value }));
-                      setConfigDirty(true);
-                    }}
-                    className="w-full rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-xs focus:border-[var(--accent)] focus:outline-none"
-                  />
+                  {embeddingConfig.preset === "ollama" &&
+                  ollamaAvailable &&
+                  ollamaModels.length > 0 ? (
+                    <div className="space-y-1.5">
+                      <select
+                        value={
+                          ollamaModels.some(
+                            (m) =>
+                              m === embeddingConfig.model ||
+                              m.startsWith(`${embeddingConfig.model}:`)
+                          )
+                            ? embeddingConfig.model
+                            : "__custom__"
+                        }
+                        onChange={(e) => {
+                          if (e.target.value !== "__custom__") {
+                            setEmbeddingConfig((prev) => ({
+                              ...prev,
+                              model: e.target.value,
+                            }));
+                            setConfigDirty(true);
+                          }
+                        }}
+                        className="w-full rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-xs focus:border-[var(--accent)] focus:outline-none"
+                      >
+                        {ollamaModels.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                        {!ollamaModels.some(
+                          (m) =>
+                            m === embeddingConfig.model || m.startsWith(`${embeddingConfig.model}:`)
+                        ) && (
+                          <option value="__custom__">
+                            {embeddingConfig.model} (not installed)
+                          </option>
+                        )}
+                      </select>
+                      {!ollamaModels.some(
+                        (m) =>
+                          m === embeddingConfig.model || m.startsWith(`${embeddingConfig.model}:`)
+                      ) && (
+                        <p className="text-xs text-amber-400">
+                          Run: ollama pull {embeddingConfig.model}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      value={embeddingConfig.model}
+                      onChange={(e) => {
+                        setEmbeddingConfig((prev) => ({ ...prev, model: e.target.value }));
+                        setConfigDirty(true);
+                      }}
+                      className="w-full rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-xs focus:border-[var(--accent)] focus:outline-none"
+                    />
+                  )}
                 </div>
 
                 {/* API Key (only for openai/custom) */}
@@ -627,22 +696,23 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
 
                 {/* Action buttons */}
                 <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleTestConnection}
-                    disabled={isTesting}
-                    className="flex-1 rounded-md border border-[var(--border)] py-1.5 text-xs font-medium hover:bg-[var(--bg-primary)] disabled:opacity-50"
-                  >
-                    {isTesting ? "Testing..." : "Test Connection"}
-                  </button>
-                  {configDirty && (
+                  {configDirty ? (
                     <button
                       type="button"
                       onClick={handleSaveEmbeddingConfig}
-                      disabled={isSavingConfig}
+                      disabled={isSavingConfig || isTesting}
                       className="flex-1 rounded-md bg-[var(--accent)] py-1.5 text-xs font-medium text-white disabled:opacity-50"
                     >
-                      {isSavingConfig ? "Saving..." : "Save"}
+                      {isSavingConfig ? "Saving..." : isTesting ? "Testing..." : "Save & Test"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleTestConnection}
+                      disabled={isTesting}
+                      className="flex-1 rounded-md border border-[var(--border)] py-1.5 text-xs font-medium hover:bg-[var(--bg-primary)] disabled:opacity-50"
+                    >
+                      {isTesting ? "Testing..." : "Test Connection"}
                     </button>
                   )}
                 </div>
@@ -762,7 +832,6 @@ function MainApp() {
     {} as Record<string, SessionInfo[]>
   );
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: init-once effect — loadSessions and loadEmbedStats are stable functions
   useEffect(() => {
     const initialize = async () => {
       try {
@@ -1148,32 +1217,39 @@ function MainApp() {
             </div>
 
             {/* Embed Controls */}
-            <div className="glass flex items-center justify-between rounded-xl px-4 py-3">
-              <div className="text-sm">
-                <span className="text-[var(--text-secondary)]">Embedding index: </span>
-                {embedStats ? (
-                  <span>
-                    {embedStats.total_chunks} chunks from {embedStats.total_sessions} sessions
-                  </span>
-                ) : (
-                  <span className="text-[var(--text-secondary)]">Not indexed</span>
-                )}
+            <div className="glass rounded-xl px-4 py-3">
+              <div className="flex items-center justify-between">
+                <div className="text-sm">
+                  <span className="text-[var(--text-secondary)]">Embedding index: </span>
+                  {embedStats ? (
+                    <span>
+                      {embedStats.total_chunks} chunks from {embedStats.total_sessions} sessions
+                    </span>
+                  ) : (
+                    <span className="text-[var(--text-secondary)]">Not indexed</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleEmbed}
+                  disabled={isEmbedding}
+                  className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--bg-card)] disabled:opacity-50"
+                >
+                  {isEmbedding ? (
+                    <span className="flex items-center gap-1.5">
+                      <div className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
+                      Embedding...
+                    </span>
+                  ) : (
+                    "Build Index"
+                  )}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={handleEmbed}
-                disabled={isEmbedding}
-                className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--bg-card)] disabled:opacity-50"
-              >
-                {isEmbedding ? (
-                  <span className="flex items-center gap-1.5">
-                    <div className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
-                    Embedding...
-                  </span>
-                ) : (
-                  "Build Index"
-                )}
-              </button>
+              {!embedStats && !isEmbedding && (
+                <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                  Configure embedding provider in Settings, then click Build Index.
+                </p>
+              )}
             </div>
 
             {/* Search Results */}
@@ -1208,7 +1284,7 @@ function MainApp() {
 
             {/* Empty state */}
             {!isSearching && searchResults.length === 0 && searchQuery.trim() === "" && (
-              <div className="py-12 text-center text-[var(--text-secondary)]">
+              <div className="py-8 text-center text-[var(--text-secondary)]">
                 <svg
                   className="mx-auto mb-3 h-12 w-12 opacity-30"
                   fill="none"
@@ -1223,10 +1299,60 @@ function MainApp() {
                     d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                   />
                 </svg>
-                <p className="text-sm">Search your AI conversation history</p>
-                <p className="mt-1 text-xs">
-                  Build the index first, then search semantically across all sessions.
-                </p>
+                {embedStats && embedStats.total_chunks > 0 ? (
+                  <>
+                    <p className="text-sm">Search your AI conversation history</p>
+                    <p className="mt-1 text-xs">
+                      Type a query above to search semantically across {embedStats.total_sessions}{" "}
+                      sessions.
+                    </p>
+                  </>
+                ) : (
+                  <div className="space-y-3 text-left">
+                    <p className="text-center text-sm font-medium text-[var(--text-primary)]">
+                      Get started with semantic search
+                    </p>
+                    <div className="mx-auto max-w-xs space-y-2">
+                      <div className="flex items-start gap-2 rounded-lg bg-[var(--bg-card)] p-2.5">
+                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-white">
+                          1
+                        </span>
+                        <div>
+                          <p className="text-xs font-medium text-[var(--text-primary)]">
+                            Configure Embedding
+                          </p>
+                          <p className="text-xs">
+                            Open Settings and choose a provider (Ollama, OpenAI, or custom).
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2 rounded-lg bg-[var(--bg-card)] p-2.5">
+                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-white">
+                          2
+                        </span>
+                        <div>
+                          <p className="text-xs font-medium text-[var(--text-primary)]">
+                            Test Connection
+                          </p>
+                          <p className="text-xs">Verify the provider is reachable and working.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2 rounded-lg bg-[var(--bg-card)] p-2.5">
+                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-bold text-white">
+                          3
+                        </span>
+                        <div>
+                          <p className="text-xs font-medium text-[var(--text-primary)]">
+                            Build Index
+                          </p>
+                          <p className="text-xs">
+                            Click the button above to embed all parsed sessions.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

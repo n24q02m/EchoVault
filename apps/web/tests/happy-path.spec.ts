@@ -1,5 +1,5 @@
 
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 test('Happy Path: Setup Wizard -> Main Dashboard', async ({ page }) => {
     // Mock Tauri IPC
@@ -54,6 +54,14 @@ test('Happy Path: Setup Wizard -> Main Dashboard', async ({ page }) => {
                     return "Sync complete";
                 }
 
+                if (cmd === 'embedding_stats') {
+                    return null;
+                }
+
+                if (cmd === 'complete_auth') {
+                    return { status: 'not_authenticated', message: null };
+                }
+
                 return null;
             },
             metadata: {}
@@ -87,7 +95,6 @@ test('Happy Path: Setup Wizard -> Main Dashboard', async ({ page }) => {
     await expect(page.getByText('Cursor')).toBeVisible();
     await expect(page.getByText('VS Code')).toBeVisible();
 
-    // 8. Test Sync Button
-    await page.getByRole('button', { name: 'Sync', exact: true }).click();
-    await expect(page.getByText('Sync completed successfully')).toBeVisible(); // Toast check
+    // 8. Verify sync status indicator (auto-sync, no manual button)
+    await expect(page.getByText('Synced')).toBeVisible({ timeout: 15000 });
 });
