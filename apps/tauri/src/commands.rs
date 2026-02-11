@@ -1645,6 +1645,8 @@ pub async fn save_embedding_config(request: SaveEmbeddingConfigRequest) -> Resul
     let preset = match request.preset.as_str() {
         "ollama" => EmbeddingPreset::Ollama,
         "openai" => EmbeddingPreset::OpenAI,
+        "gemini" => EmbeddingPreset::Gemini,
+        "mistral" => EmbeddingPreset::Mistral,
         "custom" => EmbeddingPreset::Custom,
         other => return Err(format!("Unknown preset: {}", other)),
     };
@@ -1739,6 +1741,8 @@ pub async fn get_embedding_config() -> Result<serde_json::Value, String> {
     let preset = match config.embedding.preset {
         echovault_core::config::EmbeddingPreset::Ollama => "ollama",
         echovault_core::config::EmbeddingPreset::OpenAI => "openai",
+        echovault_core::config::EmbeddingPreset::Gemini => "gemini",
+        echovault_core::config::EmbeddingPreset::Mistral => "mistral",
         echovault_core::config::EmbeddingPreset::Custom => "custom",
     };
 

@@ -66,6 +66,7 @@ pub struct Config {
 ///
 /// Presets auto-fill api_base and model defaults so users only
 /// need to pick a provider and optionally enter an API key.
+/// All providers use OpenAI-compatible /v1/embeddings endpoint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum EmbeddingPreset {
@@ -74,6 +75,10 @@ pub enum EmbeddingPreset {
     Ollama,
     /// OpenAI API (requires API key)
     OpenAI,
+    /// Google Gemini via OpenAI-compatible endpoint (requires API key)
+    Gemini,
+    /// Mistral AI (requires API key)
+    Mistral,
     /// Any OpenAI-compatible endpoint (LiteLLM, vLLM, TGI, etc.)
     Custom,
 }
@@ -84,6 +89,8 @@ impl EmbeddingPreset {
         match self {
             Self::Ollama => "http://localhost:11434/v1",
             Self::OpenAI => "https://api.openai.com/v1",
+            Self::Gemini => "https://generativelanguage.googleapis.com/v1beta/openai",
+            Self::Mistral => "https://api.mistral.ai/v1",
             Self::Custom => "http://localhost:8000/v1",
         }
     }
@@ -93,13 +100,30 @@ impl EmbeddingPreset {
         match self {
             Self::Ollama => "nomic-embed-text",
             Self::OpenAI => "text-embedding-3-small",
+            Self::Gemini => "text-embedding-004",
+            Self::Mistral => "mistral-embed",
             Self::Custom => "nomic-embed-text",
         }
     }
 
     /// Whether this preset requires an API key.
     pub fn requires_api_key(&self) -> bool {
-        matches!(self, Self::OpenAI)
+        matches!(self, Self::OpenAI | Self::Gemini | Self::Mistral)
+    }
+
+    /// Suggested models for this preset.
+    pub fn suggested_models(&self) -> &'static [&'static str] {
+        match self {
+            Self::Ollama => &["nomic-embed-text", "mxbai-embed-large", "all-minilm"],
+            Self::OpenAI => &[
+                "text-embedding-3-small",
+                "text-embedding-3-large",
+                "text-embedding-ada-002",
+            ],
+            Self::Gemini => &["text-embedding-004"],
+            Self::Mistral => &["mistral-embed"],
+            Self::Custom => &[],
+        }
     }
 }
 

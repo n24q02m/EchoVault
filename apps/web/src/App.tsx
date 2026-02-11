@@ -257,7 +257,7 @@ function SetupWizard({ onComplete }: { onComplete: () => void }) {
 
 // ==================== SETTINGS OVERLAY ====================
 
-type EmbeddingPreset = "ollama" | "openai" | "custom";
+type EmbeddingPreset = "ollama" | "openai" | "gemini" | "mistral" | "custom";
 
 interface EmbeddingConfig {
   preset: EmbeddingPreset;
@@ -272,10 +272,62 @@ interface ProviderStatusInfo {
   message: string | null;
 }
 
-const PRESET_DEFAULTS: Record<EmbeddingPreset, { api_base: string; model: string }> = {
-  ollama: { api_base: "http://localhost:11434/v1", model: "nomic-embed-text" },
-  openai: { api_base: "https://api.openai.com/v1", model: "text-embedding-3-small" },
-  custom: { api_base: "http://localhost:8000/v1", model: "nomic-embed-text" },
+interface PresetInfo {
+  label: string;
+  description: string;
+  api_base: string;
+  model: string;
+  models: string[];
+  requires_key: boolean;
+  key_placeholder: string;
+}
+
+const PRESET_INFO: Record<EmbeddingPreset, PresetInfo> = {
+  ollama: {
+    label: "Ollama",
+    description: "Local, free, no API key needed",
+    api_base: "http://localhost:11434/v1",
+    model: "nomic-embed-text",
+    models: ["nomic-embed-text", "mxbai-embed-large", "all-minilm"],
+    requires_key: false,
+    key_placeholder: "",
+  },
+  openai: {
+    label: "OpenAI",
+    description: "Cloud, requires API key",
+    api_base: "https://api.openai.com/v1",
+    model: "text-embedding-3-small",
+    models: ["text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002"],
+    requires_key: true,
+    key_placeholder: "sk-...",
+  },
+  gemini: {
+    label: "Google Gemini",
+    description: "Cloud, requires API key",
+    api_base: "https://generativelanguage.googleapis.com/v1beta/openai",
+    model: "text-embedding-004",
+    models: ["text-embedding-004"],
+    requires_key: true,
+    key_placeholder: "AIza...",
+  },
+  mistral: {
+    label: "Mistral AI",
+    description: "Cloud, requires API key",
+    api_base: "https://api.mistral.ai/v1",
+    model: "mistral-embed",
+    models: ["mistral-embed"],
+    requires_key: true,
+    key_placeholder: "...",
+  },
+  custom: {
+    label: "Custom (OpenAI-compatible)",
+    description: "LiteLLM, vLLM, TGI, or any compatible endpoint",
+    api_base: "http://localhost:8000/v1",
+    model: "nomic-embed-text",
+    models: [],
+    requires_key: false,
+    key_placeholder: "...",
+  },
 };
 
 function SettingsOverlay({ onClose }: { onClose: () => void }) {
@@ -382,13 +434,13 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
   };
 
   const handlePresetChange = (preset: EmbeddingPreset) => {
-    const defaults = PRESET_DEFAULTS[preset];
+    const info = PRESET_INFO[preset];
     setEmbeddingConfig((prev) => ({
       ...prev,
       preset,
-      api_base: defaults.api_base,
-      model: defaults.model,
-      api_key: preset === "ollama" ? null : prev.api_key,
+      api_base: info.api_base,
+      model: info.model,
+      api_key: info.requires_key ? prev.api_key : null,
     }));
     setConfigDirty(true);
     setProviderStatus(null);
@@ -542,51 +594,52 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
                 Embedding Provider
               </h3>
               <div className="space-y-3 rounded-lg bg-[var(--bg-card)] p-3">
-                {/* Preset selector */}
+                {/* Provider dropdown */}
                 <div>
                   <label className="mb-1.5 block text-xs text-[var(--text-secondary)]">
                     Provider
                   </label>
-                  <div className="flex gap-1.5">
-                    {(["ollama", "openai", "custom"] as EmbeddingPreset[]).map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => handlePresetChange(p)}
-                        className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium capitalize transition-colors ${
-                          embeddingConfig.preset === p
-                            ? "bg-[var(--accent)] text-white"
-                            : "bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:text-white"
-                        }`}
-                      >
-                        {p}
-                      </button>
+                  <select
+                    value={embeddingConfig.preset}
+                    onChange={(e) => handlePresetChange(e.target.value as EmbeddingPreset)}
+                    className="w-full rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-xs focus:border-[var(--accent)] focus:outline-none"
+                  >
+                    {(Object.keys(PRESET_INFO) as EmbeddingPreset[]).map((p) => (
+                      <option key={p} value={p}>
+                        {PRESET_INFO[p].label}
+                      </option>
                     ))}
-                  </div>
+                  </select>
+                  <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                    {PRESET_INFO[embeddingConfig.preset].description}
+                  </p>
                   {embeddingConfig.preset === "ollama" && ollamaAvailable !== null && (
                     <p
-                      className={`mt-1 text-xs ${ollamaAvailable ? "text-[var(--success)]" : "text-red-400"}`}
+                      className={`mt-0.5 text-xs ${ollamaAvailable ? "text-[var(--success)]" : "text-red-400"}`}
                     >
                       {ollamaAvailable ? "Ollama detected" : "Ollama not running"}
                     </p>
                   )}
                 </div>
 
-                {/* API Base */}
-                <div>
-                  <label className="mb-1 block text-xs text-[var(--text-secondary)]">
-                    API Base
-                  </label>
-                  <input
-                    type="text"
-                    value={embeddingConfig.api_base}
-                    onChange={(e) => {
-                      setEmbeddingConfig((prev) => ({ ...prev, api_base: e.target.value }));
-                      setConfigDirty(true);
-                    }}
-                    className="w-full rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-xs focus:border-[var(--accent)] focus:outline-none"
-                  />
-                </div>
+                {/* API Base - only show for Custom */}
+                {embeddingConfig.preset === "custom" && (
+                  <div>
+                    <label className="mb-1 block text-xs text-[var(--text-secondary)]">
+                      API Base URL
+                    </label>
+                    <input
+                      type="text"
+                      value={embeddingConfig.api_base}
+                      onChange={(e) => {
+                        setEmbeddingConfig((prev) => ({ ...prev, api_base: e.target.value }));
+                        setConfigDirty(true);
+                      }}
+                      placeholder="http://localhost:8000/v1"
+                      className="w-full rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-xs focus:border-[var(--accent)] focus:outline-none"
+                    />
+                  </div>
+                )}
 
                 {/* Model */}
                 <div>
@@ -639,6 +692,30 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
                         </p>
                       )}
                     </div>
+                  ) : PRESET_INFO[embeddingConfig.preset].models.length > 0 ? (
+                    <select
+                      value={
+                        PRESET_INFO[embeddingConfig.preset].models.includes(embeddingConfig.model)
+                          ? embeddingConfig.model
+                          : "__custom__"
+                      }
+                      onChange={(e) => {
+                        if (e.target.value !== "__custom__") {
+                          setEmbeddingConfig((prev) => ({ ...prev, model: e.target.value }));
+                          setConfigDirty(true);
+                        }
+                      }}
+                      className="w-full rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-xs focus:border-[var(--accent)] focus:outline-none"
+                    >
+                      {PRESET_INFO[embeddingConfig.preset].models.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                      {!PRESET_INFO[embeddingConfig.preset].models.includes(
+                        embeddingConfig.model
+                      ) && <option value="__custom__">{embeddingConfig.model} (custom)</option>}
+                    </select>
                   ) : (
                     <input
                       type="text"
@@ -647,16 +724,17 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
                         setEmbeddingConfig((prev) => ({ ...prev, model: e.target.value }));
                         setConfigDirty(true);
                       }}
+                      placeholder="model-name"
                       className="w-full rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-xs focus:border-[var(--accent)] focus:outline-none"
                     />
                   )}
                 </div>
 
-                {/* API Key (only for openai/custom) */}
-                {embeddingConfig.preset !== "ollama" && (
+                {/* API Key */}
+                {PRESET_INFO[embeddingConfig.preset].requires_key && (
                   <div>
                     <label className="mb-1 block text-xs text-[var(--text-secondary)]">
-                      API Key {embeddingConfig.preset === "openai" ? "(required)" : "(optional)"}
+                      API Key
                     </label>
                     <input
                       type="password"
@@ -668,7 +746,29 @@ function SettingsOverlay({ onClose }: { onClose: () => void }) {
                         }));
                         setConfigDirty(true);
                       }}
-                      placeholder="sk-..."
+                      placeholder={PRESET_INFO[embeddingConfig.preset].key_placeholder}
+                      className="w-full rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-xs focus:border-[var(--accent)] focus:outline-none"
+                    />
+                  </div>
+                )}
+
+                {/* Optional API key for custom */}
+                {embeddingConfig.preset === "custom" && (
+                  <div>
+                    <label className="mb-1 block text-xs text-[var(--text-secondary)]">
+                      API Key (optional)
+                    </label>
+                    <input
+                      type="password"
+                      value={embeddingConfig.api_key || ""}
+                      onChange={(e) => {
+                        setEmbeddingConfig((prev) => ({
+                          ...prev,
+                          api_key: e.target.value || null,
+                        }));
+                        setConfigDirty(true);
+                      }}
+                      placeholder="..."
                       className="w-full rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2.5 py-1.5 text-xs focus:border-[var(--accent)] focus:outline-none"
                     />
                   </div>
@@ -1323,7 +1423,8 @@ function MainApp() {
                             Configure Embedding
                           </p>
                           <p className="text-xs">
-                            Open Settings and choose a provider (Ollama, OpenAI, or custom).
+                            Open Settings and choose a provider (Ollama, OpenAI, Gemini, Mistral, or
+                            custom).
                           </p>
                         </div>
                       </div>
