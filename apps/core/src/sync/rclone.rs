@@ -149,8 +149,8 @@ impl RcloneProvider {
         }
     }
 
-    /// Run rclone command and return output.
-    fn run_rclone(&self, args: &[&str]) -> Result<String> {
+    /// Run rclone command and return (stdout, stderr).
+    fn run_rclone(&self, args: &[&str]) -> Result<(String, String)> {
         let mut cmd = Command::new(&self.rclone_path);
         cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
 
@@ -160,12 +160,14 @@ impl RcloneProvider {
 
         let output = cmd.output().context("Cannot execute rclone")?;
 
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
             bail!("Rclone failed: {}", stderr);
         }
 
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        Ok((stdout, stderr))
     }
 
     /// Run rclone command with direct output (for interactive commands).
@@ -191,7 +193,7 @@ impl RcloneProvider {
 
     /// List configured remotes.
     pub fn list_remotes(&self) -> Result<Vec<String>> {
-        let output = self.run_rclone(&["listremotes"])?;
+        let (output, _) = self.run_rclone(&["listremotes"])?;
         let remotes: Vec<String> = output
             .lines()
             .map(|line| line.trim_end_matches(':').to_string())
@@ -225,7 +227,7 @@ impl RcloneProvider {
 
     /// Check if rclone is available.
     pub fn check_rclone_available(&self) -> Result<bool> {
-        match self.run_rclone(&["version"]) {
+        match self.run_rclone(&["version"]).map(|(s, _)| s) {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),
         }
@@ -233,7 +235,7 @@ impl RcloneProvider {
 
     /// Get rclone version.
     pub fn get_version(&self) -> Result<String> {
-        let output = self.run_rclone(&["version"])?;
+        let (output, _) = self.run_rclone(&["version"])?;
         // Get first line containing version
         let version = output.lines().next().unwrap_or("Unknown").to_string();
         Ok(version)
@@ -326,7 +328,7 @@ impl SyncProvider for RcloneProvider {
         // Use 'copy' instead of 'sync' to prevent deleting local files
         // that don't exist on remote (important for bidirectional sync)
         // Exclude SQLite WAL files as they are temporary and cause conflicts
-        let output = self.run_rclone(&[
+        let (_stdout, stderr) = self.run_rclone(&[
             "copy",
             &remote_url,
             &local_path,
@@ -338,8 +340,9 @@ impl SyncProvider for RcloneProvider {
             "--stats-one-line",
         ])?;
 
-        // Parse output to count files (simplified)
-        let new_files = output.matches("Transferred:").count();
+        // rclone --verbose prints "Transferred: N / N Bytes" to stderr
+        // Count lines that indicate a file was transferred
+        let new_files = parse_transferred_count(&stderr);
 
         Ok(PullResult {
             has_changes: new_files > 0,
@@ -362,7 +365,7 @@ impl SyncProvider for RcloneProvider {
         // Use 'copy' instead of 'sync' to prevent deleting remote files
         // that don't exist locally (important for bidirectional sync)
         // Exclude SQLite WAL files as they are temporary and cause conflicts
-        let output = self.run_rclone(&[
+        let (_stdout, stderr) = self.run_rclone(&[
             "copy",
             &local_path,
             &remote_url,
@@ -374,8 +377,8 @@ impl SyncProvider for RcloneProvider {
             "--stats-one-line",
         ])?;
 
-        // Parse output to count files (simplified)
-        let files_pushed = output.matches("Transferred:").count();
+        // Parse transferred file count from rclone stats (stderr)
+        let files_pushed = parse_transferred_count(&stderr);
 
         Ok(PushResult {
             success: true,
@@ -393,14 +396,16 @@ impl SyncProvider for RcloneProvider {
         let local_path = vault_dir.to_string_lossy();
 
         // rclone check local remote --one-way --differ
-        let output = self.run_rclone(&[
-            "check",
-            &local_path,
-            &remote_url,
-            "--one-way",
-            "--differ",
-            "-q",
-        ]);
+        let output = self
+            .run_rclone(&[
+                "check",
+                &local_path,
+                &remote_url,
+                "--one-way",
+                "--differ",
+                "-q",
+            ])
+            .map(|(s, _)| s);
 
         // If there's output = there are differences
         match output {
@@ -418,14 +423,16 @@ impl SyncProvider for RcloneProvider {
         let local_path = vault_dir.to_string_lossy();
 
         // rclone check remote local --one-way --differ
-        let output = self.run_rclone(&[
-            "check",
-            &remote_url,
-            &local_path,
-            "--one-way",
-            "--differ",
-            "-q",
-        ]);
+        let output = self
+            .run_rclone(&[
+                "check",
+                &remote_url,
+                &local_path,
+                "--one-way",
+                "--differ",
+                "-q",
+            ])
+            .map(|(s, _)| s);
 
         match output {
             Ok(out) => Ok(!out.trim().is_empty()),
@@ -434,9 +441,68 @@ impl SyncProvider for RcloneProvider {
     }
 }
 
+/// Parse the number of transferred files from rclone stderr output.
+///
+/// rclone `--verbose --stats-one-line` prints lines like:
+///   "Transferred:   3 / 3, 100%, ..."
+///   "Transferred:   1.234 MiB / 5.678 MiB, 22%, 100 KiB/s, ETA 45s"
+///
+/// We look for lines starting with "Transferred:" that contain a file count
+/// (the first integer before the slash).
+fn parse_transferred_count(stderr: &str) -> usize {
+    for line in stderr.lines() {
+        let trimmed = line.trim();
+        // rclone outputs two "Transferred:" lines: one for bytes, one for file count.
+        // The file count line has format: "Transferred:   N / N, 100%"
+        // The bytes line has format: "Transferred:   1.234 MiB / ..."
+        // We want the one where the value after "Transferred:" starts with a plain integer
+        // (no decimal point before the slash).
+        if let Some(rest) = trimmed.strip_prefix("Transferred:") {
+            let rest = rest.trim();
+            // If starts with a digit and has " / " separator, try to parse file count
+            if let Some(count_str) = rest.split('/').next() {
+                let count_str = count_str.trim();
+                // Skip byte-count lines (they contain units like "MiB", "KiB", "B")
+                if count_str.contains('.') || count_str.chars().any(|c| c.is_alphabetic()) {
+                    continue;
+                }
+                if let Ok(count) = count_str.parse::<usize>() {
+                    return count;
+                }
+            }
+        }
+    }
+    0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_transferred_count_with_files() {
+        let stderr = "Transferred:   1.234 MiB / 5.678 MiB, 22%, 100 KiB/s, ETA 45s\nTransferred:   3 / 3, 100%\n";
+        assert_eq!(parse_transferred_count(stderr), 3);
+    }
+
+    #[test]
+    fn test_parse_transferred_count_zero() {
+        let stderr = "Transferred:        0 B / 0 B, -, 0 B/s, ETA -\nTransferred:   0 / 0, -\n";
+        assert_eq!(parse_transferred_count(stderr), 0);
+    }
+
+    #[test]
+    fn test_parse_transferred_count_empty() {
+        assert_eq!(parse_transferred_count(""), 0);
+    }
+
+    #[test]
+    fn test_parse_transferred_count_no_match() {
+        assert_eq!(
+            parse_transferred_count("some random output\nno transferred lines"),
+            0
+        );
+    }
 
     #[test]
     fn test_rclone_provider_new() {
