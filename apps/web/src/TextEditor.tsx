@@ -9,6 +9,8 @@ import { useEffect, useState } from "react";
 interface TextEditorProps {
   path: string;
   title?: string;
+  source?: string;
+  sessionId?: string;
   onClose: () => void;
 }
 
@@ -28,16 +30,49 @@ const foldGutterTheme = EditorView.theme({
  * Text Editor using CodeMirror.
  * Supports JSON/Markdown syntax highlighting, virtualized rendering.
  */
-export function TextEditor({ path, title, onClose }: TextEditorProps) {
+export function TextEditor({ path, title, source, sessionId, onClose }: TextEditorProps) {
   const [content, setContent] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isParsed, setIsParsed] = useState(false);
 
-  // Load file content
+  // Load file content: try parsed markdown first, fallback to raw file
   useEffect(() => {
     const loadContent = async () => {
       setIsLoading(true);
       setError(null);
+      setIsParsed(false);
+
+      // Try parsed markdown first
+      if (source && sessionId) {
+        try {
+          const text = await invoke<string>("read_parsed_session", {
+            source,
+            sessionId,
+          });
+          setContent(text);
+          setIsParsed(true);
+          setIsLoading(false);
+          return;
+        } catch {
+          // Parsed not available, try to parse on-the-fly
+          try {
+            await invoke("parse_sessions");
+            const text = await invoke<string>("read_parsed_session", {
+              source,
+              sessionId,
+            });
+            setContent(text);
+            setIsParsed(true);
+            setIsLoading(false);
+            return;
+          } catch {
+            // Fall through to raw file
+          }
+        }
+      }
+
+      // Fallback: read raw file
       try {
         const text = await invoke<string>("read_file_content", { path });
         setContent(text);
@@ -48,11 +83,11 @@ export function TextEditor({ path, title, onClose }: TextEditorProps) {
       }
     };
     loadContent();
-  }, [path]);
+  }, [path, source, sessionId]);
 
   // Detect file type for extensions
-  const isJson = path.endsWith(".json");
-  const isMd = path.endsWith(".md") || path.endsWith(".markdown");
+  const isJson = !isParsed && path.endsWith(".json");
+  const isMd = isParsed || path.endsWith(".md") || path.endsWith(".markdown");
   const extensions = [foldGutterTheme];
   if (isJson) {
     extensions.push(json());

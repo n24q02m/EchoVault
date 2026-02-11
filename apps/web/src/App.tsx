@@ -1466,6 +1466,8 @@ function MainApp() {
         <TextEditor
           path={viewingSession.path}
           title={viewingSession.title || viewingSession.workspace_name || viewingSession.id}
+          source={viewingSession.source}
+          sessionId={viewingSession.id}
           onClose={() => setViewingSession(null)}
         />
       )}
