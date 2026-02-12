@@ -33,6 +33,7 @@ pub mod cursor;
 pub mod gemini_cli;
 pub mod jetbrains;
 pub mod opencode;
+pub(crate) mod vscode_common;
 pub mod vscode_copilot;
 pub mod zed;
 
