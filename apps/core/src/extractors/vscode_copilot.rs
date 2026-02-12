@@ -301,3 +301,102 @@ impl Extractor for VSCodeCopilotExtractor {
         Ok(count)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::tempdir;
+    use chrono::Utc;
+
+    #[test]
+    fn test_extract_quick_metadata_legacy_json() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("session.json");
+        let now = Utc::now().timestamp_millis();
+
+        let json_content = serde_json::json!({
+            "sessionId": "test-session-id",
+            "creationDate": now,
+            "customTitle": "Test Session Title"
+        });
+
+        let mut file = std::fs::File::create(&file_path).unwrap();
+        file.write_all(json_content.to_string().as_bytes()).unwrap();
+
+        let extractor = VSCodeCopilotExtractor::new();
+        let metadata = extractor.extract_quick_metadata(&file_path, "Test Workspace");
+
+        assert!(metadata.is_some());
+        let metadata = metadata.unwrap();
+        assert_eq!(metadata.id, "test-session-id");
+        assert_eq!(metadata.title, Some("Test Session Title".to_string()));
+        assert_eq!(metadata.workspace_name, Some("Test Workspace".to_string()));
+        assert_eq!(metadata.created_at.map(|dt| dt.timestamp_millis()), Some(now));
+    }
+
+    #[test]
+    fn test_extract_quick_metadata_jsonl() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("session.jsonl");
+        let now = Utc::now().timestamp_millis();
+
+        let mut file = std::fs::File::create(&file_path).unwrap();
+
+        // Line 1: Header (kind=0)
+        let header = serde_json::json!({
+            "kind": 0,
+            "v": {
+                "sessionId": "jsonl-session-id",
+                "creationDate": now
+            }
+        });
+        writeln!(file, "{}", header.to_string()).unwrap();
+
+        // Line 2: User message (kind=1) for title fallback
+        let user_msg = serde_json::json!({
+            "kind": 1,
+            "v": "This is a user message that should be used as title"
+        });
+        writeln!(file, "{}", user_msg.to_string()).unwrap();
+
+        let extractor = VSCodeCopilotExtractor::new();
+        let metadata = extractor.extract_quick_metadata(&file_path, "Test Workspace");
+
+        assert!(metadata.is_some());
+        let metadata = metadata.unwrap();
+        assert_eq!(metadata.id, "jsonl-session-id");
+        // Title should be extracted from the user message
+        assert_eq!(metadata.title, Some("This is a user message that should be used as title".to_string()));
+        assert_eq!(metadata.created_at.map(|dt| dt.timestamp_millis()), Some(now));
+    }
+
+    #[test]
+    fn test_extract_quick_metadata_edge_cases() {
+        let dir = tempdir().unwrap();
+        let extractor = VSCodeCopilotExtractor::new();
+
+        // 1. Empty file
+        let empty_path = dir.path().join("empty.json");
+        std::fs::File::create(&empty_path).unwrap();
+        assert!(extractor.extract_quick_metadata(&empty_path, "ws").is_none());
+
+        // 2. Invalid JSON
+        let invalid_path = dir.path().join("invalid.json");
+        let mut file = std::fs::File::create(&invalid_path).unwrap();
+        file.write_all(b"{ invalid json }").unwrap();
+        assert!(extractor.extract_quick_metadata(&invalid_path, "ws").is_none());
+
+        // 3. Missing fields (graceful degradation)
+        // If sessionId is missing, it should fallback to filename
+        let missing_id_path = dir.path().join("missing_id.json");
+        let mut file = std::fs::File::create(&missing_id_path).unwrap();
+        file.write_all(b"{}").unwrap();
+
+        let metadata = extractor.extract_quick_metadata(&missing_id_path, "ws");
+        assert!(metadata.is_some());
+        let metadata = metadata.unwrap();
+        assert_eq!(metadata.id, "missing_id"); // Fallback to filename
+        assert_eq!(metadata.title, None);
+    }
+}
