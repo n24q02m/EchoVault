@@ -186,19 +186,32 @@ pub async fn get_auth_status(state: State<'_, AppState>) -> Result<AuthStatusRes
 /// Bắt đầu auth flow - mở browser để user đăng nhập
 #[tauri::command]
 pub async fn start_auth(state: State<'_, AppState>) -> Result<AuthStatusResponse, String> {
-    let mut provider = state.provider.lock().map_err(|e| e.to_string())?;
-    let status = provider.start_auth().map_err(|e| e.to_string())?;
+    let provider = state.provider.clone();
+
+    let status = tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = provider.lock().map_err(|e| e.to_string())?;
+        guard.start_auth().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
     Ok(AuthStatusResponse::from(status))
 }
 
 /// Hoàn tất auth - check xem user đã đăng nhập chưa
 #[tauri::command]
 pub async fn complete_auth(state: State<'_, AppState>) -> Result<AuthStatusResponse, String> {
-    let mut provider = state.provider.lock().map_err(|e| e.to_string())?;
-    let status = provider.complete_auth().map_err(|e| e.to_string())?;
+    let provider = state.provider.clone();
+
+    let status = tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = provider.lock().map_err(|e| e.to_string())?;
+        guard.complete_auth().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
     Ok(AuthStatusResponse::from(status))
 }
-
 // ============ SESSION COMMANDS ============
 
 /// Scan tất cả sessions có sẵn (local + synced từ vault)
