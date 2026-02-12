@@ -80,4 +80,51 @@ mod tests {
         let loaded = VaultMetadata::load(vault_dir).unwrap();
         assert_eq!(loaded.version, metadata.version);
     }
+
+    #[test]
+    fn test_vault_metadata_load_missing_file() {
+        let temp = TempDir::new().unwrap();
+        let vault_dir = temp.path();
+
+        let result = VaultMetadata::load(vault_dir);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to read vault.json"));
+    }
+
+    #[test]
+    fn test_vault_metadata_load_invalid_json() {
+        let temp = TempDir::new().unwrap();
+        let vault_dir = temp.path();
+
+        fs::write(vault_dir.join("vault.json"), "invalid json").unwrap();
+
+        let result = VaultMetadata::load(vault_dir);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to parse vault.json"));
+    }
+
+    #[test]
+    fn test_vault_metadata_load_missing_fields() {
+        let temp = TempDir::new().unwrap();
+        let vault_dir = temp.path();
+
+        // Missing version field
+        let json = r#"{
+            "created_at": "2024-01-01T00:00:00Z"
+        }"#;
+        fs::write(vault_dir.join("vault.json"), json).unwrap();
+
+        let result = VaultMetadata::load(vault_dir);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to parse vault.json"));
+    }
 }
