@@ -277,6 +277,18 @@
 
 * Implement initial Tauri application structure with Rclone synchronization and capability schema. ([8fe9407](https://github.com/n24q02m/EchoVault/commit/8fe94074165a982618eb6f7e14f8fe531ac49e49))
 
+## [1.18.1](https://github.com/n24q02m/EchoVault/compare/v1.18.0...v1.18.1) (2026-02-12)
+
+
+### Bug Fixes
+
+* **cd:** add git config identity for sync-dev step ([3231337](https://github.com/n24q02m/EchoVault/commit/32313376227a59cb72614b111798707a648e6adf))
+
+
+### Documentation
+
+* add discontinuation notice referencing mnemo-mcp ([633a2b1](https://github.com/n24q02m/EchoVault/commit/633a2b1e6ea05a7ef1d57eedfa3b0263f58488bf))
+
 ## [1.18.0](https://github.com/n24q02m/EchoVault/compare/v1.17.0...v1.18.0) (2026-02-09)
 
 
