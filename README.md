@@ -1,11 +1,7 @@
 # EchoVault
 
 > [!CAUTION]
-> **⚠️ PROJECT ARCHIVED - NO LONGER MAINTAINED**
-> 
-> This project is no longer being maintained. Development has been discontinued due to the project's complexity and scope becoming unmanageable. The codebase is preserved for historical reference and learning purposes, but no further updates, bug fixes, or feature development will occur.
-> 
-> If you're looking for similar functionality, please explore alternative solutions for managing AI chat history and conversations.
+> **PROJECT DISCONTINUED** — The replacement solution is being developed at [mnemo-mcp](https://github.com/n24q02m/mnemo-mcp).
 
 **Black box for all your AI conversations.**
 
