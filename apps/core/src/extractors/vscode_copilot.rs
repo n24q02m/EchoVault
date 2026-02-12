@@ -8,9 +8,69 @@ use crate::utils::wsl;
 use anyhow::Result;
 use chrono::{TimeZone, Utc};
 use rayon::prelude::*;
+use serde::Deserialize;
 use serde_json::Value;
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
+
+#[derive(Deserialize)]
+struct QuickMetadata {
+    #[serde(rename = "sessionId")]
+    session_id: Option<String>,
+    #[serde(rename = "creationDate")]
+    creation_date: Option<i64>,
+    #[serde(rename = "customTitle")]
+    custom_title: Option<String>,
+    #[serde(default)]
+    requests: Option<FirstRequestOnly>,
+}
+
+struct FirstRequestOnly {
+    text: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for FirstRequestOnly {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct FirstRequestVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for FirstRequestVisitor {
+            type Value = FirstRequestOnly;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a list of requests")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                #[derive(Deserialize)]
+                struct RequestStub {
+                    message: Option<MessageStub>,
+                }
+                #[derive(Deserialize)]
+                struct MessageStub {
+                    text: Option<String>,
+                }
+
+                // Read the first element
+                let first: Option<RequestStub> = seq.next_element()?;
+
+                let text = first.and_then(|r| r.message).and_then(|m| m.text);
+
+                // Drain the rest of the sequence without allocating
+                while seq.next_element::<serde::de::IgnoredAny>()?.is_some() {}
+
+                Ok(FirstRequestOnly { text })
+            }
+        }
+
+        deserializer.deserialize_seq(FirstRequestVisitor)
+    }
+}
 
 /// VS Code Copilot Extractor
 pub struct VSCodeCopilotExtractor {
@@ -78,53 +138,57 @@ impl VSCodeCopilotExtractor {
     ) -> Option<SessionMetadata> {
         let is_jsonl = path.extension().is_some_and(|ext| ext == "jsonl");
 
-        let json = if is_jsonl {
+        let (session_id, creation_date, custom_title, first_message_text) = if is_jsonl {
             // JSONL format: first line is kind=0 (session header), data in "v" field
             let file = std::fs::File::open(path).ok()?;
-            let reader = std::io::BufReader::new(file);
+            let reader = std::io::BufReader::with_capacity(128 * 1024, file);
             let first_line = reader.lines().next()?.ok()?;
             let wrapper: Value = serde_json::from_str(&first_line).ok()?;
             // Extract the "v" object which contains session metadata
-            wrapper.get("v")?.clone()
+            let v = wrapper.get("v")?;
+            (
+                v.get("sessionId")
+                    .and_then(|s| s.as_str())
+                    .map(|s| s.to_string()),
+                v.get("creationDate").and_then(|d| d.as_i64()),
+                v.get("customTitle")
+                    .and_then(|t| t.as_str())
+                    .map(|s| s.to_string()),
+                None, // JSONL doesn't store first message in header usually, handled later
+            )
         } else {
-            // Legacy JSON format: entire file is the session object
-            let content = std::fs::read_to_string(path).ok()?;
-            serde_json::from_str(&content).ok()?
+            // Legacy JSON format: use streaming parser to avoid loading full file
+            let file = std::fs::File::open(path).ok()?;
+            let reader = std::io::BufReader::with_capacity(128 * 1024, file);
+            let metadata: QuickMetadata = serde_json::from_reader(reader).ok()?;
+            (
+                metadata.session_id,
+                metadata.creation_date,
+                metadata.custom_title,
+                metadata.requests.and_then(|r| r.text),
+            )
         };
 
         // Get session ID from filename or JSON
-        let session_id = json
-            .get("sessionId")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| {
-                path.file_stem()
-                    .and_then(|s| s.to_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_default()
-            });
+        let session_id = session_id.unwrap_or_else(|| {
+            path.file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_string())
+                .unwrap_or_default()
+        });
 
         // Get title if available
-        let title = json
-            .get("customTitle")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
+        let title = custom_title
             .or_else(|| {
-                // Fallback: get text from first request (works for legacy JSON)
-                json.get("requests")
-                    .and_then(|r| r.as_array())
-                    .and_then(|arr| arr.first())
-                    .and_then(|req| req.get("message"))
-                    .and_then(|msg| msg.get("text"))
-                    .and_then(|t| t.as_str())
-                    .map(|s| {
-                        let truncated: String = s.chars().take(60).collect();
-                        if s.chars().count() > 60 {
-                            format!("{}...", truncated)
-                        } else {
-                            truncated
-                        }
-                    })
+                // Fallback: get text from first request (legacy JSON)
+                first_message_text.as_ref().map(|s| {
+                    let truncated: String = s.chars().take(60).collect();
+                    if s.chars().count() > 60 {
+                        format!("{}...", truncated)
+                    } else {
+                        truncated
+                    }
+                })
             })
             .or_else(|| {
                 // Fallback for JSONL: read subsequent lines to find first user message
@@ -132,7 +196,7 @@ impl VSCodeCopilotExtractor {
                     return None;
                 }
                 let file = std::fs::File::open(path).ok()?;
-                let reader = std::io::BufReader::new(file);
+                let reader = std::io::BufReader::with_capacity(128 * 1024, file);
                 // Skip first line (header), look for kind=1 with string value (user message)
                 for line in reader.lines().skip(1).take(20).flatten() {
                     if let Ok(obj) = serde_json::from_str::<Value>(&line) {
@@ -154,10 +218,7 @@ impl VSCodeCopilotExtractor {
             });
 
         // Get timestamp
-        let created_at = json
-            .get("creationDate")
-            .and_then(|v| v.as_i64())
-            .and_then(|ts| Utc.timestamp_millis_opt(ts).single());
+        let created_at = creation_date.and_then(|ts| Utc.timestamp_millis_opt(ts).single());
 
         // Get file size
         let file_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
@@ -299,5 +360,54 @@ impl Extractor for VSCodeCopilotExtractor {
             .count();
 
         Ok(count)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    #[test]
+    #[ignore]
+    fn test_legacy_json_extraction_perf() {
+        let dir = tempdir().unwrap();
+        let chat_sessions_dir = dir.path().join("chatSessions");
+        std::fs::create_dir(&chat_sessions_dir).unwrap();
+
+        // Create a large JSON file (~5MB)
+        let file_path = chat_sessions_dir.join("large_session.json");
+        let mut file = File::create(&file_path).unwrap();
+
+        write!(file, r#"{{"sessionId":"123","creationDate":1700000000000,"customTitle":"Test Session","requests":["#).unwrap();
+
+        // Write 10000 dummy requests
+        for i in 0..10000 {
+            if i > 0 {
+                write!(file, ",").unwrap();
+            }
+            // Each message is roughly 500 bytes
+            write!(file, r#"{{"message":{{"text":"This is a dummy message number {} repeated many times to increase file size. Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident sunt in culpa qui officia deserunt mollit anim id est laborum."}}}}"#, i).unwrap();
+        }
+
+        write!(file, r#"]}}"#).unwrap();
+
+        let extractor = VSCodeCopilotExtractor::new();
+
+        let start = std::time::Instant::now();
+        // Since extract_quick_metadata is private, we can't call it directly in integration tests,
+        // but here we are in the same module so we can.
+        let metadata = extractor.extract_quick_metadata(&file_path, "test_workspace");
+        let duration = start.elapsed();
+
+        println!("Extraction time: {:?}", duration);
+
+        assert!(metadata.is_some());
+        let meta = metadata.unwrap();
+        assert_eq!(meta.id, "123");
+        // Title should be extracted correctly
+        assert_eq!(meta.title.as_deref(), Some("Test Session"));
     }
 }
