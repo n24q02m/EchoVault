@@ -6,6 +6,7 @@
 
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection, LoadExtensionGuard, OptionalExtension};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tracing::info;
 
@@ -369,66 +370,100 @@ impl VaultDb {
         let mut updated = 0;
         let mut skipped = 0;
 
-        for session in sessions {
-            let existing: Option<i64> = tx
-                .query_row(
-                    "SELECT mtime FROM sessions WHERE id = ?1",
-                    params![session.id],
-                    |row| row.get(0),
-                )
-                .optional()?;
+        let mut to_insert = Vec::new();
+        let mut to_update = Vec::new();
 
-            match existing {
-                Some(existing_mtime) => {
-                    if session.mtime as i64 > existing_mtime {
-                        tx.execute(
-                            "UPDATE sessions SET
-                                source = ?2, machine_id = ?3, mtime = ?4,
-                                file_size = ?5, last_synced = ?6, title = ?7,
-                                workspace_name = ?8, created_at = ?9,
-                                vault_path = ?10, original_path = ?11
-                             WHERE id = ?1",
-                            params![
-                                session.id,
-                                session.source,
-                                machine_id(),
-                                session.mtime as i64,
-                                session.file_size as i64,
-                                now,
-                                session.title,
-                                session.workspace_name,
-                                session.created_at,
-                                session.vault_path,
-                                session.original_path
-                            ],
-                        )?;
-                        updated += 1;
-                    } else {
-                        skipped += 1;
-                    }
+        // Step 1: Bulk check existence and mtime
+        // We do this in chunks to avoid hitting SQLite parameter limits (typically 999 or 32766)
+        let chunk_size = 500;
+        let mut existing_mtimes = HashMap::new();
+
+        for chunk in sessions.chunks(chunk_size) {
+            let ids: Vec<&str> = chunk.iter().map(|s| s.id.as_str()).collect();
+            let placeholders = vec!["?"; ids.len()].join(",");
+            let sql = format!(
+                "SELECT id, mtime FROM sessions WHERE id IN ({})",
+                placeholders
+            );
+
+            let mut stmt = tx.prepare(&sql)?;
+            let rows = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?;
+
+            for row in rows {
+                let (id, mtime) = row?;
+                existing_mtimes.insert(id, mtime);
+            }
+        }
+
+        // Step 2: Categorize sessions
+        for session in sessions {
+            if let Some(&existing_mtime) = existing_mtimes.get(&session.id) {
+                if session.mtime as i64 > existing_mtime {
+                    to_update.push(session);
+                    updated += 1;
+                    existing_mtimes.insert(session.id.clone(), session.mtime as i64);
+                } else {
+                    skipped += 1;
                 }
-                None => {
-                    tx.execute(
-                        "INSERT INTO sessions
-                            (id, source, machine_id, mtime, file_size, last_synced,
-                             title, workspace_name, created_at, vault_path, original_path)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-                        params![
-                            session.id,
-                            session.source,
-                            machine_id(),
-                            session.mtime as i64,
-                            session.file_size as i64,
-                            now,
-                            session.title,
-                            session.workspace_name,
-                            session.created_at,
-                            session.vault_path,
-                            session.original_path
-                        ],
-                    )?;
-                    inserted += 1;
-                }
+            } else {
+                to_insert.push(session);
+                inserted += 1;
+                existing_mtimes.insert(session.id.clone(), session.mtime as i64);
+            }
+        }
+
+        // Step 3: Execute writes using prepared statements
+        if !to_insert.is_empty() {
+            let mut stmt = tx.prepare_cached(
+                "INSERT INTO sessions
+                    (id, source, machine_id, mtime, file_size, last_synced,
+                     title, workspace_name, created_at, vault_path, original_path)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            )?;
+
+            for session in to_insert {
+                stmt.execute(params![
+                    session.id,
+                    session.source,
+                    machine_id(),
+                    session.mtime as i64,
+                    session.file_size as i64,
+                    now,
+                    session.title,
+                    session.workspace_name,
+                    session.created_at,
+                    session.vault_path,
+                    session.original_path
+                ])?;
+            }
+        }
+
+        if !to_update.is_empty() {
+            let mut stmt = tx.prepare_cached(
+                "UPDATE sessions SET
+                    source = ?2, machine_id = ?3, mtime = ?4,
+                    file_size = ?5, last_synced = ?6, title = ?7,
+                    workspace_name = ?8, created_at = ?9,
+                    vault_path = ?10, original_path = ?11
+                 WHERE id = ?1",
+            )?;
+
+            for session in to_update {
+                stmt.execute(params![
+                    session.id,
+                    session.source,
+                    machine_id(),
+                    session.mtime as i64,
+                    session.file_size as i64,
+                    now,
+                    session.title,
+                    session.workspace_name,
+                    session.created_at,
+                    session.vault_path,
+                    session.original_path
+                ])?;
             }
         }
 
