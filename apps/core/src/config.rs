@@ -269,6 +269,13 @@ impl Config {
         std::fs::write(path, content)
             .with_context(|| format!("Cannot write config file: {}", path.display()))?;
 
+        // Restrict file permissions on Unix
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        }
+
         Ok(())
     }
 
@@ -319,6 +326,29 @@ mod tests {
         let loaded = Config::load(&config_path)?;
         assert!(loaded.is_initialized());
         assert_eq!(loaded.sync.remote_name, Some("echovault".to_string()));
+
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_save_permissions() -> Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+        let temp_dir = TempDir::new()?;
+        let config_path = temp_dir.path().join("test_perms.toml");
+
+        let config = Config::new();
+        config.save(&config_path)?;
+
+        let metadata = std::fs::metadata(&config_path)?;
+        let mode = metadata.permissions().mode();
+        // Check if permissions are 0o600 (rw-------)
+        // We strip the file type bits (0o100000) and stick to permission bits (0o777)
+        assert_eq!(
+            mode & 0o777,
+            0o600,
+            "Config file should have 0600 permissions"
+        );
 
         Ok(())
     }
