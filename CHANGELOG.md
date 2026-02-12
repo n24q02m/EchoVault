@@ -277,6 +277,22 @@
 
 * Implement initial Tauri application structure with Rclone synchronization and capability schema. ([8fe9407](https://github.com/n24q02m/EchoVault/commit/8fe94074165a982618eb6f7e14f8fe531ac49e49))
 
+## [1.19.0-beta.1](https://github.com/n24q02m/EchoVault/compare/v1.19.0-beta...v1.19.0-beta.1) (2026-02-12)
+
+
+### Features
+
+* **embedding:** redesign UX with LiteLLM-style provider dropdown ([34bc785](https://github.com/n24q02m/EchoVault/commit/34bc785ea6bb4d214a319aacbd9ff4f98447e7cd))
+* **settings:** add Reset Setup button to clear config ([daa32b5](https://github.com/n24q02m/EchoVault/commit/daa32b5e5745750b5ca2f7a1da9380f0585f1315))
+
+
+### Bug Fixes
+
+* **interceptor:** fix race condition and add more target domains ([418ad65](https://github.com/n24q02m/EchoVault/commit/418ad653a72b56245e3d92321d9de7692887645c))
+* **parse:** show parsed markdown instead of raw file in TextEditor ([d028964](https://github.com/n24q02m/EchoVault/commit/d028964e98f1a8db5bd4dcc6be20adfe6dd70d43))
+* **sync:** parse rclone transferred count from stderr ([f4cafdc](https://github.com/n24q02m/EchoVault/commit/f4cafdce766e3f2ce69a1f8c845446fcc2b4da89))
+* **web:** update biome.json for v2 compatibility ([a1827cf](https://github.com/n24q02m/EchoVault/commit/a1827cfd2b58362552c6c5aa053cec6fb511e0c8))
+
 ## [1.19.0-beta](https://github.com/n24q02m/EchoVault/compare/v1.18.0...v1.19.0-beta) (2026-02-11)
 
 
