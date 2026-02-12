@@ -184,4 +184,3 @@ apps/tauri/*.key
 
 # Virtual environment
 .venv
-.tauri/
