@@ -728,6 +728,7 @@ const saveCachedSessions = (sessions: SessionInfo[]) => {
 };
 
 function MainApp() {
+  const initialized = useRef(false);
   const [sessions, setSessions] = useState<SessionInfo[]>(loadCachedSessions());
   const [isScanning, setIsScanning] = useState(false);
   const [expandedSources, setExpandedSources] = useState<Set<string>>(new Set());
@@ -890,9 +891,10 @@ function MainApp() {
   };
 
   useEffect(() => {
-    if (sessions.length > 0) {
+    if (sessions.length > 0 && !initialized.current) {
       const sources = [...new Set(sessions.map((s) => s.source).filter(Boolean))] as string[];
       setExpandedSources(new Set(sources));
+      initialized.current = true;
     }
   }, [sessions]);
 
