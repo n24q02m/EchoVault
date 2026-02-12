@@ -141,7 +141,8 @@ pub fn parse_vault_source(
     }
 
     // Walk the source directory for parseable files
-    let files = collect_files_recursive(&source_dir);
+    let mut files = Vec::new();
+    collect_files_recursive(&source_dir, &mut files);
 
     for file_path in files {
         if !parser.can_parse(&file_path) {
@@ -167,19 +168,17 @@ pub fn parse_vault_source(
 }
 
 /// Recursively collect all files in a directory.
-fn collect_files_recursive(dir: &Path) -> Vec<PathBuf> {
-    let mut files = Vec::new();
+fn collect_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                files.extend(collect_files_recursive(&path));
+                collect_files_recursive(&path, files);
             } else if path.is_file() {
                 files.push(path);
             }
         }
     }
-    files
 }
 
 /// Create all parsers.
@@ -198,4 +197,42 @@ pub fn all_parsers() -> Vec<Box<dyn Parser>> {
         Box::new(zed::ZedParser),
         Box::new(jetbrains::JetBrainsParser),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::{self, File};
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_collect_files_recursive_deep() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create deep structure: depth 5, 5 files per folder
+        create_files(root, 5, 5);
+
+        // Measure time
+        let start = std::time::Instant::now();
+        let mut files = Vec::new();
+        collect_files_recursive(root, &mut files);
+        let duration = start.elapsed();
+
+        println!("Time taken: {:?}", duration);
+        // depth 5 implies levels 0 to 5, i.e., 6 levels.
+        // files per level = 5.
+        // Total = 6 * 5 = 30.
+        assert_eq!(files.len(), 30);
+    }
+
+    fn create_files(dir: &Path, depth: usize, count: usize) {
+        fs::create_dir_all(dir).unwrap();
+        for i in 0..count {
+            File::create(dir.join(format!("file_{}.txt", i))).unwrap();
+        }
+        if depth > 0 {
+            create_files(&dir.join("sub"), depth - 1, count);
+        }
+    }
 }
