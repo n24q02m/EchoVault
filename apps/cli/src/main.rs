@@ -26,11 +26,20 @@ use echovault_core::{
     Config,
 };
 use indicatif::{ProgressBar, ProgressStyle};
+use keyring::Entry;
 use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
+
+const KEYRING_SERVICE: &str = "echovault";
+const KEYRING_USER: &str = "embedding_api_key";
+
+fn get_api_key_secure() -> Option<String> {
+    let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER).ok()?;
+    entry.get_password().ok()
+}
 
 /// EchoVault CLI - Black box for your AI conversations
 #[derive(Parser)]
@@ -465,9 +474,20 @@ fn cmd_embed() -> Result<()> {
     );
     println!();
 
+    // Get API key from config (legacy) or keyring
+    let api_key = if let Some(key) = &config.embedding.api_key {
+        if !key.is_empty() {
+            Some(key.clone())
+        } else {
+            get_api_key_secure()
+        }
+    } else {
+        get_api_key_secure()
+    };
+
     let embedding_config = echovault_core::embedding::EmbeddingConfig {
         api_base: config.embedding.api_base,
-        api_key: config.embedding.api_key,
+        api_key,
         model: config.embedding.model,
         chunk_size: config.embedding.chunk_size,
         chunk_overlap: config.embedding.chunk_overlap,
@@ -516,9 +536,20 @@ fn cmd_search(query: &str, limit: usize) -> Result<()> {
     let config = ensure_config()?;
     let vault_dir = &config.vault_path;
 
+    // Get API key from config (legacy) or keyring
+    let api_key = if let Some(key) = &config.embedding.api_key {
+        if !key.is_empty() {
+            Some(key.clone())
+        } else {
+            get_api_key_secure()
+        }
+    } else {
+        get_api_key_secure()
+    };
+
     let embedding_config = echovault_core::embedding::EmbeddingConfig {
         api_base: config.embedding.api_base,
-        api_key: config.embedding.api_key,
+        api_key,
         model: config.embedding.model,
         chunk_size: config.embedding.chunk_size,
         chunk_overlap: config.embedding.chunk_overlap,

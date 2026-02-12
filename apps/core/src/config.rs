@@ -116,6 +116,7 @@ pub struct EmbeddingConfigToml {
 
     /// Optional API key
     #[serde(default)]
+    #[serde(skip_serializing)]
     pub api_key: Option<String>,
 
     /// Model name (e.g., "nomic-embed-text")
@@ -321,5 +322,28 @@ mod tests {
         assert_eq!(loaded.sync.remote_name, Some("echovault".to_string()));
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+
+    #[test]
+    fn test_api_key_skip_serialization() {
+        let mut config = Config::default();
+        config.embedding.api_key = Some("secret_key_12345".to_string());
+
+        let toml_string = toml::to_string(&config).unwrap();
+        assert!(
+            !toml_string.contains("secret_key_12345"),
+            "API key was serialized!"
+        );
+        // Note: 'api_key' key might not be present if value is skipped, or present as null?
+        // skip_serializing means the field is omitted entirely.
+        assert!(
+            !toml_string.contains("api_key ="),
+            "api_key field should be omitted"
+        );
     }
 }
