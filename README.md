@@ -1,5 +1,8 @@
 # EchoVault
 
+> [!CAUTION]
+> **PROJECT DISCONTINUED** — The replacement solution is being developed at [mnemo-mcp](https://github.com/n24q02m/mnemo-mcp).
+
 **Black box for all your AI conversations.**
 
 EchoVault extracts, indexes, and searches chat history from 12+ AI coding tools — ensuring you never lose valuable insights. Works as a desktop app, CLI, or MCP server for AI assistants.
