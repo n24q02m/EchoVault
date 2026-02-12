@@ -4,9 +4,10 @@
 //! Simplified version - only Rclone provider, no encryption.
 
 use echovault_core::{
-    AuthStatus, Config, RcloneProvider, SyncOptions, SyncProvider, VaultMetadata,
+    AuthStatus, Config, LocalProvider, RcloneProvider, SyncOptions, SyncProvider, VaultMetadata,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::State;
 use tracing::{error, info, warn};
@@ -21,13 +22,13 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 /// State chứa RcloneProvider
 #[derive(Clone)]
 pub struct AppState {
-    pub provider: Arc<Mutex<RcloneProvider>>,
+    pub provider: Arc<Mutex<Box<dyn SyncProvider + Send + Sync>>>,
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            provider: Arc::new(Mutex::new(RcloneProvider::new())),
+            provider: Arc::new(Mutex::new(Box::new(RcloneProvider::new()))),
         }
     }
 }
@@ -125,8 +126,8 @@ pub async fn complete_setup(
     let vault_path = config.vault_path.clone();
 
     // Check if Rclone remote is configured
-    let provider = state.provider.lock().map_err(|e| e.to_string())?;
-    if !provider.check_remote_exists().unwrap_or(false) {
+    let mut provider = state.provider.lock().map_err(|e| e.to_string())?;
+    if provider.complete_auth().map_err(|e| e.to_string())? != AuthStatus::Authenticated {
         return Err("Please connect to cloud storage first".to_string());
     }
     drop(provider);
@@ -1847,4 +1848,50 @@ pub async fn embedding_stats() -> Result<serde_json::Value, String> {
         "total_sessions": stats.total_sessions,
         "dimension": stats.dimension,
     }))
+}
+
+// ============ PROVIDER COMMANDS ============
+
+/// Thiết lập provider (rclone, local, etc.)
+#[tauri::command]
+pub async fn set_provider(
+    provider_type: String,
+    config: HashMap<String, String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().map_err(|e| e.to_string())?;
+
+    let new_provider: Box<dyn SyncProvider + Send + Sync> = match provider_type.as_str() {
+        "rclone" => {
+            let mut p = RcloneProvider::new();
+            if let Some(remote_type) = config.get("remote_type") {
+                p.set_remote_type(remote_type.clone());
+            }
+            Box::new(p)
+        }
+        "local" => {
+            let path_str = config
+                .get("path")
+                .ok_or("Missing 'path' in config for local provider")?;
+            Box::new(LocalProvider::new(path_str))
+        }
+        _ => return Err(format!("Unknown provider type: {}", provider_type)),
+    };
+
+    *provider_guard = new_provider;
+    info!("[set_provider] Switched to provider: {}", provider_type);
+    Ok(())
+}
+
+/// Enable encryption for current provider
+#[tauri::command]
+pub async fn enable_encryption(password: String, state: State<'_, AppState>) -> Result<(), String> {
+    let mut provider_guard = state.provider.lock().map_err(|e| e.to_string())?;
+
+    provider_guard
+        .enable_encryption(password)
+        .map_err(|e| e.to_string())?;
+
+    info!("[enable_encryption] Encryption enabled");
+    Ok(())
 }

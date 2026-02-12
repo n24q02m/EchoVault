@@ -216,6 +216,8 @@ pub fn run() {
             commands::test_embedding_connection,
             commands::check_ollama,
             commands::get_embedding_config,
+            commands::set_provider,
+            commands::enable_encryption,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

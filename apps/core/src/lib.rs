@@ -29,6 +29,8 @@ pub use config::Config;
 pub use extractors::{all_extractors, Extractor, ExtractorKind};
 pub use parsers::{ParsedConversation, Parser};
 pub use storage::SessionIndex;
-pub use sync::{AuthStatus, PullResult, PushResult, RcloneProvider, SyncOptions, SyncProvider};
+pub use sync::{
+    AuthStatus, LocalProvider, PullResult, PushResult, RcloneProvider, SyncOptions, SyncProvider,
+};
 pub use vault::VaultMetadata;
 pub use watcher::FileWatcher;
