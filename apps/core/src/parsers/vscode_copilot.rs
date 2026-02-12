@@ -114,6 +114,11 @@ impl VSCodeCopilotParser {
     fn parse_jsonl(&self, path: &Path, file_stem: &str) -> Result<ParsedConversation> {
         let file = std::fs::File::open(path).context("Cannot open JSONL file")?;
         let reader = std::io::BufReader::new(file);
+        self.parse_jsonl_from_reader(reader, file_stem)
+    }
+
+    fn parse_jsonl_from_reader<R: BufRead>(&self, reader: R, file_stem: &str) -> Result<ParsedConversation> {
+
 
         let mut session_id = file_stem.to_string();
         let mut title: Option<String> = None;
@@ -231,7 +236,8 @@ impl VSCodeCopilotParser {
             messages,
             tags: Vec::new(),
         })
-    }
+        }
+
 }
 
 impl Parser for VSCodeCopilotParser {
@@ -272,5 +278,92 @@ fn truncate_title(s: &str) -> String {
         format!("{}...", truncated)
     } else {
         truncated
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_parse_json_legacy() {
+        let parser = VSCodeCopilotParser;
+        let content = r#"{
+            "sessionId": "test-session",
+            "customTitle": "Test Title",
+            "creationDate": 1700000000000,
+            "requests": [
+                {
+                    "message": { "text": "Hello" },
+                    "response": { "value": "Hi there" }
+                }
+            ]
+        }"#;
+
+        let result = parser.parse_json(content, "default").unwrap();
+        assert_eq!(result.id, "test-session");
+        assert_eq!(result.title.as_deref(), Some("Test Title"));
+        assert_eq!(result.messages.len(), 2);
+        assert_eq!(result.messages[0].role, Role::User);
+        assert_eq!(result.messages[0].content, "Hello");
+        assert_eq!(result.messages[1].role, Role::Assistant);
+        assert_eq!(result.messages[1].content, "Hi there");
+    }
+
+    #[test]
+    fn test_parse_jsonl_valid() {
+        let parser = VSCodeCopilotParser;
+        let content = r#"{"kind": 0, "v": {"sessionId": "jsonl-session", "customTitle": "JSONL Title", "creationDate": 1700000000000}}
+{"kind": 1, "v": "User message"}
+{"kind": 2, "v": "Assistant response"}
+{"kind": 4, "v": "Tool confirmation"}
+{"kind": 5, "v": "Follow up"}
+"#;
+        let reader = Cursor::new(content);
+        let result = parser.parse_jsonl_from_reader(reader, "default").unwrap();
+
+        assert_eq!(result.id, "jsonl-session");
+        assert_eq!(result.title.as_deref(), Some("JSONL Title"));
+        assert_eq!(result.messages.len(), 4); // User, Assistant, Info (Confirmation), Assistant (Follow-up)
+
+        assert_eq!(result.messages[0].role, Role::User);
+        assert_eq!(result.messages[0].content, "User message");
+
+        assert_eq!(result.messages[1].role, Role::Assistant);
+        assert_eq!(result.messages[1].content, "Assistant response");
+
+        assert_eq!(result.messages[2].role, Role::Info);
+        assert!(result.messages[2].content.contains("Tool confirmation"));
+
+        assert_eq!(result.messages[3].role, Role::Assistant);
+        assert!(result.messages[3].content.contains("Follow up"));
+    }
+
+    #[test]
+    fn test_parse_jsonl_invalid_line() {
+        let parser = VSCodeCopilotParser;
+        // Middle line is invalid JSON
+        let content = r#"{"kind": 1, "v": "First"}
+{invalid json}
+{"kind": 2, "v": "Second"}
+"#;
+        let reader = Cursor::new(content);
+        let result = parser.parse_jsonl_from_reader(reader, "default").unwrap();
+
+        // Should skip invalid line and continue
+        assert_eq!(result.messages.len(), 2);
+        assert_eq!(result.messages[0].content, "First");
+        assert_eq!(result.messages[1].content, "Second");
+    }
+
+    #[test]
+    fn test_parse_jsonl_empty() {
+        let parser = VSCodeCopilotParser;
+        let reader = Cursor::new("");
+        let result = parser.parse_jsonl_from_reader(reader, "default").unwrap();
+
+        assert_eq!(result.messages.len(), 0);
+        assert_eq!(result.id, "default");
     }
 }
