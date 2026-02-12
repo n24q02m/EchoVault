@@ -75,6 +75,5 @@ ureq = { version = "3", features = ["json"], optional = true }
 # MCP server SDK (optional, feature-gated)
 rmcp = { version = "0.14", features = ["server", "transport-io", "macros"], optional = true }
 schemars = { version = "1", optional = true }
-
 [dev-dependencies]
 tempfile = "3.14"
